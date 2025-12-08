@@ -7,7 +7,13 @@ import { ColorPicker } from "../../../components/ColorPicker"
 import { Dropdown } from "../../../components/Dropdown"
 import { OptionSlider } from "../../../components/OptionSlider"
 import { OptionTextInput } from "../../../components/OptionTextInput"
-import { Theme, colorsType, images } from "../../../data/data"
+import {
+  Theme,
+  colorsType,
+  images,
+  LinkDisplaySettings,
+  LinkDisplayMode,
+} from "../../../data/data"
 import {
   StyledSettingsContent,
   SettingElement,
@@ -42,7 +48,7 @@ const DesignPreview = styled.div<{ name: string; colors: colorsType }>`
     font-size: 0.8rem;
   }
   ::after {
-    content: "Design Preview";
+    content: "设计预览";
     color: var(--accent-color);
     position: absolute;
     top: 10px;
@@ -83,16 +89,55 @@ const DesignPreview = styled.div<{ name: string; colors: colorsType }>`
     }
   }
 `
-const ImagePreview = styled.img`
+const ImagePreviewWrapper = styled.div`
   margin: 10px;
   height: 300px;
   width: 300px;
   border: 1px solid var(--default-color);
   padding: 5px;
-  object-fit: cover;
-
+  position: relative;
   animation: circling-shadow-small 4s ease 0s infinite normal;
 `
+
+const ImagePreview = styled.img`
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+`
+
+const ImageFallback = styled.div`
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-color);
+  color: var(--default-color);
+  font-size: 0.8rem;
+  text-align: center;
+  opacity: 0.5;
+`
+
+// 带错误处理的图片预览组件
+const ImagePreviewWithFallback = ({ src }: { src: string }) => {
+  const [hasError, setHasError] = useState(false)
+
+  // 当 src 变化时重置错误状态
+  useEffect(() => {
+    setHasError(false)
+  }, [src])
+
+  return (
+    <ImagePreviewWrapper>
+      {hasError ? (
+        <ImageFallback>图片加载失败</ImageFallback>
+      ) : (
+        <ImagePreview src={src} onError={() => setHasError(true)} />
+      )}
+    </ImagePreviewWrapper>
+  )
+}
+
 const StyledAccordionPreview = styled.div<{ colorVar: string }>`
   border: 4px solid ${({ colorVar }) => `var(${colorVar})`};
   height: 300px;
@@ -166,6 +211,48 @@ const AccordionPreviewContainer = styled.div`
   }
 `
 
+// 悬浮卡片预览样式
+const HoverCardPreviewContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px;
+  margin: 10px;
+`
+
+const HoverCardPreviewItem = styled.div<{ active?: boolean }>`
+  padding: 12px 16px;
+  border: 2px solid var(--default-color);
+  /* stylelint-disable-next-line */
+  background: ${({ active }) =>
+    // eslint-disable-next-line sonarjs/no-duplicate-string
+    active ? "var(--accent-color)" : "transparent"};
+  color: var(--${({ active }) => (active ? "bg-color" : "default-color")});
+  font-size: 0.9rem;
+  transition: 0.2s;
+`
+
+// 命令面板预览样式
+const CommandPalettePreview = styled.div`
+  width: 280px;
+  margin: 10px;
+  border: 2px solid var(--default-color);
+  background: var(--bg-color);
+`
+
+const CommandPaletteHeader = styled.div`
+  padding: 12px 16px;
+  border-bottom: 2px solid var(--default-color);
+  font-size: 0.9rem;
+  color: var(--accent-color);
+`
+
+const CommandPaletteItem = styled.div`
+  padding: 10px 16px;
+  font-size: 0.85rem;
+  color: var(--default-color);
+`
+
 export const SettingButtonRow = styled.div`
   display: flex;
   justify-content: space-between;
@@ -186,11 +273,48 @@ const AccordionPreview = ({
   )
 }
 
+// 链接展示模式选择按钮
+const ModeSelector = styled.div`
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+`
+
+const ModeButton = styled.button<{ active: boolean }>`
+  flex: 1;
+  min-width: 100px;
+  padding: 12px 8px;
+  border: 2px solid var(--default-color);
+  background: ${({ active }) =>
+    active ? "var(--accent-color)" : "transparent"};
+  color: ${({ active }) =>
+    active ? "var(--bg-color)" : "var(--default-color)"};
+  cursor: pointer;
+  transition: 0.2s;
+  font-size: 0.85rem;
+  font-weight: 500;
+
+  &:hover {
+    background: ${({ active }) =>
+      active ? "var(--accent-color)" : "var(--default-color)"};
+    color: var(--bg-color);
+  }
+`
+
+const ModeDescription = styled.p`
+  font-size: 0.8rem;
+  opacity: 0.6;
+  margin-top: 8px;
+  line-height: 1.4;
+`
+
 interface props {
   design: Theme
   setDesign: (design: Theme) => void
   themes: Theme[]
   setThemes: (Themes: Theme[]) => void
+  linkDisplaySettings: LinkDisplaySettings
+  setLinkDisplaySettings: (settings: LinkDisplaySettings) => void
 }
 
 const themeEquals = (theme1: Theme, theme2: Theme) => {
@@ -203,13 +327,25 @@ const themeEquals = (theme1: Theme, theme2: Theme) => {
   return isEqual
 }
 
+const modeOptions: { value: LinkDisplayMode; label: string; desc: string }[] = [
+  { value: "accordion", label: "手风琴", desc: "经典水平展开模式" },
+  { value: "hover-card", label: "悬浮卡片", desc: "悬停显示链接卡片" },
+  { value: "command-palette", label: "命令面板", desc: "按 / 键快速搜索" },
+]
+
 export const DesignSettings = ({
   design,
   setDesign,
   themes,
   setThemes,
+  linkDisplaySettings,
+  setLinkDisplaySettings,
 }: props) => {
   const [isNewDesign, setIsNewDesign] = useState(false)
+
+  const handleModeChange = (mode: LinkDisplayMode) => {
+    setLinkDisplaySettings({ ...linkDisplaySettings, mode })
+  }
 
   const setName = (name: string) => setDesign({ ...design, name: name })
   const setColors = (colors: colorsType) =>
@@ -218,12 +354,8 @@ export const DesignSettings = ({
 
   // check if design does exist already
   useEffect(() => {
-    const currTheme = themes.filter(theme => themeEquals(theme, design))
-    if (currTheme.length > 0) {
-      setIsNewDesign(false)
-    } else if (!isNewDesign) {
-      setIsNewDesign(true)
-    }
+    const exists = themes.some(theme => themeEquals(theme, design))
+    setIsNewDesign(!exists)
   }, [design, themes])
 
   const themeChange = (themeName: string) => {
@@ -245,33 +377,53 @@ export const DesignSettings = ({
     if (themes.length > 0) themeChange(themes[0].name)
   }
 
-  const themeExists = (themeName: string) => {
-    return themes.filter(theme => theme.name === design.name).length > 0
-  }
+  const themeExists = (themeName: string) =>
+    themes.some(theme => theme.name === themeName)
 
   return (
     <>
       <div>
         <StyledSettingsContent>
-          <SettingsLabel>Theme</SettingsLabel>
+          <SettingsLabel>链接展示模式</SettingsLabel>
+          <SettingElement>
+            <ModeSelector>
+              {modeOptions.map(option => (
+                <ModeButton
+                  key={option.value}
+                  active={linkDisplaySettings.mode === option.value}
+                  onClick={() => handleModeChange(option.value)}
+                >
+                  {option.label}
+                </ModeButton>
+              ))}
+            </ModeSelector>
+            <ModeDescription>
+              {
+                modeOptions.find(o => o.value === linkDisplaySettings.mode)
+                  ?.desc
+              }
+            </ModeDescription>
+          </SettingElement>
+
+          <SectionDivider />
+
+          <SettingsLabel>主题</SettingsLabel>
 
           <SettingElement>
-            {themes && (
-              <Dropdown
-                value={design.name}
-                items={themes.map(theme => ({
-                  label: theme.name,
-                  value: theme.name,
-                }))}
-                onChange={themeChange}
-              />
-            )}
+            <Dropdown
+              value={design.name}
+              items={themes.map(theme => ({
+                label: theme.name,
+                value: theme.name,
+              }))}
+              onChange={themeChange}
+            />
           </SettingElement>
           <SettingElement>
             <OptionTextInput
               value={design.name}
               onChange={setName}
-              placeholder={"Theme name"}
+              placeholder={"主题名称"}
             />
           </SettingElement>
 
@@ -281,7 +433,7 @@ export const DesignSettings = ({
             <OptionTextInput
               value={design.image}
               onChange={setImage}
-              placeholder={"Image URL"}
+              placeholder={"背景图 URL"}
             />
             <OptionSlider
               currentValue={design.image}
@@ -300,13 +452,13 @@ export const DesignSettings = ({
             <SettingButtonRow>
               <SettingsButton
                 onClick={() => addTheme(design)}
-                text={!themeExists(design.name) ? "Add Theme" : "Save Theme"}
+                text={!themeExists(design.name) ? "添加主题" : "保存主题"}
                 icon={!themeExists(design.name) ? faPlus : faSave}
                 disabled={!isNewDesign ? true : undefined}
               />
               <SettingsButton
                 onClick={() => removeTheme(design.name)}
-                text={"Remove Theme"}
+                text={"删除主题"}
                 icon={faMinus}
                 disabled={!themeExists(design.name)}
               />
@@ -315,12 +467,34 @@ export const DesignSettings = ({
         </StyledSettingsContent>
       </div>
       <DesignPreview name={design.name} colors={design.colors}>
-        <ImagePreview src={design.image} />
-        <AccordionPreviewContainer>
-          <AccordionPreview title={"Default"} colorVar={"--default-color"} />
-          <AccordionPreview title={"Accent"} colorVar={"--accent-color"} />
-          <AccordionPreview title={"Accent 2"} colorVar={"--accent-color2"} />
-        </AccordionPreviewContainer>
+        <ImagePreviewWithFallback src={design.image} />
+        {linkDisplaySettings.mode === "accordion" && (
+          <AccordionPreviewContainer>
+            <AccordionPreview title={"Default"} colorVar={"--default-color"} />
+            <AccordionPreview title={"Accent"} colorVar={"--accent-color"} />
+            <AccordionPreview title={"Accent 2"} colorVar={"--accent-color2"} />
+          </AccordionPreviewContainer>
+        )}
+        {linkDisplaySettings.mode === "hover-card" && (
+          <HoverCardPreviewContainer>
+            <HoverCardPreviewItem active>Reddit</HoverCardPreviewItem>
+            <HoverCardPreviewItem>3D Modelling</HoverCardPreviewItem>
+            <HoverCardPreviewItem>Design</HoverCardPreviewItem>
+            <HoverCardPreviewItem>Music</HoverCardPreviewItem>
+          </HoverCardPreviewContainer>
+        )}
+        {linkDisplaySettings.mode === "command-palette" && (
+          <CommandPalettePreview>
+            <CommandPaletteHeader>🔍 搜索链接...</CommandPaletteHeader>
+            <CommandPaletteItem>📁 Reddit</CommandPaletteItem>
+            <CommandPaletteItem style={{ paddingLeft: "24px", opacity: 0.8 }}>
+              r/startpages
+            </CommandPaletteItem>
+            <CommandPaletteItem style={{ paddingLeft: "24px", opacity: 0.8 }}>
+              r/unixporn
+            </CommandPaletteItem>
+          </CommandPalettePreview>
+        )}
       </DesignPreview>
     </>
   )

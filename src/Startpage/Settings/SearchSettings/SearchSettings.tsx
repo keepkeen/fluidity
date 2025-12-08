@@ -39,10 +39,13 @@ export const SearchSettings = ({
   const setEngine = (engine: string) => {
     setSearchSettings({ ...searchSettings, engine: engine })
   }
+  const setPlaceholder = (placeholder: string) => {
+    setSearchSettings({ ...searchSettings, placeholder })
+  }
 
   return (
     <SearchSettingsContent>
-      <SettingsLabel>Searchbar</SettingsLabel>
+      <SettingsLabel>搜索栏</SettingsLabel>
       <SettingElement>
         <Flex>
           <OptionSlider
@@ -53,12 +56,21 @@ export const SearchSettings = ({
           <TextInput
             value={searchSettings.engine}
             onChange={setEngine}
-            placeholder={`Engine url (${queryToken} for query placement)`}
+            placeholder={`搜索引擎地址（用 ${queryToken} 占位查询词）`}
           />
         </Flex>
       </SettingElement>
+      <SettingElement>
+        <TextInput
+          value={
+            searchSettings.placeholder ?? "按 Enter 搜索，或直接输入快捷词"
+          }
+          onChange={setPlaceholder}
+          placeholder={"搜索栏提示文案"}
+        />
+      </SettingElement>
       <br />
-      <SettingsLabel>Fast Forward Search</SettingsLabel>
+      <SettingsLabel>快速跳转</SettingsLabel>
       <FastForwardSearch
         links={searchSettings.fastForward}
         onChange={fastForward =>

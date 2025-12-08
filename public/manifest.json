@@ -1,18 +1,22 @@
 {
-	"manifest_version": 2,
-	"name": "Fluidity",
-	"description": "An accordion based browser startpage.",
-	"developer": {
-		"name": "PrettyCoffee",
-		"url": "https://prettycoffee.github.io"
-	},
-	"permissions": [
-		"management",
-		"history",
-		"storage"
-	],
-	"content_security_policy": "script-src 'self' 'sha256-xuejLQ29qZc344LEr80Z2fLQc/Q/4XaQRaIDtWFnz2Y='; object-src 'self'",
-	"chrome_url_overrides": {
-		"newtab": "./index.html"
-	}
+  "manifest_version": 3,
+  "name": "Fluidity 起始页",
+  "version": "0.6.0",
+  "description": "手风琴式浏览器起始页",
+  "action": {
+    "default_title": "Fluidity",
+    "default_popup": "popup.html"
+  },
+  "icons": {
+    "16": "logo192.png",
+    "48": "logo192.png",
+    "128": "logo512.png"
+  },
+  "permissions": ["storage", "tabs"],
+  "chrome_url_overrides": {
+    "newtab": "index.html"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
 }

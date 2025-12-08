@@ -9,11 +9,15 @@
     "deploy": "gh-pages -d build",
     "start": "vite",
     "build": "vite build",
+    "build:zip": "rm -f fluidity.zip && npm run build && cd build && zip -r ../fluidity.zip .",
     "serve": "vite preview",
     "lint": "eslint ./src --ignore-path .gitignore",
     "lint:fix": "npm run lint -- --fix"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@emotion/react": "^11.11.1",
     "@emotion/styled": "^11.11.0",
     "@fortawesome/free-solid-svg-icons": "^6.4.2",
@@ -24,6 +28,7 @@
   },
   "devDependencies": {
     "@pretty-cozy/eslint-config": "^0.2.0",
+    "@types/chrome": "^0.1.32",
     "@types/react": "^18.2.18",
     "@types/react-color": "^3.0.6",
     "@types/react-dom": "^18.2.7",

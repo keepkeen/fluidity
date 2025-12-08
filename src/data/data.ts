@@ -193,11 +193,13 @@ export type FastForwards = Record<string, string>
 
 export interface Search {
   engine: string
+  placeholder?: string
   fastForward: FastForwards
 }
 
 export const searchSettings: Search = {
   engine: searchEngines[0].value,
+  placeholder: "按 Enter 搜索，或直接输入快捷词",
   fastForward: {
     deepl: "https://deepl.com/",
     maps: "https://google.de/maps/",
@@ -206,6 +208,17 @@ export const searchSettings: Search = {
     gitlab: "https://gitlab.com/",
     youtube: "https://youtube.com/",
   },
+}
+
+// 链接展示模式
+export type LinkDisplayMode = "accordion" | "hover-card" | "command-palette"
+
+export interface LinkDisplaySettings {
+  mode: LinkDisplayMode
+}
+
+export const linkDisplaySettings: LinkDisplaySettings = {
+  mode: "hover-card", // 默认使用悬浮卡片模式
 }
 
 export interface colorsType {

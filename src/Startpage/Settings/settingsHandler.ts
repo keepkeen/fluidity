@@ -2,8 +2,10 @@ import {
   linkGroup,
   Theme,
   Search as SearchType,
+  LinkDisplaySettings,
   links,
   searchSettings,
+  linkDisplaySettings,
   themes,
 } from "../../data/data"
 
@@ -102,4 +104,26 @@ export const Design = {
 
   set: (design: Theme) =>
     localStorage.setItem("design", JSON.stringify(design)),
+}
+
+const linkDisplayKey = "link-display-settings"
+export const LinkDisplay = {
+  get: () => {
+    const lsLinkDisplay = localStorage.getItem(linkDisplayKey)
+    if (lsLinkDisplay) return JSON.parse(lsLinkDisplay) as LinkDisplaySettings
+    return undefined
+  },
+  getWithFallback: () => {
+    try {
+      return LinkDisplay.get() ?? linkDisplaySettings
+    } catch {
+      console.error(
+        "Your currently applied link display settings appear to be corrupted."
+      )
+      return linkDisplaySettings
+    }
+  },
+
+  set: (settings: LinkDisplaySettings) =>
+    localStorage.setItem(linkDisplayKey, JSON.stringify(settings)),
 }

@@ -38,19 +38,19 @@ const StyledTextArea = styled.textarea`
 const placeholder = JSON.stringify(
   [
     {
-      title: "Title",
+      title: "示例分组",
       links: [
         {
-          label: "label",
-          value: "url",
+          label: "示例标签",
+          value: "https://example.com",
         },
         {
-          label: "label",
-          value: "url",
+          label: "示例标签2",
+          value: "https://example.com/2",
         },
         {
-          label: "label",
-          value: "url",
+          label: "示例标签3",
+          value: "https://example.com/3",
         },
       ],
     },
@@ -104,9 +104,7 @@ export const OptionTextArea = ({ onChange }: props) => {
       setError(undefined)
       onChange(parsedData)
     } catch {
-      setError(
-        "Your links are not parseable. Probably you have a Syntax Error?"
-      )
+      setError("链接数据无法解析，可能是 JSON 语法错误。")
     }
   }
 

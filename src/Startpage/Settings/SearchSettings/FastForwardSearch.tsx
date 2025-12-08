@@ -83,7 +83,7 @@ export const FastForwardAddItem = ({ add }: FastForwardAddItemProps) => {
         <AddItemTextField
           value={value}
           onChange={newValue => setValue(newValue)}
-          placeholder={"search string"}
+          placeholder={"快捷词（例如 gh）"}
         />
       </td>
       <td>&nbsp;:&nbsp;</td>
@@ -91,7 +91,7 @@ export const FastForwardAddItem = ({ add }: FastForwardAddItemProps) => {
         <AddItemTextField
           value={url}
           onChange={newUrl => setUrl(newUrl)}
-          placeholder={"destination"}
+          placeholder={"目标地址"}
         />
       </td>
       <td>
@@ -115,9 +115,9 @@ export const FastForwardSearch = ({
   onChange,
 }: FastForwardSearchProps) => {
   const deleteValue = (value: string) => {
-    const copy = { ...links }
-    delete copy[value]
-    onChange({ ...copy })
+    const { [value]: _omit, ...rest } = links
+    void _omit
+    onChange(rest)
   }
   const addValue = (value: string, url: string) => {
     const copy = { ...links }

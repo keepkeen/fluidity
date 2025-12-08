@@ -8,16 +8,23 @@ import {
   faFire,
 } from "@fortawesome/free-solid-svg-icons"
 
+import { AISettings } from "./AISettings/AISettings"
 import { Changelog } from "./Changelog/Changelog"
+import { DataSettings } from "./DataSettings/DataSettings"
 import { DesignSettings } from "./DesignSettings/DesignSettings"
 import { LinkSettings } from "./LinkSettings/LinkSettings"
 import { SearchSettings } from "./SearchSettings/SearchSettings"
 import * as Settings from "./settingsHandler"
 import { IconButton } from "../../components/IconButton"
+import { LinkDisplaySettings } from "../../data/data"
+import {
+  AISettingsManager,
+  AISettings as AISettingsType,
+} from "../../services/ai"
 
 const StyledSettingsWindow = styled.div`
   background-color: var(--bg-color);
-  position: absolute;
+  position: fixed;
 
   top: var(--settings-window-gap);
   right: var(--settings-window-gap);
@@ -27,17 +34,20 @@ const StyledSettingsWindow = styled.div`
   border: 2px solid var(--default-color);
   padding: 60px 30px 30px 30px;
   box-shadow: 10px 10px 0px var(--accent-color);
+  z-index: 101;
 `
 const WindowContent = styled.div`
   width: 100%;
-  height: calc(100% - 80px);
+  height: calc(100% - 60px);
   display: flex;
+  overflow: hidden;
 `
 
 const WindowHeader = styled.div`
   ::before {
-    content: "Settings";
+    content: "设置";
     margin: 5px 20px 0 10px;
+    white-space: nowrap;
   }
   color: var(--bg-color);
   background-color: var(--default-color);
@@ -48,6 +58,7 @@ const WindowHeader = styled.div`
   top: 0;
   display: flex;
   justify-content: space-between;
+  align-items: center;
 `
 
 const WindowFooter = styled.div`
@@ -123,7 +134,7 @@ const TabOption = styled.button<{ active: boolean }>`
   }
 `
 
-const TabOptions = ["Links", "Appearance", "Searchbar", "Changelog"]
+const TabOptions = ["链接", "外观", "搜索栏", "AI 助手", "数据", "更新日志"]
 
 interface props {
   hidePopup: () => void
@@ -137,12 +148,19 @@ export const SettingsWindow = ({ hidePopup }: props) => {
   const [searchSettings, setSearchSettings] = useState(
     Settings.Search.getWithFallback()
   )
+  const [aiSettings, setAISettings] = useState<AISettingsType>(
+    AISettingsManager.get()
+  )
+  const [linkDisplaySettings, setLinkDisplaySettings] =
+    useState<LinkDisplaySettings>(Settings.LinkDisplay.getWithFallback())
 
   const applyValues = () => {
     Settings.Design.set(design)
     Settings.Themes.set(themes)
     Settings.Search.set(searchSettings)
     Settings.Links.set(linkGroups)
+    Settings.LinkDisplay.set(linkDisplaySettings)
+    AISettingsManager.set(aiSettings)
     window.location.reload()
   }
 
@@ -164,40 +182,48 @@ export const SettingsWindow = ({ hidePopup }: props) => {
       </WindowHeader>
 
       <WindowContent>
-        {currentTab === "Links" && (
+        {currentTab === "链接" && (
           <LinkSettings linkGroups={linkGroups} setLinkGroups={setLinkGroups} />
         )}
 
-        {currentTab === "Appearance" && (
+        {currentTab === "外观" && (
           <DesignSettings
             design={design}
             setDesign={setDesign}
             themes={themes}
             setThemes={setThemes}
+            linkDisplaySettings={linkDisplaySettings}
+            setLinkDisplaySettings={setLinkDisplaySettings}
           />
         )}
 
-        {currentTab === "Searchbar" && (
+        {currentTab === "搜索栏" && (
           <SearchSettings
             searchSettings={searchSettings}
             setSearchSettings={setSearchSettings}
           />
         )}
 
-        {currentTab === "Changelog" && <Changelog />}
+        {currentTab === "AI 助手" && (
+          <AISettings aiSettings={aiSettings} setAISettings={setAISettings} />
+        )}
+
+        {currentTab === "数据" && <DataSettings />}
+
+        {currentTab === "更新日志" && <Changelog />}
       </WindowContent>
 
       <WindowFooter>
         <SettingsButton
           onClick={() => applyValues()}
-          text={"Apply Changes"}
+          text={"应用更改"}
           icon={faSave}
         />
         <SettingsButton
           onClick={() => {
             window.location.reload()
           }}
-          text={"Discard Changes"}
+          text={"放弃更改"}
           icon={faFire}
         />
         <SettingsButton
@@ -205,7 +231,7 @@ export const SettingsWindow = ({ hidePopup }: props) => {
             localStorage.clear()
             window.location.reload()
           }}
-          text={"Delete All Settings"}
+          text={"清除全部设置"}
           icon={faTrash}
         />
       </WindowFooter>

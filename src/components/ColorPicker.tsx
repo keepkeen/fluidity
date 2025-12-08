@@ -71,7 +71,7 @@ export const ColorPicker = ({ colors, setColors }: props) => {
       <StyledMaterialPicker>
         <MaterialPicker
           color={colors[currentColor]}
-          onChange={color => color && handleChange(color)}
+          onChange={color => handleChange(color)}
         />
       </StyledMaterialPicker>
     </ColorPickerContainer>

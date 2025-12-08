@@ -30,18 +30,16 @@ export const changelog: ChangelogVersion[] = [
     version: "0.6.0",
     changes: [
       <>
-        Added catppuccin theme. Thanks to <GithubUser user="AndyReckt" /> for
-        contributing!
+        新增 catppuccin 主题，感谢 <GithubUser user="AndyReckt" /> 的贡献！
       </>,
     ],
   },
   {
     version: "0.5.0",
     changes: [
-      "Added custom search engines",
+      "支持自定义搜索引擎",
       <>
-        Added some new themes. Thanks to{" "}
-        <RedditUser user="justanotherweirdteen" /> for contributing!
+        新增了一些主题，感谢 <RedditUser user="justanotherweirdteen" /> 的贡献！
       </>,
     ],
   },
@@ -49,66 +47,62 @@ export const changelog: ChangelogVersion[] = [
     version: "0.4.4",
     changes: [
       <>
-        Added new theme &quot;Tartarus&quot;. Thanks to{" "}
-        <RedditUser user="AllJavi" /> for contributing! <br />(
-        <Link href="https://github.com/AllJavi/dotfiles">
-          fitting linux rice
-        </Link>
-        )
+        新增主题 “Tartarus”，感谢 <RedditUser user="AllJavi" /> 的贡献！ <br />
+        <Link href="https://github.com/AllJavi/dotfiles">配套 Linux 桌面</Link>
       </>,
     ],
   },
   {
     version: "0.4.3",
     changes: [
-      "Added middle mouse click to Link Group to open all links in new tabs",
-      "Added Dockerfile for easier local setup",
+      "在链接分组上按鼠标中键可一次性在新标签页打开所有链接",
+      "新增 Dockerfile，方便本地部署",
     ],
   },
   {
     version: "0.4.2",
-    changes: ["Enhanced responsiveness for large screens", "Internal stuff"],
+    changes: ["提升大屏响应式效果", "一些内部优化"],
   },
   {
     version: "0.4.1",
     changes: [
-      "Enhanced stability of the settings (I am pretty sure about it this time!!!)",
-      "Fixed a bug with the link editor I introduced before",
+      "提高设置页稳定性（这次我很确定！）",
+      "修复此前在链接编辑器里引入的一个问题",
     ],
   },
   {
     version: "0.4.0",
     changes: [
-      "Added fast forward search",
-      "Fixed a bug which prevented the link editor to load your data",
-      "Enhanced responsiveness",
-      "Added some more default data",
+      "新增快速跳转搜索",
+      "修复链接编辑器无法加载你数据的错误",
+      "继续改进响应式体验",
+      "补充更多默认数据",
     ],
   },
   {
     version: "0.3.0",
     description:
-      "This update was hell for me, fucking themes took me way too long and I needed to restructure all the internal design data.Also oof, had so many bugs caused by the not existing peresistence of my data. Hope you enjoy it!",
-    changes: ["Added theme management"],
+      "这次更新做主题花了超多时间，还重构了内部设计数据；之前数据不持久导致很多 bug，都修好了，希望你喜欢！",
+    changes: ["新增主题管理"],
   },
   {
     version: "0.2.1",
-    changes: ["Optimized keyboard control", "Restructured settings"],
+    changes: ["优化键盘操作", "重构设置页"],
   },
   {
     version: "0.2.0",
     changes: [
-      "Added this changelog",
-      "Added tabs in settings",
-      "Added design preview",
-      'Added "Discard Changes" button in settings',
-      "Added project logo",
-      "Changed structure of settings",
-      "I think I enhanced stability overall a bit",
+      "新增当前的更新日志",
+      "设置页加入多标签",
+      "新增设计预览",
+      "设置页增加“放弃更改”按钮",
+      "加入项目 Logo",
+      "调整设置页结构",
+      "稳定性略有提升",
     ],
   },
   {
     version: "0.1.0",
-    description: "The initial state of this project.",
+    description: "项目的初始版本。",
   },
 ]

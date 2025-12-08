@@ -96,7 +96,7 @@ export const Dropdown = ({ items, onChange, value }: props) => {
       <DropdownPopup height={hasBlur ? popupHeight : 0} items={items.length}>
         <div
           onBlur={() => setHasBlur(false)}
-          ref={elem => setPopupHeight(elem?.clientHeight || 0)}
+          ref={elem => setPopupHeight(elem?.clientHeight ?? 0)}
         >
           {items.map(item => (
             <DropdownItem

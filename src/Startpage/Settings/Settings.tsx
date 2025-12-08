@@ -1,10 +1,11 @@
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 
 import styled from "@emotion/styled"
 import { faSlidersH } from "@fortawesome/free-solid-svg-icons"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
 import { SettingsWindow } from "./SettingsWindow"
+import { setSettingsWindowOpen } from "../../components/AILoadingIndicator"
 
 const SettingsPopupToggle = styled.button`
   position: fixed;
@@ -38,10 +39,16 @@ const PopupCover = styled.div`
   left: 0;
   background-color: var(--bg-color);
   opacity: 0.7;
+  z-index: 100;
 `
 
 export const Settings = () => {
   const [showSettings, setShowSettings] = useState(false)
+
+  // 通知全局设置窗口状态变化
+  useEffect(() => {
+    setSettingsWindowOpen(showSettings)
+  }, [showSettings])
 
   const hidePopup = () => setShowSettings(false)
 
