@@ -4,6 +4,7 @@ import styled from "@emotion/styled"
 
 import { AIGreeting } from "./AIGreeting/AIGreeting"
 import { LinkContainer } from "./LinkContainer/LinkContainer"
+import { Onboarding } from "./Onboarding/Onboarding"
 import { ReportBanner } from "./Report/ReportBanner"
 import { Searchbar } from "./Searchbar/Searchbar"
 import { Settings } from "./Settings/Settings"
@@ -187,6 +188,7 @@ export const Startpage = () => {
     <Wrapper>
       <GlobalNotification />
       <AILoadingIndicator />
+      <Onboarding />
       <AIGreeting />
       <ReportBanner />
       <StyledStartpage>

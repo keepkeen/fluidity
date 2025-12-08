@@ -22,7 +22,7 @@ const DropdownButton = styled(IconButton)`
   align-items: space-between;
   justify-content: space-between;
   padding: 10px 20px;
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--border-color);
   background-color: var(--bg-color);
 
   :enabled:hover,

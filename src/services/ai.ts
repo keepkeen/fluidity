@@ -33,7 +33,8 @@ interface CachedResponse {
 interface DeepSeekResponse {
   choices?: {
     message?: {
-      content?: string
+      content?: string | null
+      reasoning_content?: string // deepseek-reasoner 模型的思考过程
     }
   }[]
 }
@@ -232,9 +233,40 @@ export const callDeepSeekAPI = async (
   }
 
   const data = (await response.json()) as DeepSeekResponse
-  return (
-    data.choices?.[0]?.message?.content?.trim() ?? "你好！今天也要加油哦 ✨"
-  )
+  const message = data.choices?.[0]?.message
+
+  // 优先使用 content
+  let content = message?.content?.trim()
+
+  // deepseek-reasoner 模型特殊处理
+  if (isReasonerModel) {
+    const reasoningContent = message?.reasoning_content
+
+    // 如果 content 为空，尝试从 reasoning_content 中提取 JSON
+    if (!content && reasoningContent) {
+      console.log(
+        "Reasoner content 为空，尝试从 reasoning_content 提取:",
+        reasoningContent.slice(-500)
+      )
+      // 尝试从思考过程末尾提取 JSON
+      const jsonMatch = reasoningContent.match(/\{[^{}]*"name"[^{}]*\}/g)
+      if (jsonMatch) {
+        content = jsonMatch[jsonMatch.length - 1] // 取最后一个匹配的 JSON
+        console.log("从 reasoning_content 提取到 JSON:", content)
+      }
+    }
+  }
+
+  if (!content) {
+    console.warn("AI 响应 content 为空", {
+      model,
+      hasReasoningContent: !!message?.reasoning_content,
+      contentValue: message?.content,
+    })
+    throw new Error("AI 响应内容为空，请重试")
+  }
+
+  return content
 }
 
 /**

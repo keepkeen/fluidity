@@ -58,7 +58,7 @@ const SectionTitle = styled.h3`
   font-weight: 600;
   margin: 0;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--default-color);
+  border-bottom: 1px solid var(--border-color);
   opacity: 0.9;
 `
 
@@ -71,7 +71,7 @@ const Description = styled.p`
 
 const StatsCard = styled.div`
   padding: 16px;
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--border-color);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -82,7 +82,7 @@ const StatsRow = styled.div`
   justify-content: space-between;
   align-items: center;
   padding: 6px 0;
-  border-bottom: 1px dashed var(--default-color);
+  border-bottom: 1px dashed var(--border-color);
   opacity: 0.8;
 
   &:last-child {

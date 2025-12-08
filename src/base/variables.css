@@ -1,6 +1,8 @@
 :root {
 	--bg-color: rgba(46,46,46);
 	--default-color: rgba(230,230,230);
+	--secondary-color: rgba(168,168,168);
+	--border-color: rgba(74,74,74);
 	--accent-color: rgb(255, 180, 230);
 	--accent-color2: rgb(180, 255, 230);
 	--border-radius: 5px;

@@ -1,22 +1,36 @@
 {
   "manifest_version": 3,
   "name": "Fluidity 起始页",
-  "version": "0.6.0",
-  "description": "手风琴式浏览器起始页",
+  "version": "0.6.1",
+  "description": "优雅的手风琴式浏览器起始页，支持 AI 智能助手、主题生成、待办事项等功能",
   "action": {
     "default_title": "Fluidity",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "logo192.png",
+      "48": "logo192.png",
+      "128": "logo512.png"
+    }
   },
   "icons": {
     "16": "logo192.png",
     "48": "logo192.png",
-    "128": "logo512.png"
+    "128": "logo512.png",
+    "192": "logo192.png",
+    "512": "logo512.png"
   },
-  "permissions": ["storage", "tabs"],
+  "permissions": ["storage"],
+  "host_permissions": ["<all_urls>"],
   "chrome_url_overrides": {
     "newtab": "index.html"
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "fluidity@prettycoffee.github.io",
+      "strict_min_version": "109.0"
+    }
   }
 }

@@ -1,68 +1,118 @@
 ![logo](https://github.com/PrettyCoffee/fluidity/blob/main/public/logo192.png)
 
-# Fluidity - An accordion based startpage
-Here you can find the startpage I created for my browser :)
+# Fluidity - 优雅的手风琴式起始页
 
-If you have any problems or miss a feature, create an issue and I will take a look at it! Of course, if you want to add a feature yourself you can just create a fork and contribute ;)
+一款功能丰富的浏览器新标签页扩展，支持手风琴式链接管理、AI 智能助手、主题生成、待办事项等功能。
 
-## Showcase
-### The startpage in action
-I created a [reddit post](https://www.reddit.com/r/startpages/comments/m82izg/my_new_startpage_any_ideas_for_names/) on r/startpages. There you can see a short video where I show all available features.
+## 功能特性
 
-You can also just take a look at the [Live Demo](https://prettycoffee.github.io/fluidity/).
+### 核心功能
+- **手风琴式链接** - 经典的水平展开链接分组，支持音效反馈
+- **悬浮卡片模式** - 悬停显示链接卡片，简洁优雅
+- **命令面板** - 按 `/` 键快速搜索链接，高效导航
+- **快捷搜索** - 支持多搜索引擎，可配置快捷词跳转
 
-### Themes
-![Default theme](https://github.com/PrettyCoffee/fluidity/blob/main/docs/default-theme.png)
-![Dark Souls theme](https://github.com/PrettyCoffee/fluidity/blob/main/docs/DarkSouls-theme.png)
-![Pop!OS theme](https://github.com/PrettyCoffee/fluidity/blob/main/docs/pop!os-theme.png)
-**If you created a theme and want to see it here, hit me up!**
+### AI 智能功能
+- **AI 问候语** - 根据你的使用习惯生成个性化问候
+- **AI 主题生成** - 用自然语言描述，自动生成配色方案
+- **AI 链接整理** - 智能分析和整理你的链接分组
 
-## Usage
-You can apply startpages by using several methods. To keep it simple, I will only cover one (the easiest) here:
-1. Download a New Tab Override Plugin (e.g. [Chrome](https://chrome.google.com/webstore/detail/new-tab-redirect/icpgjfneehieebagbmdbhnlpiopdcmna) | [Firefox](https://addons.mozilla.org/en-US/firefox/addon/new-tab-override/))
-1. Open the Plugins Settings
-1. Paste `https://prettycoffee.github.io/fluidity/` into the text field to set it up as your startpage
+### 个性化
+- **13+ 预设主题** - 包括 Catppuccin、Gruvbox、Dark Souls 等
+- **完全自定义** - 6 种颜色变量，支持自定义背景图
+- **数据导入导出** - 轻松备份和迁移你的配置
 
-## Local Setup
-If you do not want to rely on my github page, thats totally okay!
-You can set it up locally yourself with the following steps:
-1. Switch into the gh-pages branch
-1. Download / Clone the repository files
-1. Set it up like explained in [usage](#usage), but instead of the link use the filepath to the `/index.html` file.
+### 效率工具
+- **待办事项** - 简洁的任务管理，支持贡献图表
+- **周报/月报** - 自动生成使用统计报告
+- **快捷词跳转** - 输入关键词直接跳转到指定网站
 
-If you have a github account you can of course also just fork the repo and create a github page yourself ;)
+## 安装方式
 
-## Docker setup
-If you are familiar with Docker, you can use the provided docker file which will build the app and deploy it with nginx.
+### 方式一：浏览器扩展商店（推荐）
+- Chrome Web Store（即将上线）
+- Edge Add-ons（即将上线）
 
-You can use the following commands to deploy a container:
+### 方式二：手动安装
+1. 下载最新的 `fluidity.zip` 发布包
+2. 解压到本地文件夹
+3. 打开浏览器扩展管理页面（`chrome://extensions` 或 `edge://extensions`）
+4. 开启「开发者模式」
+5. 点击「加载已解压的扩展程序」，选择解压后的文件夹
 
+### 方式三：在线使用
+访问 [Live Demo](https://prettycoffee.github.io/fluidity/) 体验在线版本。
+
+## 快速开始
+
+1. **首次使用** - 安装后打开新标签页，会看到引导教程
+2. **添加链接** - 点击右下角设置图标 → 链接设置
+3. **切换主题** - 设置 → 外观设置 → 选择预设主题
+4. **启用 AI** - 设置 → AI 助手 → 配置 DeepSeek API Key
+
+## 键盘快捷键
+
+| 快捷键 | 功能 |
+|--------|------|
+| `/` | 打开命令面板（命令面板模式下） |
+| `Enter` | 搜索或跳转 |
+| `Esc` | 关闭弹窗/面板 |
+
+## 开发指南
+
+### 环境要求
+- Node.js 18+
+- npm 或 yarn
+
+### 本地开发
 ```bash
-# build
-$ docker build ./ -t fluidity
+# 安装依赖
+npm install
 
-# run
-$ docker run -d --name fluidity -p 8080:80 fluidity
+# 启动开发服务器
+npm run dev
+
+# 构建生产版本
+npm run build
 ```
 
-It will be deployed on port 8080. (`http:\\localhost:8080`)
+### 项目结构
+```
+src/
+├── Startpage/          # 主页面组件
+│   ├── LinkContainer/  # 链接容器（手风琴/悬浮卡片/命令面板）
+│   ├── Settings/       # 设置面板
+│   ├── Todo/           # 待办事项
+│   └── Report/         # 周报/月报
+├── components/         # 通用组件
+├── services/           # 服务层（AI、数据备份等）
+├── data/               # 数据定义
+└── utils/              # 工具函数
+```
 
-## Advanced: Changing the code
-Since this project is programmed with React and TypeScript, you will first need to set it up:
+## Docker 部署
 
-0. (Download and install [nodejs](https://nodejs.org/en/) if you dont have it)
-1. Clone the git repository, this time use the main branch
-1. Open a terminal in the project folder (If you execute the command `ls` here, there should be a package.json)
-1. Execute `npm i` to install all dependencies
-1. Execute `npm run start` to validate that everything ids working. A browser tab with the URL `http://localhost:3000` and the startpage should open.
-1. Now you can change the code, for example write your own default values into `/src/data/data.ts`
-1. Compile the project by executing `npm run build` if everything is done
-1. Your startpage is now located in the `/build/` folder
-1. Optional: If you host it with github pages yourself, you can use the command `npm run deploy` to push a fresh build into the gh-pages branch
+```bash
+# 构建镜像
+docker build ./ -t fluidity
 
-## Sources
+# 运行容器
+docker run -d --name fluidity -p 8080:80 fluidity
+```
 
-* [Pictures - DeathAndMilk](https://www.instagram.com/deathandmilk_/)
-* [Icons - FontAwesome](https://fontawesome.com/icons)
-* [Text Flicker - CodeMyUI](https://codemyui.com/crt-screen-text-flicker-animation-in-pure-css/)
-* [Wave Animation - mburakerman](https://codepen.io/mburakerman/pen/eRZZEv)
+访问 `http://localhost:8080` 即可使用。
+
+## 致谢
+
+- [Pictures - DeathAndMilk](https://www.instagram.com/deathandmilk_/)
+- [Icons - FontAwesome](https://fontawesome.com/icons)
+- [Text Flicker - CodeMyUI](https://codemyui.com/crt-screen-text-flicker-animation-in-pure-css/)
+- [Wave Animation - mburakerman](https://codepen.io/mburakerman/pen/eRZZEv)
+
+## 许可证
+
+MIT License
+
+---
+
+如有问题或建议，欢迎 [提交 Issue](https://github.com/PrettyCoffee/fluidity/issues)！

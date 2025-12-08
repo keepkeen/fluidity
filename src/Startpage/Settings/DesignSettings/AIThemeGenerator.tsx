@@ -13,7 +13,7 @@ import {
 const Container = styled.div`
   margin-top: 24px;
   padding: 16px;
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--border-color);
 `
 
 const Title = styled.h3`
@@ -45,7 +45,7 @@ const TextArea = styled.textarea`
   min-height: 80px;
   padding: 10px 12px;
   background: transparent;
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--border-color);
   color: var(--default-color);
   font-size: 0.9rem;
   font-family: inherit;
@@ -74,7 +74,7 @@ const Select = styled.select`
   width: 100%;
   padding: 10px 12px;
   background: var(--bg-color);
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--border-color);
   color: var(--default-color);
   font-size: 0.9rem;
   cursor: pointer;
@@ -119,7 +119,7 @@ const GenerateButton = styled.button`
 const PreviewContainer = styled.div`
   margin-top: 16px;
   padding: 16px;
-  border: 2px dashed var(--default-color);
+  border: 2px dashed var(--border-color);
 `
 
 const PreviewTitle = styled.div`
@@ -136,8 +136,12 @@ const ThemeName = styled.div`
 
 const ColorGrid = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 12px;
+
+  @media screen and (max-width: 600px) {
+    grid-template-columns: 1fr 1fr;
+  }
 `
 
 const ColorItem = styled.div`
@@ -248,6 +252,8 @@ export const AIThemeGenerator: React.FC<Props> = ({
     colors: {
       "--bg-color": aiTheme.bgColor,
       "--default-color": aiTheme.defaultColor,
+      "--secondary-color": aiTheme.secondaryColor,
+      "--border-color": aiTheme.borderColor,
       "--accent-color": aiTheme.accentColor,
       "--accent-color2": aiTheme.accentColor2,
     },
@@ -324,8 +330,24 @@ export const AIThemeGenerator: React.FC<Props> = ({
             <ColorItem>
               <ColorSwatch color={generatedTheme.defaultColor} />
               <ColorInfo>
-                <ColorLabel>文字色</ColorLabel>
+                <ColorLabel>主要文字</ColorLabel>
                 <ColorValue>{generatedTheme.defaultColor}</ColorValue>
+              </ColorInfo>
+            </ColorItem>
+
+            <ColorItem>
+              <ColorSwatch color={generatedTheme.secondaryColor} />
+              <ColorInfo>
+                <ColorLabel>次要文字</ColorLabel>
+                <ColorValue>{generatedTheme.secondaryColor}</ColorValue>
+              </ColorInfo>
+            </ColorItem>
+
+            <ColorItem>
+              <ColorSwatch color={generatedTheme.borderColor} />
+              <ColorInfo>
+                <ColorLabel>边框色</ColorLabel>
+                <ColorValue>{generatedTheme.borderColor}</ColorValue>
               </ColorInfo>
             </ColorItem>
 

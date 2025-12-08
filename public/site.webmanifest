@@ -1,0 +1,21 @@
+{
+  "name": "Fluidity 起始页",
+  "short_name": "Fluidity",
+  "description": "优雅的手风琴式浏览器起始页",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#e94560",
+  "icons": [
+    {
+      "src": "logo192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "logo512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

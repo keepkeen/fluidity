@@ -81,13 +81,15 @@ const playNote = (note: string, duration = 0.3): void => {
 export const AccordionSoundService = {
   /**
    * 检查音效是否启用
+   * 默认开启，只有明确设置为 "false" 时才关闭
    */
   isEnabled(): boolean {
     try {
       const stored = localStorage.getItem(SOUND_ENABLED_KEY)
-      return stored === "true"
+      // 默认开启：只有明确设置为 "false" 时才关闭
+      return stored !== "false"
     } catch {
-      return false
+      return true
     }
   },
 

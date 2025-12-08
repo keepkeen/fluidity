@@ -218,13 +218,15 @@ export interface LinkDisplaySettings {
 }
 
 export const linkDisplaySettings: LinkDisplaySettings = {
-  mode: "hover-card", // 默认使用悬浮卡片模式
+  mode: "accordion", // 默认使用手风琴模式
 }
 
 export interface colorsType {
   [key: string]: string
   "--bg-color": string
   "--default-color": string
+  "--secondary-color": string
+  "--border-color": string
   "--accent-color": string
   "--accent-color2": string
 }
@@ -243,6 +245,8 @@ export const themes: Theme[] = [
     colors: {
       "--bg-color": "#24273A",
       "--default-color": "#CAD3F5",
+      "--secondary-color": "#8E95B3",
+      "--border-color": "#3A3E54",
       "--accent-color": "#C6A0F6",
       "--accent-color2": "#8AADF4",
     },
@@ -253,6 +257,8 @@ export const themes: Theme[] = [
     colors: {
       "--bg-color": "#2E2E2E",
       "--default-color": "#E6E6E6",
+      "--secondary-color": "#A8A8A8",
+      "--border-color": "#4A4A4A",
       "--accent-color": "#FFB4E6",
       "--accent-color2": "#B4FFE6",
     },
@@ -264,6 +270,8 @@ export const themes: Theme[] = [
     colors: {
       "--bg-color": "#333136",
       "--default-color": "#2BC5EB",
+      "--secondary-color": "#5A9AAD",
+      "--border-color": "#4A484D",
       "--accent-color": "#FCD307",
       "--accent-color2": "#2BC5EB",
     },
@@ -275,6 +283,8 @@ export const themes: Theme[] = [
     colors: {
       "--bg-color": "#32323C",
       "--default-color": "#A0A08C",
+      "--secondary-color": "#787870",
+      "--border-color": "#4A4A52",
       "--accent-color": "#9A6650",
       "--accent-color2": "#461E28",
     },
@@ -286,6 +296,8 @@ export const themes: Theme[] = [
     colors: {
       "--bg-color": "#0a1a25",
       "--default-color": "#a6b7ab",
+      "--secondary-color": "#7A8A80",
+      "--border-color": "#1E2E39",
       "--accent-color": "#94656b",
       "--accent-color2": "#57182e",
     },
@@ -297,6 +309,8 @@ export const themes: Theme[] = [
     colors: {
       "--bg-color": "#495662",
       "--default-color": "#d1f1fa",
+      "--secondary-color": "#9BBCC4",
+      "--border-color": "#5E6B77",
       "--accent-color": "#80aad4",
       "--accent-color2": "#e8a9b7",
     },
@@ -308,6 +322,8 @@ export const themes: Theme[] = [
     colors: {
       "--bg-color": "#397d76",
       "--default-color": "#f1daba",
+      "--secondary-color": "#C4B49A",
+      "--border-color": "#4E918A",
       "--accent-color": "#c5bdb5",
       "--accent-color2": "#93a662",
     },
@@ -319,6 +335,8 @@ export const themes: Theme[] = [
     colors: {
       "--bg-color": "#282828",
       "--default-color": "#D4BE98",
+      "--secondary-color": "#A89878",
+      "--border-color": "#3E3E3E",
       "--accent-color": "#7DAEA3",
       "--accent-color2": "#A9B665",
     },
@@ -329,6 +347,8 @@ export const themes: Theme[] = [
     colors: {
       "--bg-color": "#2E2E2E",
       "--default-color": "#F3C9CB",
+      "--secondary-color": "#C4A0A2",
+      "--border-color": "#4A4A4A",
       "--accent-color": "#6D79BF",
       "--accent-color2": "#FBECEF",
     },
@@ -339,6 +359,8 @@ export const themes: Theme[] = [
     colors: {
       "--bg-color": "#2E2E2E",
       "--default-color": "#D6B29A",
+      "--secondary-color": "#AA8E7A",
+      "--border-color": "#4A4A4A",
       "--accent-color": "#B35000",
       "--accent-color2": "#FBECEF",
     },
@@ -349,6 +371,8 @@ export const themes: Theme[] = [
     colors: {
       "--bg-color": "#2E2E2E",
       "--default-color": "#C66B3C",
+      "--secondary-color": "#9E5630",
+      "--border-color": "#4A4A4A",
       "--accent-color": "#F6BC7C",
       "--accent-color2": "#54573C",
     },
@@ -359,6 +383,8 @@ export const themes: Theme[] = [
     colors: {
       "--bg-color": "#2E2E2E",
       "--default-color": "#CC9A52",
+      "--secondary-color": "#A37B42",
+      "--border-color": "#4A4A4A",
       "--accent-color": "#647D44",
       "--accent-color2": "#FCE4B4",
     },
@@ -369,6 +395,8 @@ export const themes: Theme[] = [
     colors: {
       "--bg-color": "#2E2E2E",
       "--default-color": "#E3C9BC",
+      "--secondary-color": "#B5A096",
+      "--border-color": "#4A4A4A",
       "--accent-color": "#91C6CC",
       "--accent-color2": "#F0F8FA",
     },

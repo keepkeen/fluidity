@@ -12,6 +12,8 @@ export interface AIGeneratedTheme {
   name: string
   bgColor: string
   defaultColor: string
+  secondaryColor: string
+  borderColor: string
   accentColor: string
   accentColor2: string
 }
@@ -36,20 +38,39 @@ const generateThemePrompt = (userDescription: string): string => {
 ### 2. bgColor（背景色）
 - 格式：6位十六进制，如 #1a1a2e
 - 设计原则：
-  - 深色主题：亮度 < 30%，避免纯黑 #000000
-  - 浅色主题：亮度 > 85%，避免纯白 #ffffff
+  - 深色主题：亮度(L) < 30%，避免纯黑 #000000
+  - 浅色主题：亮度(L) > 85%，避免纯白 #ffffff
   - 要有质感，可以带一点色彩倾向
 - 这是用户长时间注视的颜色，必须护眼舒适
 
-### 3. defaultColor（文字和边框色）
+### 3. defaultColor（主要文字色）
 - 格式：6位十六进制
 - 设计原则：
-  - 与背景色对比度 ≥ 4.5:1（WCAG AA 标准）
+  - 与背景色对比度 >= 4.5:1（WCAG AA 标准）
   - 深色背景用浅色文字，浅色背景用深色文字
   - 避免纯白 #ffffff 或纯黑 #000000，要柔和
 - 这是主要阅读色，必须清晰可读
 
-### 4. accentColor（主强调色）
+### 4. secondaryColor（次要文字色）
+- 格式：6位十六进制
+- 设计原则：
+  - 用于辅助说明文字、placeholder、次要信息
+  - 通常是 defaultColor 的 60%-80% 视觉强度
+  - 实现方式：降低饱和度，或向背景色方向偏移
+  - 与背景色对比度 >= 3:1（保证可读性）
+- 示例：如果 defaultColor 是 #E6E6E6，secondaryColor 可以是 #A0A0A0
+
+### 5. borderColor（边框/分割线色）
+- 格式：6位十六进制
+- 设计原则：
+  - 介于背景色和文字色之间的微弱分割线颜色
+  - 不能和文字颜色一样重（太突兀）
+  - 不能和背景色一样（看不清）
+  - 通常是背景色向文字色方向偏移 15%-25%
+  - 可以带一点主题色调
+- 示例：深色主题背景 #2E2E2E，边框色可以是 #4A4A4A 或 #3D3D3D
+
+### 6. accentColor（主强调色）
 - 格式：6位十六进制
 - 设计原则：
   - 用于按钮、链接、高亮等交互元素
@@ -57,24 +78,34 @@ const generateThemePrompt = (userDescription: string): string => {
   - 与背景色形成鲜明对比
   - 体现用户描述的风格特征
 
-### 5. accentColor2（次强调色）
+### 7. accentColor2（次强调色）
 - 格式：6位十六进制
-- 设计原则：
-  - 用于悬停状态、渐变、次要强调
-  - 与 accentColor 形成和谐搭配（可以是：互补色、邻近色、同色系深浅变化）
-  - 不能与 accentColor 太接近（色相差 ≥ 30° 或明度差 ≥ 20%）
+- 设计原则（色彩学指导）：
+
+  **方案A - 悬停状态变体（推荐用于同一元素的状态变化）：**
+  - 深色主题：比 accentColor 亮度(L)增加 10-15%
+  - 浅色主题：比 accentColor 亮度(L)降低 5-10%
+  - 保持相同色相(H)，微调饱和度(S)
+
+  **方案B - 功能区分色（推荐用于不同功能的视觉区分）：**
+  - 在色相环上偏转 15-30度（邻近色）
+  - 比完全互补色（180度）更耐看、更和谐
+  - 保持相近的饱和度和亮度
+
+  根据用户描述的风格选择合适的方案。
 
 ## 输出格式要求
 
 **严格按照以下 JSON 格式输出，不要有任何其他文字：**
 
-{"name":"主题名","bgColor":"#1a1a2e","defaultColor":"#e8e8e8","accentColor":"#e94560","accentColor2":"#0f3460"}
+{"name":"主题名","bgColor":"#1a1a2e","defaultColor":"#e8e8e8","secondaryColor":"#a0a0a0","borderColor":"#3d3d3d","accentColor":"#e94560","accentColor2":"#f06580"}
 
 ## 注意事项
 1. 所有颜色必须是 6 位十六进制格式（#RRGGBB）
 2. 不要输出任何解释、前言、后语
 3. 只输出一行 JSON，不要换行
-4. 确保 JSON 格式正确，可以被直接解析`
+4. 确保 JSON 格式正确，可以被直接解析
+5. secondaryColor 和 borderColor 是关键的层级颜色，请认真设计`
 }
 
 /**
@@ -133,6 +164,8 @@ const isValidThemeObject = (
   name: string
   bgColor: string
   defaultColor: string
+  secondaryColor: string
+  borderColor: string
   accentColor: string
   accentColor2: string
 } => {
@@ -144,6 +177,8 @@ const isValidThemeObject = (
     typeof theme.name === "string" &&
     typeof theme.bgColor === "string" &&
     typeof theme.defaultColor === "string" &&
+    typeof theme.secondaryColor === "string" &&
+    typeof theme.borderColor === "string" &&
     typeof theme.accentColor === "string" &&
     typeof theme.accentColor2 === "string"
   )
@@ -155,12 +190,16 @@ const isValidThemeObject = (
 const validateColors = (theme: {
   bgColor: string
   defaultColor: string
+  secondaryColor: string
+  borderColor: string
   accentColor: string
   accentColor2: string
 }): boolean => {
   return (
     isValidHexColor(theme.bgColor) &&
     isValidHexColor(theme.defaultColor) &&
+    isValidHexColor(theme.secondaryColor) &&
+    isValidHexColor(theme.borderColor) &&
     isValidHexColor(theme.accentColor) &&
     isValidHexColor(theme.accentColor2)
   )
@@ -206,6 +245,8 @@ export const parseAIThemeResponse = (
     name: cleanedName,
     bgColor: parsed.bgColor,
     defaultColor: parsed.defaultColor,
+    secondaryColor: parsed.secondaryColor,
+    borderColor: parsed.borderColor,
     accentColor: parsed.accentColor,
     accentColor2: parsed.accentColor2,
   }
@@ -213,9 +254,10 @@ export const parseAIThemeResponse = (
 
 /**
  * 获取模型对应的 max_tokens
+ * reasoner 模型需要更多 token 来完成推理过程
  */
 const getMaxTokensForModel = (model: string): number => {
-  return model === "deepseek-reasoner" ? 2000 : 500
+  return model === "deepseek-reasoner" ? 8000 : 500
 }
 
 /**

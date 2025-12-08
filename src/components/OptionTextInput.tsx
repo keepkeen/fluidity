@@ -3,7 +3,7 @@ import React from "react"
 import styled from "@emotion/styled"
 
 const StyledInput = styled.input`
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--border-color);
   width: calc(100% - 40px);
   height: 36px;
   padding: 0 20px;

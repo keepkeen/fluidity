@@ -8,6 +8,35 @@ import {
   linkDisplaySettings,
   themes,
 } from "../../data/data"
+import {
+  calculateSecondaryColor,
+  calculateBorderColor,
+} from "../../utils/colorUtils"
+
+/**
+ * 迁移旧版主题数据到新版
+ * 为缺少 --secondary-color 和 --border-color 的主题自动计算默认值
+ */
+export const migrateThemeColors = (theme: Theme): Theme => {
+  const colors = { ...theme.colors }
+
+  // 检查是否需要迁移
+  if (!colors["--secondary-color"]) {
+    colors["--secondary-color"] = calculateSecondaryColor(
+      colors["--default-color"],
+      colors["--bg-color"]
+    )
+  }
+
+  if (!colors["--border-color"]) {
+    colors["--border-color"] = calculateBorderColor(
+      colors["--default-color"],
+      colors["--bg-color"]
+    )
+  }
+
+  return { ...theme, colors }
+}
 
 export const Search = {
   get: () => {
@@ -40,7 +69,12 @@ export const Themes = {
   },
   getWithFallback: () => {
     try {
-      return Themes.get() ?? themes
+      const userThemes = Themes.get()
+      if (userThemes) {
+        // 迁移旧版主题数据
+        return userThemes.map(migrateThemeColors)
+      }
+      return themes
     } catch {
       console.error("Your currently applied themes appear to be corrupted.")
       return themes
@@ -95,7 +129,12 @@ export const Design = {
   },
   getWithFallback: () => {
     try {
-      return Design.get() ?? themes[0]
+      const userDesign = Design.get()
+      if (userDesign) {
+        // 迁移旧版主题数据
+        return migrateThemeColors(userDesign)
+      }
+      return themes[0]
     } catch {
       console.error("Your currently applied design appears to be corrupted.")
       return themes[0]

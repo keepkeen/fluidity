@@ -48,7 +48,7 @@ const GroupTitle = styled.h3`
   font-weight: 600;
   margin-bottom: 12px;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--default-color);
+  border-bottom: 1px solid var(--border-color);
   opacity: 0.9;
 `
 
@@ -95,7 +95,7 @@ const Input = styled.input`
   flex: 1;
   padding: 10px 12px;
   background: transparent;
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--border-color);
   color: var(--default-color);
   font-size: 0.9rem;
   transition: 0.2s;
@@ -129,7 +129,7 @@ const Select = styled.select`
   width: 100%;
   padding: 10px 12px;
   background: var(--bg-color);
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--border-color);
   color: var(--default-color);
   font-size: 0.9rem;
   cursor: pointer;
@@ -154,7 +154,7 @@ const HelpText = styled.p`
 
 const StatsCard = styled.div`
   padding: 16px;
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--border-color);
   margin-top: 12px;
 `
 
@@ -162,7 +162,7 @@ const StatRow = styled.div`
   display: flex;
   justify-content: space-between;
   padding: 6px 0;
-  border-bottom: 1px dashed var(--default-color);
+  border-bottom: 1px dashed var(--border-color);
   opacity: 0.8;
 
   &:last-child {
