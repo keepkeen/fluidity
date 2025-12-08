@@ -195,6 +195,7 @@ export interface Search {
   engine: string
   placeholder?: string
   fastForward: FastForwards
+  openInNewTab?: boolean // 是否在新标签页打开搜索结果
 }
 
 export const searchSettings: Search = {
@@ -208,6 +209,7 @@ export const searchSettings: Search = {
     gitlab: "https://gitlab.com/",
     youtube: "https://youtube.com/",
   },
+  openInNewTab: false,
 }
 
 // 链接展示模式

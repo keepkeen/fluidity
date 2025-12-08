@@ -349,20 +349,36 @@ export const Searchbar = () => {
     setSelectedIndex(-1)
   }, [inputValue, showSuggestions, searchSettings])
 
+  // 根据设置决定跳转方式
+  const navigateTo = useCallback(
+    (url: string) => {
+      if (searchSettings.openInNewTab) {
+        window.open(url, "_blank")
+      } else {
+        window.location.href = url
+      }
+    },
+    [searchSettings.openInNewTab]
+  )
+
   const redirectToSearch = (query: string) => {
     // 记录搜索历史
     if (query.trim()) {
       SearchHistory.trackSearch(query, engine)
     }
 
-    if (searchSettings.fastForward[query])
-      window.location.href = searchSettings.fastForward[query]
-    else {
+    let targetUrl: string
+    if (searchSettings.fastForward[query]) {
+      targetUrl = searchSettings.fastForward[query]
+    } else {
       // for compatibility with old engine urls before fluidity 0.5.0
-      if (!engine.includes(queryToken))
-        window.location.href = "https://" + engine + "?q=" + query
-      else window.location.href = engine.replace(queryToken, query)
+      if (!engine.includes(queryToken)) {
+        targetUrl = "https://" + engine + "?q=" + query
+      } else {
+        targetUrl = engine.replace(queryToken, query)
+      }
     }
+    navigateTo(targetUrl)
   }
 
   const handleSuggestionClick = (suggestion: Suggestion) => {
@@ -371,7 +387,7 @@ export const Searchbar = () => {
       if (suggestion.type === "link") {
         LinkAnalytics.trackClick(suggestion.url, suggestion.text, "")
       }
-      window.location.href = suggestion.url
+      navigateTo(suggestion.url)
     } else {
       // 使用建议文本进行搜索
       redirectToSearch(suggestion.text)

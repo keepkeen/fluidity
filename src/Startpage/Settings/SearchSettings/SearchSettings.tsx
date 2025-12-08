@@ -5,6 +5,7 @@ import styled from "@emotion/styled"
 import { FastForwardSearch } from "./FastForwardSearch"
 import { OptionSlider } from "../../../components/OptionSlider"
 import { OptionTextInput } from "../../../components/OptionTextInput"
+import { Toggle } from "../../../components/Toggle"
 import { searchEngines, Search } from "../../../data/data"
 import { queryToken } from "../../Searchbar/Searchbar"
 import { SettingElement, SettingsLabel } from "../SettingsWindow"
@@ -42,6 +43,9 @@ export const SearchSettings = ({
   const setPlaceholder = (placeholder: string) => {
     setSearchSettings({ ...searchSettings, placeholder })
   }
+  const setOpenInNewTab = (openInNewTab: boolean) => {
+    setSearchSettings({ ...searchSettings, openInNewTab })
+  }
 
   return (
     <SearchSettingsContent>
@@ -67,6 +71,13 @@ export const SearchSettings = ({
           }
           onChange={setPlaceholder}
           placeholder={"搜索栏提示文案"}
+        />
+      </SettingElement>
+      <SettingElement>
+        <Toggle
+          checked={searchSettings.openInNewTab ?? false}
+          onChange={setOpenInNewTab}
+          label="在新标签页打开搜索结果"
         />
       </SettingElement>
       <br />

@@ -43,16 +43,16 @@ const LinkItem = styled.a`
   overflow: hidden;
   text-overflow: ellipsis;
   position: relative;
-  padding: 10px 0 10px 30px;
-  font-size: 1rem;
+  padding: 6px 0 6px 24px;
+  font-size: 0.95rem;
 
   ::before {
     position: absolute;
     left: 0px;
-    bottom: 5px;
+    bottom: 3px;
     z-index: 0;
     content: "";
-    height: 5px;
+    height: 4px;
     width: 100%;
     background-color: var(--accent-color);
     transition: 0.5s;

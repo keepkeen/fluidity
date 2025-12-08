@@ -113,7 +113,8 @@ const AccordionContent = styled.div<{ width: number }>`
   overflow-x: hidden;
   overflow-y: auto;
   transition: 0.3s;
-  padding: 10px 0;
+  padding: 6px 0;
+  box-sizing: border-box;
 
   &::-webkit-scrollbar {
     width: 4px;
@@ -206,37 +207,18 @@ const AccordionTitleWrapper = styled.button<{
       }
     }
   }
-
-  ${({ active }) =>
-    !active &&
-    `
-        :hover{
-            > * {
-                color: var(--bg-color);
-                text-shadow:
-                    5px 0px 0 var(--accent-color),
-                    4px 0px 0 var(--accent-color),
-                    3px 0px 0 var(--accent-color),
-                    2px 0px 0 var(--accent-color),
-                    1px 0px 0 var(--accent-color),
-                    -1px 0px 0 var(--accent-color),
-                    0px 1px 0 var(--accent-color),
-                    0px -1px 0 var(--accent-color);
-            }
-        }
-    `};
 `
 
 const AccordionTitle = styled.h1<{ title: string; active: boolean }>`
   writing-mode: vertical-rl;
   text-orientation: mixed;
-  color: ${({ active }) =>
-    active ? "var(--bg-color)" : "var(--default-color)"};
+  color: var(--default-color);
   transition: 0.5s;
   letter-spacing: 3px;
   font-size: 1.1rem;
   margin: 0;
   padding: 10px 0;
+  z-index: 1;
 `
 
 type groupProps = PropsWithChildren<{
