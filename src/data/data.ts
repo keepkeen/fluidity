@@ -223,6 +223,70 @@ export const linkDisplaySettings: LinkDisplaySettings = {
   mode: "accordion", // 默认使用手风琴模式
 }
 
+// 壁纸来源类型
+export type WallpaperSource =
+  | "preset" // 预设图片
+  | "custom-url" // 自定义 URL
+  | "local" // 本地上传
+  | "bing-daily" // Bing 每日壁纸
+
+// 壁纸显示模式
+export type WallpaperDisplayMode =
+  | "fullscreen" // 全屏背景
+  | "card" // 卡片内显示（现有行为）
+
+// 卡片显示模式
+export type CardDisplayMode =
+  | "full" // 完整轮播：图片 + 待办 + 贡献图
+  | "tools-only" // 仅工具：待办 + 贡献图
+  | "hidden" // 完全隐藏
+
+// Bing 壁纸地区
+export type BingRegion = "cn" | "en-US" | "ja-JP" | "de-DE"
+
+// 壁纸设置接口
+export interface WallpaperSettings {
+  source: WallpaperSource
+  displayMode: WallpaperDisplayMode
+  presetImage: string
+  customUrl: string
+  localImageData: string | null
+  bingRegion: BingRegion
+  // 全屏背景效果
+  blur: number // 0-20
+  brightness: number // 0.3-1.5
+  overlay: boolean
+  overlayOpacity: number // 0-0.8
+}
+
+// 卡片区域设置
+export interface CardAreaSettings {
+  displayMode: CardDisplayMode
+  autoRotate: boolean
+  rotateInterval: number
+}
+
+// 壁纸设置默认值
+export const defaultWallpaperSettings: WallpaperSettings = {
+  source: "preset",
+  displayMode: "fullscreen",
+  presetImage: "",
+  customUrl: "",
+  localImageData: null,
+  bingRegion: "cn",
+  blur: 0,
+  brightness: 1,
+  overlay: true,
+  overlayOpacity: 0.3,
+}
+
+// 卡片区域设置默认值
+export const defaultCardAreaSettings: CardAreaSettings = {
+  displayMode: "full",
+  autoRotate: true,
+  rotateInterval: 5000,
+}
+
 export interface colorsType {
   [key: string]: string
   "--bg-color": string

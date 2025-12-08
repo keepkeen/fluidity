@@ -3,9 +3,13 @@ import {
   Theme,
   Search as SearchType,
   LinkDisplaySettings,
+  WallpaperSettings,
+  CardAreaSettings,
   links,
   searchSettings,
   linkDisplaySettings,
+  defaultWallpaperSettings,
+  defaultCardAreaSettings,
   themes,
 } from "../../data/data"
 import {
@@ -165,4 +169,48 @@ export const LinkDisplay = {
 
   set: (settings: LinkDisplaySettings) =>
     localStorage.setItem(linkDisplayKey, JSON.stringify(settings)),
+}
+
+const wallpaperKey = "wallpaper-settings"
+export const Wallpaper = {
+  get: () => {
+    const data = localStorage.getItem(wallpaperKey)
+    if (data) return JSON.parse(data) as WallpaperSettings
+    return undefined
+  },
+  getWithFallback: () => {
+    try {
+      const settings = Wallpaper.get()
+      if (settings) return { ...defaultWallpaperSettings, ...settings }
+      return defaultWallpaperSettings
+    } catch {
+      console.error("Wallpaper settings appear to be corrupted.")
+      return defaultWallpaperSettings
+    }
+  },
+  set: (settings: WallpaperSettings) => {
+    localStorage.setItem(wallpaperKey, JSON.stringify(settings))
+  },
+}
+
+const cardAreaKey = "card-area-settings"
+export const CardArea = {
+  get: () => {
+    const data = localStorage.getItem(cardAreaKey)
+    if (data) return JSON.parse(data) as CardAreaSettings
+    return undefined
+  },
+  getWithFallback: () => {
+    try {
+      const settings = CardArea.get()
+      if (settings) return { ...defaultCardAreaSettings, ...settings }
+      return defaultCardAreaSettings
+    } catch {
+      console.error("Card area settings appear to be corrupted.")
+      return defaultCardAreaSettings
+    }
+  },
+  set: (settings: CardAreaSettings) => {
+    localStorage.setItem(cardAreaKey, JSON.stringify(settings))
+  },
 }

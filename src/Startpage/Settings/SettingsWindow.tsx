@@ -15,8 +15,13 @@ import { DesignSettings } from "./DesignSettings/DesignSettings"
 import { LinkSettings } from "./LinkSettings/LinkSettings"
 import { SearchSettings } from "./SearchSettings/SearchSettings"
 import * as Settings from "./settingsHandler"
+import { WallpaperSettings } from "./WallpaperSettings/WallpaperSettings"
 import { IconButton } from "../../components/IconButton"
-import { LinkDisplaySettings } from "../../data/data"
+import {
+  CardAreaSettings,
+  LinkDisplaySettings,
+  WallpaperSettings as WallpaperSettingsType,
+} from "../../data/data"
 import {
   AISettingsManager,
   AISettings as AISettingsType,
@@ -134,7 +139,15 @@ const TabOption = styled.button<{ active: boolean }>`
   }
 `
 
-const TabOptions = ["链接", "外观", "搜索栏", "AI 助手", "数据", "更新日志"]
+const TabOptions = [
+  "链接",
+  "外观",
+  "壁纸",
+  "搜索栏",
+  "AI 助手",
+  "数据",
+  "更新日志",
+]
 
 interface props {
   hidePopup: () => void
@@ -153,6 +166,11 @@ export const SettingsWindow = ({ hidePopup }: props) => {
   )
   const [linkDisplaySettings, setLinkDisplaySettings] =
     useState<LinkDisplaySettings>(Settings.LinkDisplay.getWithFallback())
+  const [wallpaperSettings, setWallpaperSettings] =
+    useState<WallpaperSettingsType>(Settings.Wallpaper.getWithFallback())
+  const [cardAreaSettings, setCardAreaSettings] = useState<CardAreaSettings>(
+    Settings.CardArea.getWithFallback()
+  )
 
   const applyValues = () => {
     Settings.Design.set(design)
@@ -160,6 +178,8 @@ export const SettingsWindow = ({ hidePopup }: props) => {
     Settings.Search.set(searchSettings)
     Settings.Links.set(linkGroups)
     Settings.LinkDisplay.set(linkDisplaySettings)
+    Settings.Wallpaper.set(wallpaperSettings)
+    Settings.CardArea.set(cardAreaSettings)
     AISettingsManager.set(aiSettings)
     window.location.reload()
   }
@@ -194,6 +214,15 @@ export const SettingsWindow = ({ hidePopup }: props) => {
             setThemes={setThemes}
             linkDisplaySettings={linkDisplaySettings}
             setLinkDisplaySettings={setLinkDisplaySettings}
+          />
+        )}
+
+        {currentTab === "壁纸" && (
+          <WallpaperSettings
+            wallpaperSettings={wallpaperSettings}
+            cardAreaSettings={cardAreaSettings}
+            onWallpaperChange={setWallpaperSettings}
+            onCardAreaChange={setCardAreaSettings}
           />
         )}
 
