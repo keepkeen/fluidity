@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react"
 import styled from "@emotion/styled"
 import { faPlus, faMinus, faSave } from "@fortawesome/free-solid-svg-icons"
 
+import { AIThemeGenerator } from "./AIThemeGenerator"
 import { ColorPicker } from "../../../components/ColorPicker"
 import { Dropdown } from "../../../components/Dropdown"
 import { OptionSlider } from "../../../components/OptionSlider"
@@ -447,6 +448,13 @@ export const DesignSettings = ({
           <SettingElement>
             <ColorPicker colors={design.colors} setColors={setColors} />
           </SettingElement>
+
+          <AIThemeGenerator
+            currentImage={design.image}
+            onApply={theme => setDesign(theme)}
+            onSave={theme => addTheme(theme)}
+          />
+
           <SectionDivider />
           <SettingElement>
             <SettingButtonRow>

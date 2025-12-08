@@ -37,7 +37,7 @@ export const subscribeSettingsWindow = (
 const IndicatorContainer = styled.div<{ visible: boolean }>`
   position: fixed;
   top: 20px;
-  right: 20px;
+  left: 20px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -48,7 +48,7 @@ const IndicatorContainer = styled.div<{ visible: boolean }>`
   z-index: 50;
   opacity: ${({ visible }) => (visible ? 1 : 0)};
   transform: ${({ visible }) =>
-    visible ? "translateX(0)" : "translateX(100%)"};
+    visible ? "translateX(0)" : "translateX(-100%)"};
   transition: opacity 0.3s, transform 0.3s;
   pointer-events: ${({ visible }) => (visible ? "auto" : "none")};
 `

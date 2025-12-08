@@ -228,12 +228,15 @@ const AccordionTitleWrapper = styled.button<{
 `
 
 const AccordionTitle = styled.h1<{ title: string; active: boolean }>`
-  transform: rotate(90deg);
-  min-width: max-content;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
   color: ${({ active }) =>
     active ? "var(--bg-color)" : "var(--default-color)"};
   transition: 0.5s;
-  letter-spacing: 5px;
+  letter-spacing: 3px;
+  font-size: 1.1rem;
+  margin: 0;
+  padding: 10px 0;
 `
 
 type groupProps = PropsWithChildren<{

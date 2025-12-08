@@ -192,25 +192,38 @@ ${context}
 export const callDeepSeekAPI = async (
   apiKey: string,
   prompt: string,
-  model = "deepseek-chat"
+  model = "deepseek-chat",
+  options?: { maxTokens?: number; temperature?: number }
 ): Promise<string> => {
+  const maxTokens = options?.maxTokens ?? 100
+  const temperature = options?.temperature ?? 0.8
+
+  // DeepSeek Reasoner 模型不支持 temperature 参数
+  const isReasonerModel = model === "deepseek-reasoner"
+
+  const requestBody: Record<string, unknown> = {
+    model,
+    messages: [
+      {
+        role: "user",
+        content: prompt,
+      },
+    ],
+    max_tokens: maxTokens,
+  }
+
+  // 只有非 reasoner 模型才添加 temperature
+  if (!isReasonerModel) {
+    requestBody.temperature = temperature
+  }
+
   const response = await fetch("https://api.deepseek.com/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model,
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-      max_tokens: 100,
-      temperature: 0.8,
-    }),
+    body: JSON.stringify(requestBody),
   })
 
   if (!response.ok) {

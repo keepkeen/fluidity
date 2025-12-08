@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import React, { useState, useEffect, useRef } from "react"
 
 import styled from "@emotion/styled"
 
@@ -93,11 +93,23 @@ const getLinksAsString = (): string => {
   return JSON.stringify(Settings.Links.getWithFallback(), null, 2)
 }
 
-export const OptionTextArea = ({ onChange }: props) => {
+export const OptionTextArea = ({ initialValue, onChange }: props) => {
   const [error, setError] = useState<string | undefined>(undefined)
   const [value, setValue] = useState(getLinksAsString())
+  const isUserEditingRef = useRef(false)
+
+  // 当外部 initialValue 变化时（如 AI 整理完成），更新文本框内容
+  useEffect(() => {
+    // 只在非用户编辑时更新（避免用户正在编辑时被覆盖）
+    if (!isUserEditingRef.current) {
+      const newValue = JSON.stringify(initialValue, null, 2)
+      setValue(newValue)
+      setError(undefined)
+    }
+  }, [initialValue])
 
   const tryOnChangeEvent = (linkGroups: string) => {
+    isUserEditingRef.current = true
     setValue(linkGroups)
     try {
       const parsedData = Settings.Links.parse(linkGroups)
@@ -106,6 +118,10 @@ export const OptionTextArea = ({ onChange }: props) => {
     } catch {
       setError("链接数据无法解析，可能是 JSON 语法错误。")
     }
+    // 短暂延迟后重置编辑状态
+    setTimeout(() => {
+      isUserEditingRef.current = false
+    }, 100)
   }
 
   return (

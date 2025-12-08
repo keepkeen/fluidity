@@ -5,6 +5,9 @@
 import { AISettingsManager } from "./ai"
 import { linkGroup } from "../data/data"
 
+// localStorage key for links
+const LINKS_STORAGE_KEY = "link-groups"
+
 // 整理状态
 export type OrganizeStatus = "idle" | "loading" | "success" | "error"
 
@@ -180,6 +183,13 @@ export const organizeLinksWithAI = async (
       if (!group.title || !Array.isArray(group.links)) {
         throw new Error("AI 返回格式错误：群组结构不正确")
       }
+    }
+
+    // 保存到 localStorage，这样即使设置窗口关闭也能获取到新数据
+    try {
+      localStorage.setItem(LINKS_STORAGE_KEY, JSON.stringify(result))
+    } catch {
+      // 忽略存储错误
     }
 
     // 通知成功
