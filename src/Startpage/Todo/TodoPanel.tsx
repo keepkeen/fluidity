@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import { css, keyframes } from "@emotion/react"
 import styled from "@emotion/styled"
@@ -6,6 +6,7 @@ import { faPlus, faTrash } from "@fortawesome/free-solid-svg-icons"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
 import { TodoContributions } from "../../services/contributions"
+import { logger } from "../../utils/logger"
 
 interface Todo {
   id: string
@@ -284,7 +285,7 @@ export const TodoPanel = () => {
         setTodos(parsed)
       }
     } catch (e) {
-      console.error("Failed to parse todos", e)
+      logger.error("Failed to parse todos", e)
     }
   }, [])
 

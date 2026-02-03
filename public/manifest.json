@@ -19,13 +19,39 @@
     "192": "logo192.png",
     "512": "logo512.png"
   },
-  "permissions": ["storage"],
+  "permissions": ["storage", "idle"],
   "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["contentScript.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "chrome_url_overrides": {
     "newtab": "index.html"
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["palette.html"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "commands": {
+    "fluidity-open-command-palette": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+K",
+        "mac": "Command+Shift+K"
+      },
+      "description": "打开 Fluidity 链接搜索面板"
+    }
   },
   "browser_specific_settings": {
     "gecko": {

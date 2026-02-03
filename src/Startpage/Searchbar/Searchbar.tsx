@@ -2,12 +2,20 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from "react"
 
 import styled from "@emotion/styled"
 
-import { Search as SearchType } from "../../data/data"
+import {
+  Search as SearchType,
+  linkGroup,
+  searchEngines,
+  SearchEngine,
+  findEngineByShortcut,
+} from "../../data/data"
 import duckduckgo from "../../data/pictures/duckduckgo.svg"
 import ecosia from "../../data/pictures/ecosia.svg"
 import google from "../../data/pictures/google.svg"
 import qwant from "../../data/pictures/qwant.svg"
 import { SearchHistory, LinkAnalytics } from "../../services/analytics"
+import { searchLinksOnly, navigateToLink } from "../../services/linkSearch"
+import { getRecommendedTagsForToday } from "../../services/recommendedTags"
 import * as Settings from "../Settings/settingsHandler"
 
 export const queryToken = "{{query}}"
@@ -16,11 +24,22 @@ export const queryToken = "{{query}}"
 export type SearchSettings = SearchType
 
 // 建议项类型
+type SuggestionType =
+  | "history"
+  | "link"
+  | "todo"
+  | "fastforward"
+  | "quicklink"
+  | "tag"
+  | "engine" // 新增：搜索引擎建议
+
 interface Suggestion {
   text: string
-  type: "history" | "link" | "todo" | "fastforward"
+  type: SuggestionType
   url?: string
   icon?: string
+  groupTitle?: string // 用于 quicklink 类型
+  engine?: SearchEngine // 用于 engine 类型
 }
 
 const StyledSearchbarContainer = styled.div`
@@ -54,26 +73,29 @@ const SearchInputWrapper = styled.div`
   display: flex;
   align-items: flex-start;
   justify-content: center;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
 `
 
 const StyledSearchbar = styled.input`
   width: 100%;
   font-size: 30pt;
 
-  background-color: rgba(0, 0, 0, 0);
+  background-color: transparent;
   color: var(--default-color);
   transition: 0.3s;
   border: none;
-  border-bottom: 2px solid var(--default-color);
-  opacity: 0.3;
 
   ::placeholder {
     color: var(--default-color);
+    opacity: 0.6;
   }
 
-  :hover,
   :focus {
-    opacity: 1;
     outline: none;
   }
 
@@ -108,6 +130,21 @@ const SearchIcon = styled.div<{ src: string }>`
   }
 `
 
+// 当前搜索引擎标签
+const EngineTag = styled.span`
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  margin-right: 8px;
+  background: var(--accent-color);
+  color: var(--bg-color);
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+`
+
 const SuggestionsContainer = styled.div<{ visible: boolean }>`
   position: absolute;
   bottom: 100%;
@@ -124,8 +161,12 @@ const SuggestionsList = styled.ul`
   list-style: none;
   margin: 0;
   padding: 0;
-  background: var(--bg-color);
-  border: 2px solid var(--default-color);
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
 `
 
 const SuggestionItem = styled.li<{ selected: boolean }>`
@@ -167,6 +208,25 @@ const typeLabels: Record<Suggestion["type"], string> = {
   link: "链接",
   todo: "待办",
   fastforward: "快捷",
+  quicklink: "快链",
+  tag: "推荐",
+  engine: "引擎",
+}
+
+/**
+ * 获取链接搜索建议（/ 前缀）
+ */
+const getLinkSuggestions = (
+  query: string,
+  linkGroups: linkGroup[]
+): Suggestion[] => {
+  const results = searchLinksOnly(linkGroups, query)
+  return results.slice(0, 8).map(link => ({
+    text: link.label,
+    type: "quicklink" as const,
+    url: link.value,
+    groupTitle: link.groupTitle,
+  }))
 }
 
 /**
@@ -251,103 +311,206 @@ const getSuggestions = (
   return suggestions.slice(0, 5)
 }
 
+// 去重建议收集器
+class SuggestionCollector {
+  private suggestions: Suggestion[] = []
+  private seenTexts = new Set<string>()
+  private maxCount: number
+
+  constructor(maxCount: number) {
+    this.maxCount = maxCount
+  }
+
+  add(suggestion: Suggestion): boolean {
+    if (this.suggestions.length >= this.maxCount) return false
+    const lowerText = suggestion.text.toLowerCase()
+    if (this.seenTexts.has(lowerText)) return false
+    this.seenTexts.add(lowerText)
+    this.suggestions.push(suggestion)
+    return true
+  }
+
+  isFull(): boolean {
+    return this.suggestions.length >= this.maxCount
+  }
+
+  getAll(): Suggestion[] {
+    return this.suggestions
+  }
+}
+
+// 获取未完成的待办建议
+const getTodoSuggestions = (): Suggestion[] => {
+  try {
+    const todosRaw = localStorage.getItem("todos")
+    if (!todosRaw) return []
+    const todos = JSON.parse(todosRaw) as { text: string; done: boolean }[]
+    return todos
+      .filter(t => !t.done)
+      .map(todo => ({ text: todo.text, type: "todo" as const }))
+  } catch {
+    return []
+  }
+}
+
 /**
  * 获取默认建议（无输入时）
+ * 历史和推荐去重，总数限制5个
  */
 const getDefaultSuggestions = (searchSettings: SearchType): Suggestion[] => {
-  const suggestions: Suggestion[] = []
+  const collector = new SuggestionCollector(8)
 
-  // 1. 最近搜索
-  const recentSearches = SearchHistory.getRecent(3)
-  recentSearches.forEach(search => {
-    suggestions.push({
-      text: search,
-      type: "history",
-    })
+  // 0. AI 推荐标签（优先展示）
+  getRecommendedTagsForToday().forEach(tag => {
+    collector.add({ text: tag, type: "tag", icon: "🏷️" })
+  })
+
+  // 1. 最近搜索（优先级最高）
+  SearchHistory.getRecent(5).forEach(search => {
+    collector.add({ text: search, type: "history" })
   })
 
   // 2. 最常访问的链接
-  const topLinks = LinkAnalytics.getTopLinks(3)
   const analytics = LinkAnalytics.get()
-  topLinks.forEach(link => {
+  LinkAnalytics.getTopLinks(5).forEach(link => {
     const linkData = Object.values(analytics).find(l => l.label === link.label)
-    suggestions.push({
-      text: link.label,
-      type: "link",
-      url: linkData?.url,
-    })
+    collector.add({ text: link.label, type: "link", url: linkData?.url })
   })
 
   // 3. 未完成的待办
-  try {
-    const todosRaw = localStorage.getItem("todos")
-    if (todosRaw) {
-      const todos = JSON.parse(todosRaw) as {
-        text: string
-        done: boolean
-      }[]
-      todos
-        .filter(t => !t.done)
-        .slice(0, 2)
-        .forEach(todo => {
-          suggestions.push({
-            text: todo.text,
-            type: "todo",
-          })
-        })
-    }
-  } catch {
-    // ignore
-  }
+  getTodoSuggestions().forEach(todo => collector.add(todo))
 
   // 4. 快捷词
-  Object.entries(searchSettings.fastForward)
-    .slice(0, 2)
-    .forEach(([key, url]) => {
-      suggestions.push({
-        text: key,
-        type: "fastforward",
-        url,
-      })
-    })
+  Object.entries(searchSettings.fastForward).forEach(([key, url]) => {
+    collector.add({ text: key, type: "fastforward", url })
+  })
 
-  // 限制建议数量为5个
-  return suggestions.slice(0, 5)
+  return collector.getAll()
 }
 
 export const Searchbar = () => {
   // 使用 useMemo 稳定 searchSettings，避免每次渲染都创建新对象
   const searchSettings = useMemo(() => Settings.Search.getWithFallback(), [])
-  const engine: string = searchSettings.engine
+  const linkGroups = useMemo(() => Settings.Links.getWithFallback(), [])
+  const linkDisplaySettings = useMemo(
+    () => Settings.LinkDisplay.getWithFallback(),
+    []
+  )
+  const defaultEngine: string = searchSettings.engine
   const placeholder =
-    searchSettings.placeholder ?? "按 Enter 搜索，或直接输入快捷词"
+    searchSettings.placeholder ?? "按 Enter 搜索，@ 切换引擎，/ 搜索链接"
 
   const [inputValue, setInputValue] = useState("")
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [isLinkMode, setIsLinkMode] = useState(false) // 是否处于链接搜索模式
+  const [tempEngine, setTempEngine] = useState<SearchEngine | null>(null) // 临时选择的引擎
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
+  // 当前使用的引擎
+  const currentEngine = tempEngine?.value ?? defaultEngine
+
   const searchSymbol = useMemo(() => {
-    if (engine.includes("duckduckgo")) return duckduckgo
-    if (engine.includes("google")) return google
-    if (engine.includes("qwant")) return qwant
-    if (engine.includes("ecosia")) return ecosia
+    const engineUrl = currentEngine
+    if (engineUrl.includes("duckduckgo")) return duckduckgo
+    if (engineUrl.includes("google")) return google
+    if (engineUrl.includes("qwant")) return qwant
+    if (engineUrl.includes("ecosia")) return ecosia
     return undefined
-  }, [engine])
+  }, [currentEngine])
+
+  // 获取搜索引擎建议
+  const getEngineSuggestions = useCallback(
+    (shortcut: string): Suggestion[] => {
+      const customEngines = searchSettings.customEngines ?? []
+      const matchedEngines = findEngineByShortcut(shortcut, customEngines)
+      return matchedEngines.map(engine => ({
+        text: `@${engine.shortcut} ${engine.label}`,
+        type: "engine" as const,
+        engine,
+      }))
+    },
+    [searchSettings.customEngines]
+  )
+
+  // 处理引擎模式建议
+  const handleEngineModeInput = useCallback(
+    (input: string): Suggestion[] | null => {
+      const atMatch = input.match(/^@(\w*)(?:\s|$)/)
+      if (!atMatch) return null
+
+      const shortcut = atMatch[1]
+      if (!shortcut) {
+        // 显示所有引擎
+        const allEngines = [
+          ...searchEngines,
+          ...(searchSettings.customEngines ?? []),
+        ]
+        return allEngines.slice(0, 8).map(engine => ({
+          text: `@${engine.shortcut} ${engine.label}`,
+          type: "engine" as const,
+          engine,
+        }))
+      }
+
+      const engineSuggestions = getEngineSuggestions(shortcut)
+      // 如果只有一个精确匹配且用户按了空格，自动选择
+      if (engineSuggestions.length === 1 && input.includes(" ")) {
+        const engine = engineSuggestions[0].engine
+        if (engine) {
+          setTempEngine(engine)
+          const searchPart = input.replace(/^@\w+\s*/, "")
+          setInputValue(searchPart)
+          return null // 返回 null 表示已处理，不需要设置建议
+        }
+      }
+      return engineSuggestions
+    },
+    [getEngineSuggestions, searchSettings.customEngines]
+  )
 
   // 输入变化时更新建议并重置选中
   useEffect(() => {
     if (!showSuggestions) return
 
-    if (inputValue.trim()) {
-      setSuggestions(getSuggestions(inputValue, searchSettings))
-    } else {
-      setSuggestions(getDefaultSuggestions(searchSettings))
+    // 检测引擎选择模式（以 @ 开头）
+    const engineSuggestions = handleEngineModeInput(inputValue)
+    if (engineSuggestions !== null) {
+      setIsLinkMode(false)
+      setSuggestions(engineSuggestions)
+      setSelectedIndex(-1)
+      return
     }
+    if (inputValue.startsWith("@")) {
+      // 已自动选择引擎，等待下一次渲染
+      return
+    }
+
+    // 检测链接搜索模式（以 / 开头）
+    if (inputValue.startsWith("/")) {
+      setIsLinkMode(true)
+      const linkQuery = inputValue.slice(1).trim()
+      setSuggestions(getLinkSuggestions(linkQuery, linkGroups))
+      setSelectedIndex(-1)
+      return
+    }
+
+    // 普通搜索模式
+    setIsLinkMode(false)
+    const normalSuggestions = inputValue.trim()
+      ? getSuggestions(inputValue, searchSettings)
+      : getDefaultSuggestions(searchSettings)
+    setSuggestions(normalSuggestions)
     setSelectedIndex(-1)
-  }, [inputValue, showSuggestions, searchSettings])
+  }, [
+    inputValue,
+    showSuggestions,
+    searchSettings,
+    linkGroups,
+    handleEngineModeInput,
+  ])
 
   // 根据设置决定跳转方式
   const navigateTo = useCallback(
@@ -361,74 +524,162 @@ export const Searchbar = () => {
     [searchSettings.openInNewTab]
   )
 
-  const redirectToSearch = (query: string) => {
-    // 记录搜索历史
-    if (query.trim()) {
-      SearchHistory.trackSearch(query, engine)
-    }
+  const redirectToSearch = useCallback(
+    (query: string) => {
+      // 记录搜索历史
+      if (query.trim()) {
+        SearchHistory.trackSearch(query, currentEngine)
+      }
 
-    let targetUrl: string
-    if (searchSettings.fastForward[query]) {
-      targetUrl = searchSettings.fastForward[query]
-    } else {
-      // for compatibility with old engine urls before fluidity 0.5.0
-      if (!engine.includes(queryToken)) {
-        targetUrl = "https://" + engine + "?q=" + query
+      let targetUrl: string
+      if (searchSettings.fastForward[query]) {
+        targetUrl = searchSettings.fastForward[query]
       } else {
-        targetUrl = engine.replace(queryToken, query)
-      }
-    }
-    navigateTo(targetUrl)
-  }
-
-  const handleSuggestionClick = (suggestion: Suggestion) => {
-    if (suggestion.url) {
-      // 直接跳转到链接
-      if (suggestion.type === "link") {
-        LinkAnalytics.trackClick(suggestion.url, suggestion.text, "")
-      }
-      navigateTo(suggestion.url)
-    } else {
-      // 使用建议文本进行搜索
-      redirectToSearch(suggestion.text)
-    }
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!showSuggestions || suggestions.length === 0) {
-      if (e.key === "Enter") {
-        redirectToSearch(inputValue)
-      }
-      return
-    }
-
-    switch (e.key) {
-      case "ArrowDown":
-      case "ArrowRight":
-        e.preventDefault()
-        setSelectedIndex(prev =>
-          prev < suggestions.length - 1 ? prev + 1 : prev
-        )
-        break
-      case "ArrowUp":
-      case "ArrowLeft":
-        e.preventDefault()
-        setSelectedIndex(prev => (prev > 0 ? prev - 1 : -1))
-        break
-      case "Enter":
-        e.preventDefault()
-        if (selectedIndex >= 0 && selectedIndex < suggestions.length) {
-          handleSuggestionClick(suggestions[selectedIndex])
+        // for compatibility with old engine urls before fluidity 0.5.0
+        if (!currentEngine.includes(queryToken)) {
+          targetUrl = "https://" + currentEngine + "?q=" + query
         } else {
+          targetUrl = currentEngine.replace(
+            queryToken,
+            encodeURIComponent(query)
+          )
+        }
+      }
+      navigateTo(targetUrl)
+      // 搜索后清除临时引擎
+      setTempEngine(null)
+    },
+    [currentEngine, searchSettings.fastForward, navigateTo]
+  )
+
+  // 处理建议点击 - 使用 useCallback 避免依赖问题
+  const handleSuggestionClick = useCallback(
+    (suggestion: Suggestion) => {
+      // 处理引擎选择
+      if (suggestion.type === "engine" && suggestion.engine) {
+        setTempEngine(suggestion.engine)
+        // 移除 @shortcut 部分，保留搜索内容
+        const searchPart = inputValue.replace(/^@\w*\s*/, "")
+        setInputValue(searchPart)
+        inputRef.current?.focus()
+        return
+      }
+
+      if (suggestion.url) {
+        if (suggestion.type === "quicklink" && suggestion.groupTitle) {
+          navigateToLink(
+            suggestion.url,
+            suggestion.text,
+            suggestion.groupTitle,
+            linkDisplaySettings.openInNewTab
+          )
+        } else if (suggestion.type === "link") {
+          LinkAnalytics.trackClick(suggestion.url, suggestion.text, "")
+          navigateTo(suggestion.url)
+        } else {
+          navigateTo(suggestion.url)
+        }
+      } else {
+        redirectToSearch(suggestion.text)
+      }
+    },
+    [inputValue, linkDisplaySettings.openInNewTab, navigateTo, redirectToSearch]
+  )
+
+  // 键盘导航处理函数
+  const handleArrowDown = useCallback(() => {
+    setSelectedIndex(prev => (prev < suggestions.length - 1 ? prev + 1 : prev))
+  }, [suggestions.length])
+
+  const handleArrowUp = useCallback(() => {
+    setSelectedIndex(prev => (prev > 0 ? prev - 1 : -1))
+  }, [])
+
+  const handleEscape = useCallback(() => {
+    setShowSuggestions(false)
+    setSelectedIndex(-1)
+  }, [])
+
+  // Tab 键补全处理
+  const handleTabComplete = useCallback(() => {
+    if (!isLinkMode || suggestions.length === 0) return false
+    const target =
+      selectedIndex >= 0 ? suggestions[selectedIndex] : suggestions[0]
+    if (target.url) {
+      handleSuggestionClick(target)
+      return true
+    }
+    return false
+  }, [isLinkMode, suggestions, selectedIndex, handleSuggestionClick])
+
+  // Enter 键处理
+  const handleEnterKey = useCallback(() => {
+    if (selectedIndex >= 0 && selectedIndex < suggestions.length) {
+      handleSuggestionClick(suggestions[selectedIndex])
+    } else if (isLinkMode && suggestions.length > 0) {
+      handleSuggestionClick(suggestions[0])
+    } else if (!isLinkMode) {
+      redirectToSearch(inputValue)
+    }
+  }, [
+    selectedIndex,
+    suggestions,
+    isLinkMode,
+    handleSuggestionClick,
+    inputValue,
+    redirectToSearch,
+  ])
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      // Tab 键补全
+      if (e.key === "Tab") {
+        if (handleTabComplete()) {
+          e.preventDefault()
+        }
+        return
+      }
+
+      // 无建议时的处理
+      if (!showSuggestions || suggestions.length === 0) {
+        if (e.key === "Enter" && !isLinkMode) {
           redirectToSearch(inputValue)
         }
-        break
-      case "Escape":
-        setShowSuggestions(false)
-        setSelectedIndex(-1)
-        break
-    }
-  }
+        return
+      }
+
+      // 有建议时的键盘导航
+      switch (e.key) {
+        case "ArrowDown":
+          e.preventDefault()
+          handleArrowDown()
+          break
+        case "ArrowUp":
+          e.preventDefault()
+          handleArrowUp()
+          break
+        case "Enter":
+          e.preventDefault()
+          handleEnterKey()
+          break
+        case "Escape":
+          handleEscape()
+          break
+      }
+    },
+    [
+      handleTabComplete,
+      showSuggestions,
+      suggestions.length,
+      isLinkMode,
+      inputValue,
+      redirectToSearch,
+      handleArrowDown,
+      handleArrowUp,
+      handleEnterKey,
+      handleEscape,
+    ]
+  )
 
   const handleFocus = useCallback(() => {
     setShowSuggestions(true)
@@ -453,7 +704,11 @@ export const Searchbar = () => {
               onMouseDown={() => handleSuggestionClick(suggestion)}
               onMouseEnter={() => setSelectedIndex(index)}
             >
-              <SuggestionText>{suggestion.text}</SuggestionText>
+              <SuggestionText>
+                {suggestion.icon
+                  ? `${suggestion.icon} ${suggestion.text}`
+                  : suggestion.text}
+              </SuggestionText>
               <SuggestionType selected={index === selectedIndex}>
                 {typeLabels[suggestion.type]}
               </SuggestionType>
@@ -463,9 +718,20 @@ export const Searchbar = () => {
       </SuggestionsContainer>
       <SearchInputWrapper>
         {searchSymbol && <SearchIcon src={searchSymbol} />}
+        {tempEngine && (
+          <EngineTag
+            onClick={() => setTempEngine(null)}
+            title="点击清除，恢复默认引擎"
+            style={{ cursor: "pointer" }}
+          >
+            {tempEngine.label} ✕
+          </EngineTag>
+        )}
         <StyledSearchbar
           ref={inputRef}
-          placeholder={placeholder}
+          placeholder={
+            tempEngine ? `使用 ${tempEngine.label} 搜索...` : placeholder
+          }
           type="text"
           value={inputValue}
           onChange={e => setInputValue(e.target.value)}

@@ -2,7 +2,7 @@
  * 全局通知组件 - 在任何页面显示通知
  */
 
-import React, { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 
 import styled from "@emotion/styled"
 import {
@@ -85,18 +85,37 @@ export const GlobalNotification: React.FC = () => {
   )
   const [visible, setVisible] = useState(false)
 
+  // 用于清理 setTimeout 的 refs
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // 清理所有定时器
+  const clearTimers = useCallback(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current)
+      hideTimerRef.current = null
+    }
+    if (autoHideTimerRef.current) {
+      clearTimeout(autoHideTimerRef.current)
+      autoHideTimerRef.current = null
+    }
+  }, [])
+
   const hideNotification = useCallback(() => {
     setVisible(false)
-    setTimeout(() => setNotification(null), 300)
+    hideTimerRef.current = setTimeout(() => setNotification(null), 300)
   }, [])
 
   useEffect(() => {
     const handleShowNotification = (event: CustomEvent<NotificationData>) => {
+      // 清理之前的定时器
+      clearTimers()
+
       setNotification(event.detail)
       setVisible(true)
 
       // 5秒后自动隐藏
-      setTimeout(() => {
+      autoHideTimerRef.current = setTimeout(() => {
         hideNotification()
       }, 5000)
     }
@@ -107,12 +126,13 @@ export const GlobalNotification: React.FC = () => {
     )
 
     return () => {
+      clearTimers()
       window.removeEventListener(
         "show-notification",
         handleShowNotification as EventListener
       )
     }
-  }, [hideNotification])
+  }, [hideNotification, clearTimers])
 
   if (!notification) return null
 

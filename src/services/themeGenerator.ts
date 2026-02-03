@@ -1,25 +1,146 @@
 /**
  * AI 主题生成服务
- * 根据用户描述生成主题配色方案
+ * 根据用户描述生成主题配色方案（13 色系统）
+ * 所有颜色均由 AI 生成，不使用算法计算
+ * 支持缓存以避免重复生成
  */
 
 import { AISettingsManager, callDeepSeekAPI } from "./ai"
+import { CACHE, STORAGE_KEYS } from "../config/constants"
+import { themeLogger } from "../utils/logger"
+
+// ============ 主题缓存 ============
+
+interface ThemeCacheEntry {
+  theme: AIGeneratedTheme
+  timestamp: number
+  description: string
+}
+
+interface ThemeCache {
+  entries: ThemeCacheEntry[]
+}
+
+const MAX_CACHE_ENTRIES = 10
 
 /**
- * AI 生成的主题数据结构
+ * 获取主题缓存
  */
-export interface AIGeneratedTheme {
-  name: string
-  bgColor: string
-  defaultColor: string
-  secondaryColor: string
-  borderColor: string
-  accentColor: string
-  accentColor2: string
+const getThemeCache = (): ThemeCache => {
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.AI_THEME_CACHE)
+    if (data) {
+      return JSON.parse(data) as ThemeCache
+    }
+  } catch {
+    // ignore
+  }
+  return { entries: [] }
 }
 
 /**
- * 生成主题的 Prompt
+ * 保存主题缓存
+ */
+const saveThemeCache = (cache: ThemeCache): void => {
+  try {
+    localStorage.setItem(STORAGE_KEYS.AI_THEME_CACHE, JSON.stringify(cache))
+  } catch {
+    // ignore - localStorage 可能已满
+  }
+}
+
+/**
+ * 从缓存获取主题
+ */
+export const getCachedTheme = (
+  description: string
+): AIGeneratedTheme | null => {
+  const cache = getThemeCache()
+  const normalizedDesc = description.toLowerCase().trim()
+  const now = Date.now()
+
+  const entry = cache.entries.find(
+    e =>
+      e.description.toLowerCase().trim() === normalizedDesc &&
+      now - e.timestamp < CACHE.AI_THEME_TTL
+  )
+
+  return entry?.theme ?? null
+}
+
+/**
+ * 缓存主题
+ */
+export const cacheTheme = (
+  description: string,
+  theme: AIGeneratedTheme
+): void => {
+  const cache = getThemeCache()
+
+  // 移除相同描述的旧缓存
+  cache.entries = cache.entries.filter(
+    e => e.description.toLowerCase().trim() !== description.toLowerCase().trim()
+  )
+
+  // 添加新缓存
+  cache.entries.unshift({
+    theme,
+    timestamp: Date.now(),
+    description,
+  })
+
+  // 限制缓存数量
+  if (cache.entries.length > MAX_CACHE_ENTRIES) {
+    cache.entries = cache.entries.slice(0, MAX_CACHE_ENTRIES)
+  }
+
+  saveThemeCache(cache)
+}
+
+/**
+ * 清除主题缓存
+ */
+export const clearThemeCache = (): void => {
+  localStorage.removeItem(STORAGE_KEYS.AI_THEME_CACHE)
+}
+
+/**
+ * 获取所有缓存的主题（用于历史记录）
+ */
+export const getCachedThemes = (): ThemeCacheEntry[] => {
+  const cache = getThemeCache()
+  const now = Date.now()
+  // 只返回未过期的
+  return cache.entries.filter(e => now - e.timestamp < CACHE.AI_THEME_TTL)
+}
+
+/**
+ * AI 生成的主题数据结构（13 色系统）
+ */
+export interface AIGeneratedTheme {
+  name: string
+  // 背景层
+  bgPrimary: string
+  bgSecondary: string
+  bgHover: string
+  // 文字层
+  textPrimary: string
+  textSecondary: string
+  textMuted: string
+  // 边框层
+  borderDefault: string
+  borderActive: string
+  // 强调层
+  accent: string
+  accentHover: string
+  accentText: string
+  // 功能层
+  success: string
+  glow: string
+}
+
+/**
+ * 生成主题的 Prompt - 让 AI 生成全部 13 个颜色
  */
 const generateThemePrompt = (userDescription: string): string => {
   return `你是一位专业的 UI/UX 设计师，拥有极高的审美品味和色彩理论知识。
@@ -28,84 +149,46 @@ const generateThemePrompt = (userDescription: string): string => {
 ## 用户描述
 "${userDescription}"
 
-## 你需要生成的内容
+## 颜色系统说明（13 色，按用途严格分类）
 
-### 1. name（主题名称）
-- 2-6个中文字符
-- 简洁有意境，能体现主题风格
-- 示例：「深空」「暮光」「森语」「霓虹」
+这是一个语义化的颜色系统，每个颜色都有明确的用途，不能混用：
 
-### 2. bgColor（背景色）
-- 格式：6位十六进制，如 #1a1a2e
-- 设计原则：
-  - 深色主题：亮度(L) < 30%，避免纯黑 #000000
-  - 浅色主题：亮度(L) > 85%，避免纯白 #ffffff
-  - 要有质感，可以带一点色彩倾向
-- 这是用户长时间注视的颜色，必须护眼舒适
+### 背景层（3色）- 页面层级背景
+- bgPrimary: 页面主背景，用户长时间注视
+- bgSecondary: 卡片/面板/输入框背景，比主背景稍深或稍浅
+- bgHover: 悬停状态背景，比主背景稍亮
 
-### 3. defaultColor（主要文字色）
-- 格式：6位十六进制
-- 设计原则：
-  - 与背景色对比度 >= 4.5:1（WCAG AA 标准）
-  - 深色背景用浅色文字，浅色背景用深色文字
-  - 避免纯白 #ffffff 或纯黑 #000000，要柔和
-- 这是主要阅读色，必须清晰可读
+### 文字层（3色）- 文字颜色
+- textPrimary: 主要文字（标题、正文），与背景对比度 >= 4.5:1
+- textSecondary: 次要文字（说明、标签），比主文字弱 20-30%
+- textMuted: 弱化文字（占位符、禁用），比次要文字更弱
 
-### 4. secondaryColor（次要文字色）
-- 格式：6位十六进制
-- 设计原则：
-  - 用于辅助说明文字、placeholder、次要信息
-  - 通常是 defaultColor 的 60%-80% 视觉强度
-  - 实现方式：降低饱和度，或向背景色方向偏移
-  - 与背景色对比度 >= 3:1（保证可读性）
-- 示例：如果 defaultColor 是 #E6E6E6，secondaryColor 可以是 #A0A0A0
+### 边框层（2色）- 边框颜色
+- borderDefault: 普通边框（输入框、卡片边框）
+- borderActive: 激活边框（焦点、选中状态），通常与强调色相同
 
-### 5. borderColor（边框/分割线色）
-- 格式：6位十六进制
-- 设计原则：
-  - 介于背景色和文字色之间的微弱分割线颜色
-  - 不能和文字颜色一样重（太突兀）
-  - 不能和背景色一样（看不清）
-  - 通常是背景色向文字色方向偏移 15%-25%
-  - 可以带一点主题色调
-- 示例：深色主题背景 #2E2E2E，边框色可以是 #4A4A4A 或 #3D3D3D
+### 强调层（3色）- 强调/交互颜色
+- accent: 主强调色（按钮、链接、选中项背景）
+- accentHover: 强调色悬停状态，比主强调色稍深
+- accentText: 强调色背景上的文字，根据强调色亮度选择深色或浅色
 
-### 6. accentColor（主强调色）
-- 格式：6位十六进制
-- 设计原则：
-  - 用于按钮、链接、高亮等交互元素
-  - 要醒目但不刺眼
-  - 与背景色形成鲜明对比
-  - 体现用户描述的风格特征
-
-### 7. accentColor2（次强调色）
-- 格式：6位十六进制
-- 设计原则（色彩学指导）：
-
-  **方案A - 悬停状态变体（推荐用于同一元素的状态变化）：**
-  - 深色主题：比 accentColor 亮度(L)增加 10-15%
-  - 浅色主题：比 accentColor 亮度(L)降低 5-10%
-  - 保持相同色相(H)，微调饱和度(S)
-
-  **方案B - 功能区分色（推荐用于不同功能的视觉区分）：**
-  - 在色相环上偏转 15-30度（邻近色）
-  - 比完全互补色（180度）更耐看、更和谐
-  - 保持相近的饱和度和亮度
-
-  根据用户描述的风格选择合适的方案。
+### 功能层（2色）- 特殊功能颜色
+- success: 成功/完成状态，通常是绿色系
+- glow: 阴影/发光效果，通常与强调色相同
 
 ## 输出格式要求
 
 **严格按照以下 JSON 格式输出，不要有任何其他文字：**
 
-{"name":"主题名","bgColor":"#1a1a2e","defaultColor":"#e8e8e8","secondaryColor":"#a0a0a0","borderColor":"#3d3d3d","accentColor":"#e94560","accentColor2":"#f06580"}
+{"name":"主题名","bgPrimary":"#24273A","bgSecondary":"#1E2030","bgHover":"#363A4F","textPrimary":"#CAD3F5","textSecondary":"#A5ADCE","textMuted":"#6E738D","borderDefault":"#3A3E54","borderActive":"#C6A0F6","accent":"#C6A0F6","accentHover":"#B48EE0","accentText":"#24273A","success":"#A6DA95","glow":"#C6A0F6"}
 
 ## 注意事项
 1. 所有颜色必须是 6 位十六进制格式（#RRGGBB）
 2. 不要输出任何解释、前言、后语
 3. 只输出一行 JSON，不要换行
 4. 确保 JSON 格式正确，可以被直接解析
-5. secondaryColor 和 borderColor 是关键的层级颜色，请认真设计`
+5. 13 个颜色要形成和谐统一的视觉体系
+6. 主题名称用 2-6 个中文字符，简洁有意境`
 }
 
 /**
@@ -156,53 +239,54 @@ const sanitizeName = (name: string): string => {
 }
 
 /**
- * 验证主题对象结构
+ * 验证完整 13 色主题对象结构
  */
-const isValidThemeObject = (
-  obj: unknown
-): obj is {
-  name: string
-  bgColor: string
-  defaultColor: string
-  secondaryColor: string
-  borderColor: string
-  accentColor: string
-  accentColor2: string
-} => {
+const isValidFullTheme = (obj: unknown): obj is AIGeneratedTheme => {
   if (typeof obj !== "object" || obj === null) return false
 
   const theme = obj as Record<string, unknown>
 
-  return (
-    typeof theme.name === "string" &&
-    typeof theme.bgColor === "string" &&
-    typeof theme.defaultColor === "string" &&
-    typeof theme.secondaryColor === "string" &&
-    typeof theme.borderColor === "string" &&
-    typeof theme.accentColor === "string" &&
-    typeof theme.accentColor2 === "string"
-  )
+  const requiredFields = [
+    "name",
+    "bgPrimary",
+    "bgSecondary",
+    "bgHover",
+    "textPrimary",
+    "textSecondary",
+    "textMuted",
+    "borderDefault",
+    "borderActive",
+    "accent",
+    "accentHover",
+    "accentText",
+    "success",
+    "glow",
+  ]
+
+  return requiredFields.every(field => typeof theme[field] === "string")
 }
 
 /**
  * 验证所有颜色格式
  */
-const validateColors = (theme: {
-  bgColor: string
-  defaultColor: string
-  secondaryColor: string
-  borderColor: string
-  accentColor: string
-  accentColor2: string
-}): boolean => {
-  return (
-    isValidHexColor(theme.bgColor) &&
-    isValidHexColor(theme.defaultColor) &&
-    isValidHexColor(theme.secondaryColor) &&
-    isValidHexColor(theme.borderColor) &&
-    isValidHexColor(theme.accentColor) &&
-    isValidHexColor(theme.accentColor2)
-  )
+const validateAllColors = (theme: AIGeneratedTheme): boolean => {
+  const colorFields = [
+    "bgPrimary",
+    "bgSecondary",
+    "bgHover",
+    "textPrimary",
+    "textSecondary",
+    "textMuted",
+    "borderDefault",
+    "borderActive",
+    "accent",
+    "accentHover",
+    "accentText",
+    "success",
+    "glow",
+  ] as const
+
+  return colorFields.every(field => isValidHexColor(theme[field]))
 }
 
 /**
@@ -223,32 +307,24 @@ export const parseAIThemeResponse = (
     return null
   }
 
-  // 3. 类型检查
-  if (!isValidThemeObject(parsed)) return null
+  // 3. 类型检查（完整 13 色）
+  if (!isValidFullTheme(parsed)) return null
 
   // 4. 颜色格式验证
-  if (!validateColors(parsed)) return null
+  if (!validateAllColors(parsed)) return null
 
   // 5. 对比度验证（如果不通过，仍然返回但记录警告）
-  if (!validateContrast(parsed.bgColor, parsed.defaultColor)) {
-    console.warn(
+  if (!validateContrast(parsed.bgPrimary, parsed.textPrimary)) {
+    themeLogger.warn(
       "AI 生成的主题对比度不足:",
-      getContrastRatio(parsed.bgColor, parsed.defaultColor)
+      getContrastRatio(parsed.bgPrimary, parsed.textPrimary)
     )
-    // 不阻止使用，只是警告
   }
 
-  // 6. 名称清理
-  const cleanedName = sanitizeName(parsed.name)
-
+  // 6. 名称清理并返回
   return {
-    name: cleanedName,
-    bgColor: parsed.bgColor,
-    defaultColor: parsed.defaultColor,
-    secondaryColor: parsed.secondaryColor,
-    borderColor: parsed.borderColor,
-    accentColor: parsed.accentColor,
-    accentColor2: parsed.accentColor2,
+    ...parsed,
+    name: sanitizeName(parsed.name),
   }
 }
 
@@ -257,7 +333,7 @@ export const parseAIThemeResponse = (
  * reasoner 模型需要更多 token 来完成推理过程
  */
 const getMaxTokensForModel = (model: string): number => {
-  return model === "deepseek-reasoner" ? 8000 : 500
+  return model === "deepseek-reasoner" ? 8000 : 800
 }
 
 /**
@@ -283,22 +359,36 @@ const tryGenerateTheme = async (
 }
 
 /**
- * 生成主题（带重试）
+ * 生成主题（带缓存和重试）
  */
 export const generateTheme = async (
   description: string,
   model = "deepseek-chat",
-  maxRetries = 2
-): Promise<{ theme: AIGeneratedTheme | null; error?: string }> => {
+  options: { maxRetries?: number; useCache?: boolean } = {}
+): Promise<{
+  theme: AIGeneratedTheme | null
+  error?: string
+  fromCache?: boolean
+}> => {
+  const { maxRetries = 2, useCache = true } = options
+  const trimmedDescription = description.trim().slice(0, 200)
+
+  if (!trimmedDescription) {
+    return { theme: null, error: "请输入主题描述" }
+  }
+
+  // 检查缓存
+  if (useCache) {
+    const cachedTheme = getCachedTheme(trimmedDescription)
+    if (cachedTheme) {
+      return { theme: cachedTheme, fromCache: true }
+    }
+  }
+
   const settings = AISettingsManager.get()
 
   if (!settings.apiKey) {
     return { theme: null, error: "请先在 AI 助手设置中配置 API Key" }
-  }
-
-  const trimmedDescription = description.trim().slice(0, 200)
-  if (!trimmedDescription) {
-    return { theme: null, error: "请输入主题描述" }
   }
 
   const prompt = generateThemePrompt(trimmedDescription)
@@ -308,11 +398,13 @@ export const generateTheme = async (
     try {
       const theme = await tryGenerateTheme(settings.apiKey, prompt, model)
       if (theme) {
-        return { theme }
+        // 缓存成功生成的主题
+        cacheTheme(trimmedDescription, theme)
+        return { theme, fromCache: false }
       }
-      console.warn(`AI 主题解析失败 (尝试 ${i + 1}/${maxRetries + 1})`)
+      themeLogger.warn(`AI 主题解析失败 (尝试 ${i + 1}/${maxRetries + 1})`)
     } catch (error) {
-      console.error(`AI 调用失败 (尝试 ${i + 1}/${maxRetries + 1}):`, error)
+      themeLogger.error(`AI 调用失败 (尝试 ${i + 1}/${maxRetries + 1}):`, error)
       lastError = error
     }
   }

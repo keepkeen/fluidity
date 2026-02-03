@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import styled from "@emotion/styled"
 
@@ -15,10 +15,12 @@ import {
 } from "./Settings/settingsHandler"
 import { ContributionChart } from "./Todo/ContributionChart"
 import { TodoPanel } from "./Todo/TodoPanel"
+import { TodayScreenTime } from "./Usage/TodayScreenTime"
 import { AILoadingIndicator } from "../components/AILoadingIndicator"
 import { GlobalNotification } from "../components/GlobalNotification"
 import { images, CardDisplayMode } from "../data/data"
 import { BingWallpaperService } from "../services/bingWallpaper"
+import { settingsLogger } from "../utils/logger"
 
 // 响应式尺寸变量
 const CAROUSEL_SIZE_LARGE = 424
@@ -182,17 +184,43 @@ const Indicator = styled.button<{ active: boolean }>`
   }
 `
 
-// 根据卡片显示模式生成轮播项
-const getCarouselItems = (cardDisplayMode: CardDisplayMode) => {
+// 轮播项类型
+type CarouselItemType =
+  | { type: "image"; src?: string }
+  | { type: "todo" }
+  | { type: "contribution" }
+  | { type: "screen-time" }
+
+const SCREEN_TIME_TYPE = "screen-time" as const
+
+// 根据卡片显示模式和自定义图片生成轮播项
+const getCarouselItems = (
+  cardDisplayMode: CardDisplayMode,
+  useCustomImages: boolean,
+  customImages: { id: string; src: string; name: string }[],
+  defaultImage: string
+): CarouselItemType[] => {
   switch (cardDisplayMode) {
-    case "full":
+    case "full": {
+      // 生成图片项
+      const imageItems: CarouselItemType[] =
+        useCustomImages && customImages.length > 0
+          ? customImages.map(img => ({ type: "image" as const, src: img.src }))
+          : [{ type: "image" as const, src: defaultImage }]
+
       return [
-        { type: "image" as const },
+        ...imageItems,
         { type: "todo" as const },
         { type: "contribution" as const },
+        { type: SCREEN_TIME_TYPE },
       ]
+    }
     case "tools-only":
-      return [{ type: "todo" as const }, { type: "contribution" as const }]
+      return [
+        { type: "todo" as const },
+        { type: "contribution" as const },
+        { type: SCREEN_TIME_TYPE },
+      ]
     case "hidden":
     default:
       return []
@@ -210,7 +238,7 @@ export const Startpage = () => {
 
   // 壁纸 URL 状态
   const [wallpaperUrl, setWallpaperUrl] = useState("")
-  const [cardImg, setCardImg] = useState(designSettings.image)
+  const cardImg = designSettings.image
 
   // 轮播状态
   const [activeIndex, setActiveIndex] = useState(0)
@@ -219,8 +247,19 @@ export const Startpage = () => {
 
   // 根据卡片显示模式生成轮播项
   const carouselItems = useMemo(
-    () => getCarouselItems(cardAreaSettings.displayMode),
-    [cardAreaSettings.displayMode]
+    () =>
+      getCarouselItems(
+        cardAreaSettings.displayMode,
+        cardAreaSettings.useCustomImages,
+        cardAreaSettings.customImages,
+        designSettings.image
+      ),
+    [
+      cardAreaSettings.displayMode,
+      cardAreaSettings.useCustomImages,
+      cardAreaSettings.customImages,
+      designSettings.image,
+    ]
   )
 
   // 加载壁纸
@@ -238,7 +277,7 @@ export const Startpage = () => {
             setWallpaperUrl(customUrl || designSettings.image)
             break
           case "local":
-            setWallpaperUrl(localImageData || designSettings.image)
+            setWallpaperUrl(localImageData ?? designSettings.image)
             break
           case "bing-daily":
             try {
@@ -247,7 +286,7 @@ export const Startpage = () => {
               )
               setWallpaperUrl(url)
             } catch (error) {
-              console.error("Bing 壁纸加载失败:", error)
+              settingsLogger.error("Bing 壁纸加载失败:", error)
               setWallpaperUrl(designSettings.image)
             }
             break
@@ -301,11 +340,17 @@ export const Startpage = () => {
   const cardHidden = cardAreaSettings.displayMode === "hidden"
 
   // 渲染轮播项内容
-  const renderCarouselItem = (type: "image" | "todo" | "contribution") => {
-    switch (type) {
+  const renderCarouselItem = (item: CarouselItemType) => {
+    switch (item.type) {
       case "image":
         return (
-          <Image src={cardImg} onError={() => setCardImg(images[0].value)} />
+          <Image
+            src={item.src ?? cardImg}
+            onError={e => {
+              const target = e.target as HTMLImageElement
+              target.src = images[0].value
+            }}
+          />
         )
       case "todo":
         return (
@@ -317,6 +362,12 @@ export const Startpage = () => {
         return (
           <TodoWrapper>
             <ContributionChart />
+          </TodoWrapper>
+        )
+      case "screen-time":
+        return (
+          <TodoWrapper>
+            <TodayScreenTime />
           </TodoWrapper>
         )
     }
@@ -351,21 +402,34 @@ export const Startpage = () => {
               onMouseEnter={handleMouseEnter}
               onMouseLeave={handleMouseLeave}
             >
-              {carouselItems.map((item, index) => (
-                <CarouselItem key={item.type} active={activeIndex === index}>
-                  {renderCarouselItem(item.type)}
-                </CarouselItem>
-              ))}
+              {carouselItems.map((item, index) => {
+                // 为每个项生成唯一 key
+                const itemKey =
+                  item.type === "image" && item.src
+                    ? `image-${item.src.slice(-20)}`
+                    : `${item.type}-${index}`
+                return (
+                  <CarouselItem key={itemKey} active={activeIndex === index}>
+                    {renderCarouselItem(item)}
+                  </CarouselItem>
+                )
+              })}
               {carouselItems.length > 1 && (
                 <CarouselIndicators>
-                  {carouselItems.map((item, index) => (
-                    <Indicator
-                      key={item.type}
-                      active={activeIndex === index}
-                      onClick={() => goToSlide(index)}
-                      aria-label={`切换到第 ${index + 1} 项`}
-                    />
-                  ))}
+                  {carouselItems.map((item, index) => {
+                    const indicatorKey =
+                      item.type === "image" && item.src
+                        ? `ind-${item.src.slice(-20)}`
+                        : `ind-${item.type}-${index}`
+                    return (
+                      <Indicator
+                        key={indicatorKey}
+                        active={activeIndex === index}
+                        onClick={() => goToSlide(index)}
+                        aria-label={`切换到第 ${index + 1} 项`}
+                      />
+                    )
+                  })}
                 </CarouselIndicators>
               )}
             </CarouselContainer>

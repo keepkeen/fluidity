@@ -4,6 +4,7 @@
  */
 
 const FAVICON_CACHE_KEY = "favicon-cache"
+const LINK_GROUPS_KEY = "link-groups"
 const CACHE_EXPIRY_DAYS = 7
 const MAX_CACHE_ENTRIES = 500
 
@@ -23,6 +24,89 @@ const extractDomain = (url: string): string | null => {
     return urlObj.hostname
   } catch {
     return null
+  }
+}
+
+// `chrome://favicon2` is Chromium-only; if unsupported, image load will fail.
+const buildChromeFavicon2Url = (pageUrl: string, size: number): string =>
+  `chrome://favicon2/?page_url=${encodeURIComponent(
+    pageUrl
+  )}&size=${size}&scale_factor=1x`
+
+const getFaviconCandidateUrls = (url: string, size: number): string[] => {
+  const domain = extractDomain(url)
+  if (!domain) return []
+
+  // Keep original preference order from the UI component:
+  // 1) site favicon.ico
+  // 2) DuckDuckGo
+  // 3) Google
+  // 4) Chromium internal favicon cache (as a last-resort fallback)
+  const candidates = [
+    `https://${domain}/favicon.ico`,
+    `https://icons.duckduckgo.com/ip3/${domain}.ico`,
+    `https://www.google.com/s2/favicons?domain=${domain}&sz=${size * 2}`,
+  ]
+
+  candidates.push(buildChromeFavicon2Url(url, size))
+
+  return candidates
+}
+
+const readLinkGroups = (): unknown[] | null => {
+  const raw = localStorage.getItem(LINK_GROUPS_KEY)
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    return Array.isArray(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+const getLinksFromGroup = (group: unknown): unknown[] | null => {
+  if (!group || typeof group !== "object") return null
+  const links = (group as { links?: unknown }).links
+  return Array.isArray(links) ? links : null
+}
+
+const tryUpdateLinkIconForDomain = (
+  link: unknown,
+  domain: string,
+  faviconUrl: string | null
+): boolean => {
+  if (!link || typeof link !== "object") return false
+  const value = (link as { value?: unknown }).value
+  if (typeof value !== "string") return false
+  if (extractDomain(value) !== domain) return false
+
+  const current = (link as { icon?: unknown }).icon
+  if (current === faviconUrl) return false
+  ;(link as { icon?: string | null }).icon = faviconUrl
+  return true
+}
+
+const persistToLinkGroups = (url: string, faviconUrl: string | null): void => {
+  const domain = extractDomain(url)
+  if (!domain) return
+
+  const groups = readLinkGroups()
+  if (!groups) return
+
+  let changed = false
+  for (const group of groups) {
+    const links = getLinksFromGroup(group)
+    if (!links) continue
+    for (const link of links) {
+      if (tryUpdateLinkIconForDomain(link, domain, faviconUrl)) changed = true
+    }
+  }
+
+  if (!changed) return
+  try {
+    localStorage.setItem(LINK_GROUPS_KEY, JSON.stringify(groups))
+  } catch {
+    // ignore
   }
 }
 
@@ -81,15 +165,6 @@ const cleanupCache = (): void => {
  */
 export const FaviconService = {
   /**
-   * 获取 Google Favicon API URL
-   */
-  getFaviconUrl(url: string, size = 32): string | null {
-    const domain = extractDomain(url)
-    if (!domain) return null
-    return `https://www.google.com/s2/favicons?domain=${domain}&sz=${size}`
-  },
-
-  /**
    * 从缓存获取 favicon
    * 返回 undefined 表示未缓存，null 表示缓存了失败状态
    */
@@ -130,6 +205,9 @@ export const FaviconService = {
     } else {
       setCache(cache)
     }
+
+    // Also persist to the link data model so icons can be backed up / synced.
+    persistToLinkGroups(url, faviconUrl)
   },
 
   /**
@@ -154,22 +232,22 @@ export const FaviconService = {
       return cached
     }
 
-    // 获取 favicon URL
-    const faviconUrl = this.getFaviconUrl(url, size)
-    if (!faviconUrl) {
+    const candidates = getFaviconCandidateUrls(url, size)
+    if (candidates.length === 0) {
       this.saveToCache(url, null)
       return null
     }
 
-    // 检查是否可用
-    const isAvailable = await this.checkFaviconAvailable(faviconUrl)
-    if (isAvailable) {
-      this.saveToCache(url, faviconUrl)
-      return faviconUrl
-    } else {
-      this.saveToCache(url, null)
-      return null
+    for (const candidate of candidates) {
+      const ok = await this.checkFaviconAvailable(candidate)
+      if (ok) {
+        this.saveToCache(url, candidate)
+        return candidate
+      }
     }
+
+    this.saveToCache(url, null)
+    return null
   },
 
   /**

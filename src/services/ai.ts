@@ -3,6 +3,17 @@
  */
 
 import { generateAIContext } from "./analytics"
+import {
+  getLastHourBrowserUsageSummary,
+  getTodayBrowserUsageSummary,
+  guessAppNameFromDomain,
+  normalizeDomainKey,
+} from "./browserUsage"
+import {
+  getRecommendedTagsForToday,
+  setRecommendedTagsForToday,
+} from "./recommendedTags"
+import { aiLogger } from "../utils/logger"
 
 // AI 设置接口
 export interface AISettings {
@@ -27,6 +38,8 @@ export interface AISettings {
 interface CachedResponse {
   message: string
   timestamp: number
+  day?: string
+  tags?: string[]
 }
 
 // DeepSeek API 响应类型
@@ -152,6 +165,16 @@ const AICache = {
     localStorage.setItem(STORAGE_KEYS.AI_CACHE, JSON.stringify(cache))
   },
 
+  setWithTags(message: string, tags: string[], day: string): void {
+    const cache: CachedResponse = {
+      message,
+      timestamp: Date.now(),
+      day,
+      tags,
+    }
+    localStorage.setItem(STORAGE_KEYS.AI_CACHE, JSON.stringify(cache))
+  },
+
   isValid(): boolean {
     const cache = this.get()
     if (!cache) return false
@@ -164,27 +187,6 @@ const AICache = {
   clear(): void {
     localStorage.removeItem(STORAGE_KEYS.AI_CACHE)
   },
-}
-
-/**
- * 生成 AI 提示的 prompt
- */
-const generatePrompt = (context: string): string => {
-  return `你是一个友好的个人助手，负责在用户打开浏览器新标签页时给出简短的问候或提醒。
-
-基于以下用户数据，生成一句简短、有趣、个性化的话（不超过50个字）：
-
-${context}
-
-要求：
-1. 根据时间段给出合适的问候（早上好/下午好等）
-2. 如果有未完成的待办，可以温馨提醒
-3. 如果用户经常访问某些网站，可以据此推测兴趣并说些有趣的话
-4. 语气要轻松友好，像朋友一样
-5. 可以适当使用 emoji，但不要过多
-6. 不要说"根据数据显示"之类的话，要自然
-
-只输出这一句话，不要有其他内容。`
 }
 
 /**
@@ -244,7 +246,7 @@ export const callDeepSeekAPI = async (
 
     // 如果 content 为空，尝试从 reasoning_content 中提取 JSON
     if (!content && reasoningContent) {
-      console.log(
+      aiLogger.debug(
         "Reasoner content 为空，尝试从 reasoning_content 提取:",
         reasoningContent.slice(-500)
       )
@@ -252,13 +254,13 @@ export const callDeepSeekAPI = async (
       const jsonMatch = reasoningContent.match(/\{[^{}]*"name"[^{}]*\}/g)
       if (jsonMatch) {
         content = jsonMatch[jsonMatch.length - 1] // 取最后一个匹配的 JSON
-        console.log("从 reasoning_content 提取到 JSON:", content)
+        aiLogger.debug("从 reasoning_content 提取到 JSON:", content)
       }
     }
   }
 
   if (!content) {
-    console.warn("AI 响应 content 为空", {
+    aiLogger.warn("AI 响应 content 为空", {
       model,
       hasReasoningContent: !!message?.reasoning_content,
       contentValue: message?.content,
@@ -267,6 +269,197 @@ export const callDeepSeekAPI = async (
   }
 
   return content
+}
+
+const pad2 = (n: number): string => String(n).padStart(2, "0")
+
+const getTodayStringLocal = (): string => {
+  const d = new Date()
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
+
+const secondsToMinutes = (sec: number): number => Math.round(sec / 60)
+
+const generatePromptV2 = (context: Record<string, unknown>): string => {
+  return `你是一个友好的个人助手，负责在用户打开浏览器新标签页时给出一句简短的问候/提醒，并生成一些“推荐搜索标签”帮助用户高效导航。
+
+你会收到一份 JSON 格式的用户数据（包含最近一小时与今天的浏览器使用汇总、待办、点击/搜索习惯等）。
+
+请严格输出 JSON（不要输出代码块、不要输出多余解释），结构如下：
+{
+  "greeting": "一句话（<=50字）",
+  "tags": ["推荐搜索标签1", "标签2", "..."]
+}
+
+规则：
+1) greeting 语气轻松友好，像朋友一样；不要说“根据数据”等措辞；最多 2 个 emoji
+2) 如果最近一小时连续使用时间较长（例如 >=45分钟），可以温柔提醒喝水/休息/活动一下；不要吓人/不要医学化
+3) tags 用于搜索栏默认建议：给 6-10 个短语（每个尽量 <=8 个字/<=4 个词），贴合今天的访问/任务/兴趣；不要包含 URL，不要包含敏感个人信息
+4) tags 尽量多样：学习/工作/资讯/娱乐/效率/健康提醒 等方向可以混合
+
+用户数据：
+${JSON.stringify(context, null, 2)}
+`
+}
+
+const tryParseJsonObject = (raw: string): Record<string, unknown> | null => {
+  const text = raw.trim()
+  const parse = (s: string): Record<string, unknown> | null => {
+    const v: unknown = JSON.parse(s)
+    if (typeof v !== "object" || v === null || Array.isArray(v)) return null
+    return v as Record<string, unknown>
+  }
+  try {
+    return parse(text)
+  } catch {
+    // try extract last {...}
+    const match = text.match(/\{[\s\S]*\}/)
+    if (!match) return null
+    try {
+      return parse(match[0])
+    } catch {
+      return null
+    }
+  }
+}
+
+const getGreetingCache = (
+  today: string
+): { message: string; fromCache: boolean } | null => {
+  if (!AICache.isValid()) return null
+  const cache = AICache.get()
+  if (!cache) return null
+
+  // 若今天还没有推荐标签，优先触发一次 AI（即使问候语缓存仍有效）
+  if (getRecommendedTagsForToday().length === 0) return null
+
+  if (cache.day === today && Array.isArray(cache.tags)) {
+    setRecommendedTagsForToday(cache.tags)
+  }
+
+  return { message: cache.message, fromCache: true }
+}
+
+const buildGreetingContext = async (): Promise<Record<string, unknown>> => {
+  const baseRaw = generateAIContext()
+  let baseContext: Record<string, unknown> = {}
+  try {
+    baseContext = JSON.parse(baseRaw) as Record<string, unknown>
+  } catch {
+    baseContext = { baseContext: baseRaw }
+  }
+
+  const lastHour = await getLastHourBrowserUsageSummary()
+  const todayUsage = await getTodayBrowserUsageSummary()
+
+  return {
+    ...baseContext,
+    browserUsage: {
+      lastHour: {
+        totalMinutes: secondsToMinutes(lastHour.totalSec),
+        topDomains: lastHour.topDomains.map(d => ({
+          domain: d.domain,
+          minutes: secondsToMinutes(d.sec),
+        })),
+        topPages: lastHour.topPages.map(p => ({
+          page: p.page,
+          title: p.title,
+          minutes: secondsToMinutes(p.sec),
+        })),
+      },
+      today: {
+        totalMinutes: secondsToMinutes(todayUsage.totalSec),
+        topDomains: todayUsage.topDomains.map(d => ({
+          domain: d.domain,
+          minutes: secondsToMinutes(d.sec),
+        })),
+        topPages: todayUsage.topPages.map(p => ({
+          page: p.page,
+          title: p.title,
+          minutes: secondsToMinutes(p.sec),
+        })),
+      },
+    },
+  }
+}
+
+const parseGreetingPayload = (
+  raw: string
+): { message: string; tags: string[] } => {
+  const parsed = tryParseJsonObject(raw)
+  const message =
+    typeof parsed?.greeting === "string" ? parsed.greeting.trim() : ""
+
+  const tagsValue =
+    parsed && typeof parsed === "object" ? parsed.tags : undefined
+  const tagsRaw = Array.isArray(tagsValue) ? tagsValue : []
+  const tags = tagsRaw
+    .filter((t): t is string => typeof t === "string")
+    .map(t => t.trim())
+    .filter(t => t.length > 0)
+    .slice(0, 12)
+
+  return { message, tags }
+}
+
+const generateDomainAppNamePrompt = (domain: string): string => {
+  return `你是一个产品命名助手。
+
+任务：给定一个网站域名，返回一个“应用/产品名称”，用于在 UI 中展示。
+
+要求：
+1) 名称尽量短（2-12 个字/字符，越短越好）
+2) 不要包含 URL、不要包含域名后缀（如 .com/.cn）、不要包含 "www"
+3) 不要加“官网/网站/平台/首页”等无意义后缀
+4) 如果是子域名（如 mail.google.com），优先返回更具体的产品名（如 Gmail），但仍要简短
+5) 严格输出 JSON（不要输出代码块，不要输出多余解释）：
+{ "name": "..." }
+
+域名：${domain.trim()}
+`
+}
+
+const sanitizeDomainAppName = (nameRaw: string, domain: string): string => {
+  let name = nameRaw.trim()
+  if (!name) return ""
+
+  // eslint-disable-next-line no-control-regex
+  name = name.replace(/[\u0000-\u001f]/g, "").trim()
+
+  // 避免模型返回 URL / 域名
+  if (/[/:]/.test(name)) return ""
+  if (name.includes(".")) return ""
+
+  const normalizedDomain = normalizeDomainKey(domain)
+  if (normalizedDomain && name.toLowerCase() === normalizedDomain) return ""
+
+  // 避免返回非常像域名的结果
+  const guess = guessAppNameFromDomain(domain)
+  if (guess && name.toLowerCase() === guess.toLowerCase()) return guess
+
+  // 去掉常见无意义后缀
+  name = name.replace(/(官网|网站|平台|首页)$/g, "").trim()
+
+  if (name.length > 20) name = name.slice(0, 20).trim()
+  return name
+}
+
+export const resolveAppNameForDomain = async (
+  domain: string
+): Promise<string | null> => {
+  const settings = AISettingsManager.get()
+  if (!settings.enabled || !settings.apiKey) return null
+
+  const prompt = generateDomainAppNamePrompt(domain)
+  const raw = await callDeepSeekAPI(settings.apiKey, prompt, settings.model, {
+    maxTokens: 60,
+    temperature: 0.2,
+  })
+
+  const parsed = tryParseJsonObject(raw)
+  const nameRaw = typeof parsed?.name === "string" ? parsed.name : ""
+  const name = sanitizeDomainAppName(nameRaw, domain)
+  return name || null
 }
 
 /**
@@ -278,6 +471,7 @@ export const getAIGreeting = async (): Promise<{
   error?: string
 }> => {
   const settings = AISettingsManager.get()
+  const today = getTodayStringLocal()
 
   // 检查是否启用
   if (!settings.enabled || !settings.apiKey) {
@@ -287,36 +481,36 @@ export const getAIGreeting = async (): Promise<{
     }
   }
 
-  // 检查缓存
-  if (AICache.isValid()) {
-    const cache = AICache.get()
-    if (cache) {
-      return {
-        message: cache.message,
-        fromCache: true,
-      }
-    }
-  }
+  const cached = getGreetingCache(today)
+  if (cached) return cached
 
   // 调用 API
   try {
-    const context = generateAIContext()
-    const prompt = generatePrompt(context)
-    const message = await callDeepSeekAPI(
-      settings.apiKey,
-      prompt,
-      settings.model
-    )
+    const context = await buildGreetingContext()
 
-    // 缓存结果
-    AICache.set(message)
+    const prompt = generatePromptV2(context)
+    const raw = await callDeepSeekAPI(settings.apiKey, prompt, settings.model, {
+      maxTokens: 220,
+      temperature: 0.7,
+    })
+
+    const { message, tags } = parseGreetingPayload(raw)
+
+    if (!message) throw new Error("AI 响应内容为空，请重试")
+
+    if (tags.length > 0) {
+      setRecommendedTagsForToday(tags)
+      AICache.setWithTags(message, tags, today)
+    } else {
+      AICache.set(message)
+    }
 
     return {
       message,
       fromCache: false,
     }
   } catch (error) {
-    console.error("AI API 调用失败:", error)
+    aiLogger.error("AI API 调用失败:", error)
     return {
       message: getDefaultGreeting(),
       fromCache: false,

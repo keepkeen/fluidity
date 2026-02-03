@@ -57,7 +57,12 @@ const generateOrganizePrompt = (
   linkGroups: linkGroup[],
   customInstruction: string
 ): string => {
-  const linksJson = JSON.stringify(linkGroups, null, 2)
+  // Keep prompt small + stable: only send label/value (exclude cached favicon/icon).
+  const minimalLinks = linkGroups.map(g => ({
+    title: g.title,
+    links: g.links.map(l => ({ label: l.label, value: l.value })),
+  }))
+  const linksJson = JSON.stringify(minimalLinks, null, 2)
 
   const exampleOutput = JSON.stringify(
     [

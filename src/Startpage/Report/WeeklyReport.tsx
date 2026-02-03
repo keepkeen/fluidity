@@ -1,18 +1,21 @@
-import React, { useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 
 import styled from "@emotion/styled"
 
 import { AchievementBadge } from "./components/AchievementBadge"
 import { HeatMap } from "./components/HeatMap"
 import { StatCard } from "./components/StatCard"
+import { TopDurations } from "./components/TopDurations"
 import { TopLinks } from "./components/TopLinks"
 import { getWeeklyAchievements } from "../../services/achievements"
 import { getAnalyticsSummary } from "../../services/analytics"
+import { getWeeklyBrowserUsageSummary } from "../../services/browserUsage"
 import { TodoContributions } from "../../services/contributions"
 import {
   generateWeeklyReport,
   getWeeklyStats,
 } from "../../services/reportGenerator"
+import { aiLogger } from "../../utils/logger"
 
 const Container = styled.div`
   display: flex;
@@ -84,6 +87,13 @@ interface WeeklyReportProps {
 export const WeeklyReport: React.FC<WeeklyReportProps> = ({ onLoaded }) => {
   const [aiSummary, setAiSummary] = useState<string>("")
   const [loading, setLoading] = useState(true)
+  const [usageMinutes, setUsageMinutes] = useState<number>(0)
+  const [topDomains, setTopDomains] = useState<
+    { label: string; minutes: number }[]
+  >([])
+  const [topPages, setTopPages] = useState<
+    { label: string; minutes: number }[]
+  >([])
 
   const stats = getWeeklyStats()
   const weekData = TodoContributions.getWeekData(-1)
@@ -96,7 +106,7 @@ export const WeeklyReport: React.FC<WeeklyReportProps> = ({ onLoaded }) => {
         const result = await generateWeeklyReport()
         setAiSummary(result.summary)
       } catch (error) {
-        console.error("加载 AI 总结失败:", error)
+        aiLogger.error("加载 AI 总结失败:", error)
         setAiSummary("上周辛苦了，新的一周继续加油！💪")
       } finally {
         setLoading(false)
@@ -106,6 +116,32 @@ export const WeeklyReport: React.FC<WeeklyReportProps> = ({ onLoaded }) => {
 
     void loadAISummary()
   }, [onLoaded])
+
+  useEffect(() => {
+    const loadUsage = async () => {
+      try {
+        const usage = await getWeeklyBrowserUsageSummary(-1)
+        setUsageMinutes(Math.round(usage.totalSec / 60))
+        setTopDomains(
+          usage.topDomains.map(d => ({
+            label: d.domain,
+            minutes: Math.round(d.sec / 60),
+          }))
+        )
+        setTopPages(
+          usage.topPages.map(p => ({
+            label: p.title?.trim() ? p.title : p.page,
+            minutes: Math.round(p.sec / 60),
+          }))
+        )
+      } catch {
+        setUsageMinutes(0)
+        setTopDomains([])
+        setTopPages([])
+      }
+    }
+    void loadUsage()
+  }, [])
 
   const todoDiff = stats.todosCompleted - stats.prevWeekTodos
 
@@ -130,6 +166,7 @@ export const WeeklyReport: React.FC<WeeklyReportProps> = ({ onLoaded }) => {
         />
         <StatCard icon="🔗" label="链接点击" value={stats.linkClicks} />
         <StatCard icon="🔍" label="搜索次数" value={stats.searches} />
+        <StatCard icon="🌐" label="浏览时长" value={`${usageMinutes}分钟`} />
         <StatCard icon="⏰" label="活跃天数" value={`${stats.activeDays}/7`} />
       </StatsRow>
 
@@ -164,6 +201,25 @@ export const WeeklyReport: React.FC<WeeklyReportProps> = ({ onLoaded }) => {
           maxItems={3}
         />
       </TopLinksSection>
+
+      <ContentRow>
+        <ContentColumn>
+          <TopDurations
+            items={topDomains}
+            title="上周常逛域名"
+            icon="🧭"
+            maxItems={5}
+          />
+        </ContentColumn>
+        <ContentColumn>
+          <TopDurations
+            items={topPages}
+            title="上周常看页面"
+            icon="📄"
+            maxItems={5}
+          />
+        </ContentColumn>
+      </ContentRow>
     </Container>
   )
 }

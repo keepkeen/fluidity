@@ -6,7 +6,12 @@
 import { getWeeklyAchievements, getMonthlyAchievements } from "./achievements"
 import { AISettingsManager, callDeepSeekAPI } from "./ai"
 import { getAnalyticsSummary } from "./analytics"
+import {
+  getMonthlyBrowserUsageSummary,
+  getWeeklyBrowserUsageSummary,
+} from "./browserUsage"
 import { TodoContributions } from "./contributions"
+import { aiLogger } from "../utils/logger"
 
 const CACHE_KEY = "report-cache"
 
@@ -32,6 +37,9 @@ interface WeeklyStats {
   activeDays: number
   topLink: string | null
   achievements: string[]
+  browserMinutes: number
+  browserTopDomains: string[]
+  browserTopPages: string[]
 }
 
 interface MonthlyStats {
@@ -45,6 +53,9 @@ interface MonthlyStats {
   topLinks: string[]
   achievements: string[]
   monthName: string
+  browserMinutes: number
+  browserTopDomains: string[]
+  browserTopPages: string[]
 }
 
 /**
@@ -128,6 +139,9 @@ export const getWeeklyStats = (): WeeklyStats => {
     activeDays: TodoContributions.getActiveDaysInWeek(-1),
     topLink: summary.topLinks[0]?.label || null,
     achievements: achievements.map(a => `${a.icon} ${a.name}`),
+    browserMinutes: 0,
+    browserTopDomains: [],
+    browserTopPages: [],
   }
 }
 
@@ -170,6 +184,9 @@ export const getMonthlyStats = (): MonthlyStats => {
     topLinks: summary.topLinks.slice(0, 5).map(l => l.label),
     achievements: achievements.map(a => `${a.icon} ${a.name}`),
     monthName: monthNames[lastMonth - 1],
+    browserMinutes: 0,
+    browserTopDomains: [],
+    browserTopPages: [],
   }
 }
 
@@ -183,6 +200,9 @@ const generateWeeklyPrompt = (stats: WeeklyStats): string => {
 - 完成待办: ${stats.todosCompleted} 个 (上上周: ${stats.prevWeekTodos} 个)
 - 链接点击: ${stats.linkClicks} 次
 - 搜索次数: ${stats.searches} 次
+- 浏览时长: ${stats.browserMinutes} 分钟
+- 常逛域名: ${stats.browserTopDomains.join(", ") || "暂无"}
+- 常看页面: ${stats.browserTopPages.join(", ") || "暂无"}
 - 最活跃的一天: ${stats.mostActiveDay}
 - 活跃天数: ${stats.activeDays}/7 天
 - 最常访问: ${stats.topLink ?? "无"}
@@ -217,6 +237,9 @@ ${stats.monthName}数据：
 - 完成待办: ${stats.todosCompleted} 个 (${diffText})
 - 链接点击: ${stats.linkClicks} 次
 - 搜索次数: ${stats.searches} 次
+- 浏览时长: ${stats.browserMinutes} 分钟
+- 常逛域名: ${stats.browserTopDomains.join(", ") || "暂无"}
+- 常看页面: ${stats.browserTopPages.join(", ") || "暂无"}
 - 最活跃时段: ${stats.mostActiveHour}
 - 活跃天数: ${stats.activeDays}/${stats.daysInMonth} 天
 - 最常访问: ${stats.topLinks.join(", ") || "无"}
@@ -291,6 +314,23 @@ export const generateWeeklyReport = async (): Promise<{
   }
 
   const stats = getWeeklyStats()
+  try {
+    const usage = await getWeeklyBrowserUsageSummary(-1)
+    stats.browserMinutes = Math.round(usage.totalSec / 60)
+    stats.browserTopDomains = usage.topDomains
+      .slice(0, 5)
+      .map(d => `${d.domain}(${Math.round(d.sec / 60)}m)`)
+    stats.browserTopPages = usage.topPages
+      .slice(0, 5)
+      .map(
+        p =>
+          `${p.title?.trim() ? p.title.trim() : p.page}(${Math.round(
+            p.sec / 60
+          )}m)`
+      )
+  } catch {
+    // ignore
+  }
   const settings = AISettingsManager.get()
 
   // 如果 AI 未配置，返回默认总结
@@ -312,7 +352,7 @@ export const generateWeeklyReport = async (): Promise<{
 
     return { summary, fromAI: true }
   } catch (error) {
-    console.error("生成周报失败:", error)
+    aiLogger.error("生成周报失败:", error)
     return { summary: getDefaultWeeklySummary(stats), fromAI: false }
   }
 }
@@ -335,6 +375,27 @@ export const generateMonthlyReport = async (): Promise<{
   }
 
   const stats = getMonthlyStats()
+  try {
+    const now = new Date()
+    const lastMonth = now.getMonth() === 0 ? 12 : now.getMonth()
+    const year =
+      now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
+    const usage = await getMonthlyBrowserUsageSummary(year, lastMonth)
+    stats.browserMinutes = Math.round(usage.totalSec / 60)
+    stats.browserTopDomains = usage.topDomains
+      .slice(0, 6)
+      .map(d => `${d.domain}(${Math.round(d.sec / 60)}m)`)
+    stats.browserTopPages = usage.topPages
+      .slice(0, 6)
+      .map(
+        p =>
+          `${p.title?.trim() ? p.title.trim() : p.page}(${Math.round(
+            p.sec / 60
+          )}m)`
+      )
+  } catch {
+    // ignore
+  }
   const settings = AISettingsManager.get()
 
   // 计算预测
@@ -370,7 +431,7 @@ export const generateMonthlyReport = async (): Promise<{
 
     return { summary, forecast: forecastText, fromAI: true }
   } catch (error) {
-    console.error("生成月报失败:", error)
+    aiLogger.error("生成月报失败:", error)
     return {
       summary: getDefaultMonthlySummary(stats),
       forecast: forecastText,

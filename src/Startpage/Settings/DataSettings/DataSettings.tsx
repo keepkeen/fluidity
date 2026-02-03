@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 
 import styled from "@emotion/styled"
 import {
@@ -15,6 +15,21 @@ import {
   getDataStats,
   ImportResult,
 } from "../../../services/dataBackup"
+import { validateGitHubToken } from "../../../services/gistApi"
+import {
+  connectOrDiscover,
+  disconnectGistSync,
+  getGistSyncConfig,
+  getTokenPrefillUrl,
+  pullNow,
+  pushNow,
+  setSyncPasswordForSession,
+} from "../../../services/gistSync"
+import {
+  getSyncRuntimeStatus,
+  subscribeSyncRuntimeStatus,
+  SyncRuntimeStatus,
+} from "../../../services/syncRuntime"
 
 // CSS 变量常量
 const ACCENT_COLOR = "var(--accent-color)"
@@ -144,6 +159,50 @@ const HiddenInput = styled.input`
   display: none;
 `
 
+const TextInput = styled.input`
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid var(--default-color);
+  background: transparent;
+  color: var(--default-color);
+  font-size: 0.9rem;
+
+  &:focus {
+    outline: none;
+    border-color: ${ACCENT_COLOR};
+  }
+`
+
+const Link = styled.a`
+  color: ${ACCENT_COLOR};
+  text-decoration: none;
+  font-size: 0.9rem;
+
+  &:hover {
+    text-decoration: underline;
+  }
+`
+
+const StatusRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 2px solid var(--border-color);
+`
+
+const StatusLabel = styled.span`
+  font-size: 0.9rem;
+  opacity: 0.9;
+`
+
+const StatusValue = styled.span`
+  font-size: 0.85rem;
+  opacity: 0.8;
+  text-align: right;
+`
+
 const CheckboxRow = styled.label`
   display: flex;
   align-items: center;
@@ -230,15 +289,42 @@ export const DataSettings: React.FC = () => {
   const [isExporting, setIsExporting] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
 
+  const [token, setToken] = useState("")
+  const [syncPassword, setSyncPassword] = useState("")
+  const [rememberPassword, setRememberPassword] = useState(false)
+  const [isSyncBusy, setIsSyncBusy] = useState(false)
+  const [syncError, setSyncError] = useState<string | null>(null)
+  const [syncEnabled, setSyncEnabled] = useState(false)
+  const [hasGist, setHasGist] = useState(false)
+  const [runtimeStatus, setRuntimeStatus] = useState<SyncRuntimeStatus>(() =>
+    getSyncRuntimeStatus()
+  )
+
   const stats = getDataStats()
+
+  const tokenPrefillUrl = useMemo(() => getTokenPrefillUrl(), [])
+
+  useEffect(() => {
+    const load = async () => {
+      const config = await getGistSyncConfig()
+      setSyncEnabled(Boolean(config.enabled && config.token && config.gistId))
+      setHasGist(Boolean(config.gistId))
+      setToken(config.token ?? "")
+      setRememberPassword(Boolean(config.rememberPassword))
+    }
+    void load()
+  }, [])
+
+  useEffect(() => {
+    setRuntimeStatus(getSyncRuntimeStatus())
+    return subscribeSyncRuntimeStatus(setRuntimeStatus)
+  }, [])
 
   const handleExport = () => {
     setIsExporting(true)
-    try {
-      downloadBackup({ includeApiKey })
-    } finally {
+    void downloadBackup({ includeApiKey }).finally(() => {
       setTimeout(() => setIsExporting(false), 500)
-    }
+    })
   }
 
   const handleImportClick = () => {
@@ -268,6 +354,97 @@ export const DataSettings: React.FC = () => {
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
       }
+    }
+  }
+
+  const handleValidateToken = async () => {
+    setIsSyncBusy(true)
+    setSyncError(null)
+    try {
+      await validateGitHubToken(token.trim())
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : "Token 验证失败")
+    } finally {
+      setIsSyncBusy(false)
+    }
+  }
+
+  const handleConnect = async () => {
+    setIsSyncBusy(true)
+    setSyncError(null)
+    try {
+      const t = token.trim()
+      if (!t) {
+        setSyncError("请先输入 GitHub Token")
+        return
+      }
+
+      const pwd = syncPassword.trim()
+      const result = await connectOrDiscover({
+        token: t,
+        password: pwd || undefined,
+        rememberPassword,
+      })
+
+      setHasGist(Boolean(result.gistId))
+      setSyncEnabled(true)
+
+      if (pwd) {
+        setSyncPasswordForSession(pwd)
+        await pullNow()
+        window.location.reload()
+      }
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : "连接失败")
+    } finally {
+      setIsSyncBusy(false)
+    }
+  }
+
+  const handleDisconnect = async () => {
+    setIsSyncBusy(true)
+    setSyncError(null)
+    try {
+      await disconnectGistSync()
+      setSyncEnabled(false)
+      setHasGist(false)
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : "断开失败")
+    } finally {
+      setIsSyncBusy(false)
+    }
+  }
+
+  const handleUnlockAndPull = async () => {
+    setIsSyncBusy(true)
+    setSyncError(null)
+    try {
+      const pwd = syncPassword.trim()
+      if (!pwd) {
+        setSyncError("请输入同步密码")
+        return
+      }
+      setSyncPasswordForSession(pwd)
+      await pullNow()
+      window.location.reload()
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : "拉取失败")
+    } finally {
+      setIsSyncBusy(false)
+    }
+  }
+
+  const handleForcePush = async () => {
+    setIsSyncBusy(true)
+    setSyncError(null)
+    try {
+      const pwd = syncPassword.trim()
+      if (pwd) setSyncPasswordForSession(pwd)
+      await pushNow({ force: true })
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : "推送失败")
+    } finally {
+      setIsSyncBusy(false)
     }
   }
 
@@ -402,6 +579,124 @@ export const DataSettings: React.FC = () => {
                       ))}
                     </>
                   )}
+                </ResultDetails>
+              </ResultMessage>
+            )}
+          </Section>
+        </SettingsColumn>
+
+        {/* 云同步：GitHub Gist */}
+        <SettingsColumn>
+          <Section>
+            <SectionTitle>云同步（GitHub Gist）</SectionTitle>
+            <Description>
+              使用私有 Gist 存储加密后的备份数据。默认自动拉取/防抖自动推送；
+              发生冲突时不会覆盖主文件。
+            </Description>
+
+            <StatusRow>
+              <StatusLabel>当前状态</StatusLabel>
+              <StatusValue>
+                {runtimeStatus.message ?? runtimeStatus.state}
+              </StatusValue>
+            </StatusRow>
+
+            <Description>
+              第一步：生成 Token（勾选 gist 权限）{" "}
+              <Link href={tokenPrefillUrl} target="_blank" rel="noreferrer">
+                Generate GitHub Token
+              </Link>
+            </Description>
+
+            <TextInput
+              value={token}
+              onChange={e => setToken(e.target.value)}
+              placeholder="粘贴 GitHub Personal Access Token (classic)"
+              type="password"
+              autoComplete="off"
+            />
+
+            <Button
+              variant="secondary"
+              onClick={() => void handleValidateToken()}
+              disabled={isSyncBusy || !token.trim()}
+            >
+              验证 Token
+            </Button>
+
+            <Description>
+              第二步：设置同步密码（PBKDF2 派生 AES-256 密钥；云端只保存 salt/iv
+              和密文）
+            </Description>
+
+            <TextInput
+              value={syncPassword}
+              onChange={e => setSyncPassword(e.target.value)}
+              placeholder="同步密码（建议强密码）"
+              type="password"
+              autoComplete="off"
+            />
+
+            <CheckboxRow>
+              <Checkbox
+                type="checkbox"
+                checked={rememberPassword}
+                onChange={e => setRememberPassword(e.target.checked)}
+              />
+              <CheckboxLabel>记住同步密码（不推荐）</CheckboxLabel>
+            </CheckboxRow>
+
+            {rememberPassword && (
+              <WarningBox>
+                <WarningIcon>
+                  <FontAwesomeIcon icon={faExclamationTriangle} />
+                </WarningIcon>
+                <span>
+                  同步密码将保存在浏览器本地存储中，可能被同机其他人获取。建议仅在个人设备启用。
+                </span>
+              </WarningBox>
+            )}
+
+            <Button
+              variant="primary"
+              onClick={() => void handleConnect()}
+              disabled={isSyncBusy || !token.trim()}
+            >
+              {syncEnabled ? "重新发现/连接" : "连接并自动发现"}
+            </Button>
+
+            <Button
+              variant="secondary"
+              onClick={() => void handleUnlockAndPull()}
+              disabled={isSyncBusy || !hasGist}
+            >
+              解锁并拉取
+            </Button>
+
+            <Button
+              variant="secondary"
+              onClick={() => void handleForcePush()}
+              disabled={isSyncBusy || !hasGist}
+            >
+              强制覆盖云端（推送）
+            </Button>
+
+            <Button
+              variant="secondary"
+              onClick={() => void handleDisconnect()}
+              disabled={isSyncBusy}
+            >
+              断开云同步
+            </Button>
+
+            {syncError && (
+              <ResultMessage success={false}>
+                <ResultIcon success={false}>
+                  <FontAwesomeIcon icon={faExclamationTriangle} />
+                </ResultIcon>
+                <ResultDetails>
+                  <strong>云同步错误</strong>
+                  <span>{syncError}</span>
                 </ResultDetails>
               </ResultMessage>
             )}

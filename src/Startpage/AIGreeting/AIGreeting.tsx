@@ -38,9 +38,12 @@ const GreetingText = styled.div<{ loading?: boolean }>`
   color: var(--default-color);
   text-align: center;
   padding: 12px 24px;
-  border: 2px solid var(--default-color);
-  background: var(--bg-color);
-  opacity: ${({ loading }) => (loading ? 0.6 : 0.9)};
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  opacity: ${({ loading }) => (loading ? 0.6 : 1)};
   transition: opacity 0.3s, transform 0.3s;
   max-width: 600px;
   line-height: 1.5;
@@ -53,13 +56,9 @@ const GreetingText = styled.div<{ loading?: boolean }>`
       transform: translateY(-10px);
     }
     to {
-      opacity: 0.9;
+      opacity: 1;
       transform: translateY(0);
     }
-  }
-
-  &:hover {
-    opacity: 1;
   }
 
   @media screen and (max-width: 900px) {
@@ -78,20 +77,21 @@ const GreetingText = styled.div<{ loading?: boolean }>`
 const RefreshButton = styled.button<{ spinning?: boolean }>`
   width: 36px;
   height: 36px;
-  border: 2px solid var(--default-color);
-  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--default-color);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: 0.2s;
-  opacity: 0.6;
 
   &:hover {
-    opacity: 1;
-    background: var(--accent-color);
-    color: var(--bg-color);
+    background: rgba(0, 0, 0, 0.5);
+    color: var(--accent-color);
   }
 
   &:disabled {

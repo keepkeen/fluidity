@@ -3,6 +3,13 @@
  * 导出和恢复所有用户数据
  */
 
+import { BROWSER_USAGE_STORAGE_KEY } from "./browserUsage"
+import {
+  getChromeLocal,
+  hasChromeStorage,
+  setChromeLocal,
+} from "./extensionStore"
+
 // 常量
 const AI_SETTINGS_KEY = "ai-settings"
 
@@ -19,11 +26,50 @@ const BACKUP_KEYS = {
   // AI 相关（不包含 apiKey）
   ai: [AI_SETTINGS_KEY, "ai-cache"],
   // 分析数据
-  analytics: ["link-analytics", "search-history"],
+  analytics: [
+    "link-analytics",
+    "search-history",
+    "fluidity.ai.recommendedSearchTags.v1",
+  ],
   // 报告相关
   reports: ["report-state", "report-cache", "todo-contributions"],
   // 待办
   todos: ["todos"],
+}
+
+// 需要从 chrome.storage.local 读取/写入的键（仅扩展环境存在）
+const CHROME_BACKUP_KEYS = [BROWSER_USAGE_STORAGE_KEY]
+
+const importChromeBackupKeys = async (
+  backup: BackupData,
+  options: { overwrite?: boolean },
+  result: ImportResult
+): Promise<void> => {
+  if (!hasChromeStorage()) return
+
+  const overwrite = options.overwrite ?? true
+  const chromeKeys = CHROME_BACKUP_KEYS.filter(k => k in backup.data)
+
+  for (const key of chromeKeys) {
+    try {
+      if (!overwrite) {
+        const existing = await getChromeLocal<unknown>(key)
+        if (existing !== undefined) {
+          result.skippedKeys.push(key)
+          continue
+        }
+      }
+
+      await setChromeLocal(key, backup.data[key])
+      result.importedKeys.push(key)
+    } catch (error) {
+      result.errors.push(
+        `导入 ${key} 失败: ${
+          error instanceof Error ? error.message : "未知错误"
+        }`
+      )
+    }
+  }
 }
 
 // 导出数据结构
@@ -135,10 +181,33 @@ export const exportData = (options: ExportOptions = {}): BackupData => {
 }
 
 /**
+ * 导出所有数据（包含 chrome.storage.local 中的扩展数据）
+ */
+export const exportDataAsync = async (
+  options: ExportOptions = {}
+): Promise<BackupData> => {
+  const base = exportData(options)
+
+  if (hasChromeStorage()) {
+    for (const key of CHROME_BACKUP_KEYS) {
+      const value = await getChromeLocal<unknown>(key)
+      if (value !== undefined) {
+        base.data[key] = value
+      }
+    }
+  }
+
+  base.metadata.totalKeys = Object.keys(base.data).length
+  return base
+}
+
+/**
  * 下载备份文件
  */
-export const downloadBackup = (options: ExportOptions = {}): void => {
-  const backup = exportData(options)
+export const downloadBackup = async (
+  options: ExportOptions = {}
+): Promise<void> => {
+  const backup = await exportDataAsync(options)
   const json = JSON.stringify(backup, null, 2)
   const blob = new Blob([json], { type: "application/json" })
   const url = URL.createObjectURL(blob)
@@ -267,6 +336,20 @@ export const importData = (
 }
 
 /**
+ * 导入数据（包含 chrome.storage.local 中的扩展数据）
+ */
+export const importDataAsync = async (
+  backup: BackupData,
+  options: { overwrite?: boolean; skipApiKey?: boolean } = {}
+): Promise<ImportResult> => {
+  const result = importData(backup, options)
+  await importChromeBackupKeys(backup, { overwrite: options.overwrite }, result)
+
+  result.success = result.errors.length === 0
+  return result
+}
+
+/**
  * 从文件读取并导入数据
  */
 export const importFromFile = (file: File): Promise<ImportResult> => {
@@ -288,8 +371,7 @@ export const importFromFile = (file: File): Promise<ImportResult> => {
           return
         }
 
-        const result = importData(backup)
-        resolve(result)
+        void importDataAsync(backup).then(resolve)
       } catch (error) {
         resolve({
           success: false,

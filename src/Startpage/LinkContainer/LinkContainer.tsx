@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useMemo,
   useEffect,
+  useRef,
 } from "react"
 
 import styled from "@emotion/styled"
@@ -24,6 +25,7 @@ import { SortableLink } from "../../components/SortableLink"
 import { linkGroup } from "../../data/data"
 import { AccordionSoundService } from "../../services/accordionSound"
 import { LinkAnalytics } from "../../services/analytics"
+import { navigateToLink } from "../../services/linkSearch"
 import * as Settings from "../Settings/settingsHandler"
 
 // 链接项容器 - 支持删除按钮和拖拽
@@ -199,12 +201,23 @@ interface DeleteConfirm {
 }
 
 export const LinkContainer = () => {
-  const [active, setActive] = useState(0)
+  const [active, setActive] = useState<number | null>(0)
   const [linkGroups, setLinkGroups] = useState(Settings.Links.getWithFallback())
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null)
   const [soundEnabled, setSoundEnabled] = useState(false)
-  const linkDisplaySettings = Settings.LinkDisplay.getWithFallback()
+  const [linkDisplaySettings, setLinkDisplaySettings] = useState(
+    Settings.LinkDisplay.getWithFallback()
+  )
   const displayMode = linkDisplaySettings.mode
+  const accordionRef = useRef<HTMLDivElement>(null)
+
+  // 自定义高度和宽度状态
+  const [customHeight, setCustomHeight] = useState<number | undefined>(
+    linkDisplaySettings.accordionHeight
+  )
+  const [customWidth, setCustomWidth] = useState<number | undefined>(
+    linkDisplaySettings.accordionContentWidth
+  )
 
   // 检测是否需要紧凑模式（群组过多时）
   // 每个手风琴宽度约 113px，当超过可用空间时启用紧凑模式
@@ -213,6 +226,45 @@ export const LinkContainer = () => {
   // 初始化音效状态
   useEffect(() => {
     setSoundEnabled(AccordionSoundService.isEnabled())
+  }, [])
+
+  // 点击外部收起手风琴
+  useEffect(() => {
+    if (displayMode !== "accordion") return
+
+    const handleClickOutside = (e: globalThis.MouseEvent) => {
+      // 如果点击的是手风琴区域内部，不处理
+      if (accordionRef.current?.contains(e.target as Node)) return
+      // 如果点击的是删除确认弹窗，不处理
+      if ((e.target as Element).closest("[data-confirm-dialog]")) return
+      // 收起所有手风琴
+      setActive(null)
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [displayMode])
+
+  // 高度变化处理
+  const handleHeightChange = useCallback((height: number) => {
+    setCustomHeight(height)
+    const newSettings = {
+      ...Settings.LinkDisplay.getWithFallback(),
+      accordionHeight: height,
+    }
+    Settings.LinkDisplay.set(newSettings)
+    setLinkDisplaySettings(newSettings)
+  }, [])
+
+  // 宽度变化处理
+  const handleWidthChange = useCallback((width: number) => {
+    setCustomWidth(width)
+    const newSettings = {
+      ...Settings.LinkDisplay.getWithFallback(),
+      accordionContentWidth: width,
+    }
+    Settings.LinkDisplay.set(newSettings)
+    setLinkDisplaySettings(newSettings)
   }, [])
 
   // 切换音效
@@ -229,12 +281,15 @@ export const LinkContainer = () => {
 
   // 生成当前活动组的链接 ID 列表
   const activeLinkIds = useMemo(() => {
-    if (!linkGroups[active]) return []
+    if (active === null || !linkGroups[active]) return []
     return linkGroups[active].links.map((_, idx) => generateLinkId(active, idx))
   }, [linkGroups, active])
 
   // 计算最大链接数量（用于手风琴高度计算）
-  const maxLinkCount = Math.max(...linkGroups.map(g => g.links.length), 1)
+  const maxLinkCount = useMemo(
+    () => Math.max(...linkGroups.map(g => g.links.length), 1),
+    [linkGroups]
+  )
 
   // 计算每个群组的最大标签长度
   const maxLabelLengths = useMemo(
@@ -261,11 +316,12 @@ export const LinkContainer = () => {
   )
 
   const handleLinkClick = useCallback(
-    (url: string, label: string, groupTitle: string) => {
-      // 追踪链接点击
-      LinkAnalytics.trackClick(url, label, groupTitle)
+    (e: React.MouseEvent, url: string, label: string, groupTitle: string) => {
+      e.preventDefault()
+      // 使用统一的链接导航服务
+      navigateToLink(url, label, groupTitle, linkDisplaySettings.openInNewTab)
     },
-    []
+    [linkDisplaySettings.openInNewTab]
   )
 
   // 删除链接
@@ -340,7 +396,7 @@ export const LinkContainer = () => {
     )
   }
 
-  // 悬浮卡片模式
+  // 悬浮卡片模式 - 也支持 / 键搜索
   if (displayMode === "hover-card") {
     return (
       <>
@@ -350,6 +406,7 @@ export const LinkContainer = () => {
             onDeleteLink={requestDelete}
           />
         </HoverCardContainer>
+        <CommandPalette linkGroups={linkGroups} onDeleteLink={requestDelete} />
         {DeleteConfirmDialog}
       </>
     )
@@ -359,6 +416,7 @@ export const LinkContainer = () => {
   return (
     <DragDropProvider linkGroups={linkGroups} onReorder={handleReorder}>
       <AccordionContainer
+        ref={accordionRef}
         soundEnabled={soundEnabled}
         compact={isCompact}
         onToggleSound={handleToggleSound}
@@ -373,8 +431,12 @@ export const LinkContainer = () => {
             maxLabelLength={maxLabelLengths[groupIndex]}
             soundEnabled={soundEnabled}
             compact={isCompact}
+            customHeight={customHeight}
+            customWidth={customWidth}
             onClick={() => setActive(groupIndex)}
             onMouseDown={e => middleMouseHandler(e, groupIndex)}
+            onWidthChange={handleWidthChange}
+            onHeightChange={handleHeightChange}
           >
             <SortableContext
               items={
@@ -391,12 +453,12 @@ export const LinkContainer = () => {
                   disabled={active !== groupIndex}
                 >
                   <LinkItemWrapper>
-                    <Favicon url={link.value} size={16} />
+                    <Favicon url={link.value} icon={link.icon} size={16} />
                     <LinkItem
                       tabIndex={active !== groupIndex ? -1 : undefined}
                       href={link.value}
-                      onClick={() =>
-                        handleLinkClick(link.value, link.label, group.title)
+                      onClick={e =>
+                        handleLinkClick(e, link.value, link.label, group.title)
                       }
                       title={link.label}
                     >
@@ -419,6 +481,7 @@ export const LinkContainer = () => {
           </AccordionGroup>
         ))}
       </AccordionContainer>
+      <CommandPalette linkGroups={linkGroups} onDeleteLink={requestDelete} />
       {DeleteConfirmDialog}
     </DragDropProvider>
   )

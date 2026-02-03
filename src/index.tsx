@@ -4,6 +4,8 @@ import { createRoot } from "react-dom/client"
 
 import App from "./App"
 import "./base/index.css"
+import { hasChromeStorage } from "./services/extensionStore"
+import { startGistAutoSync } from "./services/gistSync"
 
 // Register a lightweight service worker to enable offline use when served locally.
 // Skip in extension context to avoid chrome-extension:// caching issues.
@@ -27,3 +29,7 @@ createRoot(root).render(
     <App />
   </StrictMode>
 )
+
+if (hasChromeStorage()) {
+  startGistAutoSync("startpage")
+}

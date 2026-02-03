@@ -1,5 +1,5 @@
 /* eslint-disable jsx-a11y/no-autofocus */
-import React, { useState, useEffect, useCallback } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 
 import { css, Global } from "@emotion/react"
 import styled from "@emotion/styled"
@@ -15,32 +15,49 @@ import {
 } from "@fortawesome/free-solid-svg-icons"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
+import { SyncStatusDot } from "../components/SyncStatusDot"
 import { linkGroup, links as defaultLinks } from "../data/data"
+import * as Settings from "../Startpage/Settings/settingsHandler"
 
 // 存储键 - 与设置页面保持一致
 const STORAGE_KEY = "link-groups"
-const DESIGN_KEY = "design"
+const LAST_GROUP_KEY = "fluidity.popup.lastGroup"
 
-// 默认颜色
-const defaultColors: Record<string, string> = {
-  "--bg-color": "#24273A",
-  "--default-color": "#CAD3F5",
-  "--accent-color": "#C6A0F6",
-  "--accent-color2": "#8AADF4",
+// 颜色变量别名映射（新变量名 -> 旧变量名）
+const COLOR_ALIASES: Record<string, string> = {
+  "--bg-primary": "--bg-color",
+  "--text-primary": "--default-color",
+  "--text-secondary": "--secondary-color",
+  "--border-default": "--border-color",
+  "--accent": "--accent-color",
+  "--accent-hover": "--accent-color2",
 }
 
-// 主题类型
-interface Theme {
-  name: string
-  colors: Record<string, string>
-  image: string
+// Apple-ish base palette fallback (used when theme isn't configured)
+const FALLBACK_COLORS: Record<string, string> = {
+  "--bg-primary": "#121215",
+  "--bg-secondary": "#1a1a20",
+  "--bg-hover": "#23232b",
+  "--text-primary": "#f3f4f6",
+  "--text-secondary": "#cbd5e1",
+  "--border-default": "rgba(255,255,255,0.10)",
+  "--accent": "#8ab4ff",
+  "--accent-hover": "#a7c4ff",
+}
+
+const applyColors = (colors: Record<string, string>): void => {
+  const root = document.documentElement
+  Object.entries(colors).forEach(([key, value]) => {
+    root.style.setProperty(key, value)
+    const alias = COLOR_ALIASES[key]
+    if (alias) root.style.setProperty(alias, value)
+  })
 }
 
 // 获取存储的链接
 const getStoredLinks = (): linkGroup[] => {
   try {
-    const data = localStorage.getItem(STORAGE_KEY)
-    return data ? (JSON.parse(data) as linkGroup[]) : defaultLinks
+    return Settings.Links.getWithFallback()
   } catch {
     return defaultLinks
   }
@@ -48,32 +65,26 @@ const getStoredLinks = (): linkGroup[] => {
 
 // 保存链接
 const saveLinks = (links: linkGroup[]) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(links))
-}
-
-// 获取颜色设置 - 从 design 中读取
-const getColors = (): Record<string, string> => {
-  try {
-    const data = localStorage.getItem(DESIGN_KEY)
-    if (data) {
-      const design = JSON.parse(data) as Theme
-      return { ...defaultColors, ...design.colors }
-    }
-    return defaultColors
-  } catch {
-    return defaultColors
-  }
+  Settings.Links.set(links)
 }
 
 // 样式组件
 const Container = styled.div`
-  width: 320px;
-  max-height: 480px;
-  overflow-y: auto;
-  background: var(--bg-color);
-  color: var(--default-color);
-  font-family: "Fira Code", monospace;
+  width: 380px;
+  max-height: 600px;
+  overflow: hidden;
+  background: var(--bg-primary, var(--bg-color));
+  color: var(--text-primary, var(--default-color));
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-size: 13px;
+  letter-spacing: 0.2px;
+`
+
+const Scroll = styled.div`
+  max-height: 600px;
+  overflow-y: auto;
+  padding: 10px 12px 12px 12px;
 
   &::-webkit-scrollbar {
     width: 6px;
@@ -82,8 +93,8 @@ const Container = styled.div`
     background: transparent;
   }
   &::-webkit-scrollbar-thumb {
-    background: var(--default-color);
-    opacity: 0.3;
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
   }
 `
 
@@ -91,85 +102,173 @@ const Header = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--default-color);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-default, rgba(255, 255, 255, 0.1));
   position: sticky;
   top: 0;
-  background: var(--bg-color);
+  background: rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(14px);
   z-index: 10;
 `
 
+const TitleRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`
+
 const Title = styled.h1`
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 650;
   margin: 0;
-  color: var(--accent-color);
+  color: var(--text-primary, var(--default-color));
 `
 
 const IconButton = styled.button`
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
   background: transparent;
   border: none;
-  color: var(--default-color);
+  color: var(--text-secondary, var(--default-color));
   cursor: pointer;
-  padding: 4px 8px;
-  opacity: 0.7;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: 0.2s;
 
   &:hover {
-    opacity: 1;
-    color: var(--accent-color);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary, var(--default-color));
+  }
+
+  &:active {
+    transform: translateY(0.5px);
   }
 `
 
-const GroupContainer = styled.div`
-  border-bottom: 1px solid var(--default-color);
-  opacity: 0.3;
+const SearchBar = styled.div`
+  padding: 8px 12px 0 12px;
+`
 
-  &:last-child {
-    border-bottom: none;
+const SearchInput = styled.input`
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.12));
+  color: var(--text-primary, var(--default-color));
+  font-size: 13px;
+
+  &::placeholder {
+    color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  }
+
+  &:focus {
+    outline: none;
+    border-color: rgba(138, 180, 255, 0.55);
+    box-shadow: 0 0 0 3px rgba(138, 180, 255, 0.18);
+  }
+`
+
+const Section = styled.div`
+  margin-top: 10px;
+`
+
+const SectionHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 4px 8px 4px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.65));
+  font-size: 12px;
+`
+
+const SectionTitle = styled.span`
+  font-weight: 600;
+`
+
+const Chip = styled.span`
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.12));
+  font-size: 11px;
+`
+
+const Card = styled.div`
+  border-radius: 14px;
+  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.12));
+  background: rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+`
+
+const GroupContainer = styled.div`
+  border-top: 1px solid var(--border-default, rgba(255, 255, 255, 0.08));
+
+  &:first-of-type {
+    border-top: none;
   }
 `
 
 const GroupHeader = styled.div`
   display: flex;
   align-items: center;
-  padding: 10px 16px;
+  padding: 12px 12px;
   cursor: pointer;
   transition: 0.2s;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.06);
   }
 `
 
 const GroupTitle = styled.span`
   flex: 1;
-  font-weight: 500;
+  font-weight: 650;
+  color: var(--text-primary, var(--default-color));
 `
 
 const GroupIcon = styled.span`
   margin-right: 8px;
-  font-size: 10px;
-  opacity: 0.6;
+  font-size: 11px;
+  opacity: 0.75;
+  color: var(--text-secondary, var(--default-color));
+`
+
+const GroupMeta = styled.span`
+  font-size: 11px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.65));
+`
+
+const ResultGroup = styled.span`
+  font-size: 11px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.65));
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.12));
+  background: rgba(255, 255, 255, 0.04);
+  white-space: nowrap;
 `
 
 const LinkList = styled.div<{ expanded: boolean }>`
-  max-height: ${({ expanded }) => (expanded ? "500px" : "0")};
+  max-height: ${({ expanded }) => (expanded ? "520px" : "0")};
   overflow: hidden;
-  transition: max-height 0.3s ease;
+  transition: max-height 0.28s ease;
 `
 
 const LinkItem = styled.div<{ isAdded?: boolean }>`
   display: flex;
   align-items: center;
-  padding: 8px 16px 8px 32px;
+  padding: 10px 12px 10px 32px;
   cursor: pointer;
   transition: 0.2s;
   background: ${({ isAdded }) =>
-    isAdded ? "rgba(255, 255, 255, 0.03)" : "transparent"};
+    isAdded ? "rgba(138, 180, 255, 0.10)" : "transparent"};
 
   &:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: ${({ isAdded }) =>
+      isAdded ? "rgba(138, 180, 255, 0.14)" : "rgba(255, 255, 255, 0.06)"};
   }
 `
 
@@ -178,55 +277,59 @@ const LinkLabel = styled.span`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--text-primary, var(--default-color));
 `
 
 const LinkActions = styled.div`
   display: flex;
   gap: 4px;
-  opacity: 0;
-  transition: 0.2s;
-
-  ${LinkItem}:hover & {
-    opacity: 1;
-  }
 `
 
-const DANGER_COLOR = "var(--accent-color2)"
-const DEFAULT_BTN_COLOR = "var(--default-color)"
+const DANGER_COLOR = "rgba(255, 100, 100, 0.95)"
+const DEFAULT_BTN_COLOR = "var(--text-secondary, rgba(255, 255, 255, 0.7))"
 
 const ActionBtn = styled.button<{ danger?: boolean }>`
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
   background: transparent;
   border: none;
   color: ${({ danger }) => (danger ? DANGER_COLOR : DEFAULT_BTN_COLOR)};
   cursor: pointer;
-  padding: 2px 6px;
-  font-size: 11px;
-  opacity: 0.7;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: 0.2s;
 
   &:hover {
-    opacity: 1;
-    color: ${({ danger }) => (danger ? DANGER_COLOR : "var(--accent-color)")};
+    background: rgba(255, 255, 255, 0.06);
+    color: ${({ danger }) =>
+      danger ? DANGER_COLOR : "var(--text-primary, var(--default-color))"};
+  }
+
+  &:active {
+    transform: translateY(0.5px);
   }
 `
 
 const AddButton = styled.div`
   display: flex;
   align-items: center;
-  padding: 8px 16px 8px 32px;
+  padding: 10px 12px 10px 32px;
   cursor: pointer;
-  opacity: 0.6;
   transition: 0.2s;
   font-size: 12px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.7));
 
   &:hover {
-    opacity: 1;
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary, var(--default-color));
   }
 `
 
 const AddIcon = styled.span`
   margin-right: 8px;
-  color: var(--accent-color);
+  color: var(--accent, var(--accent-color));
 `
 
 // 弹窗样式
@@ -236,7 +339,8 @@ const Modal = styled.div`
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(14px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -244,41 +348,53 @@ const Modal = styled.div`
 `
 
 const ModalContent = styled.div`
-  background: var(--bg-color);
-  border: 2px solid var(--default-color);
-  padding: 16px;
-  width: 280px;
+  background: rgba(18, 18, 21, 0.86);
+  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.12));
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  padding: 14px;
+  width: 304px;
+  border-radius: 16px;
 `
 
 const ModalTitle = styled.h3`
   margin: 0 0 12px 0;
-  font-size: 14px;
-  color: var(--accent-color);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary, var(--default-color));
+`
+
+const ModalSubtitle = styled.p`
+  margin: -6px 0 12px 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.65));
 `
 
 const Input = styled.input`
   width: 100%;
-  padding: 8px 10px;
-  background: transparent;
-  border: 1px solid var(--default-color);
-  color: var(--default-color);
-  font-size: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.12));
+  color: var(--text-primary, var(--default-color));
+  font-size: 13px;
   margin-bottom: 8px;
   box-sizing: border-box;
 
   &:focus {
     outline: none;
-    border-color: var(--accent-color);
+    border-color: rgba(138, 180, 255, 0.55);
+    box-shadow: 0 0 0 3px rgba(138, 180, 255, 0.18);
   }
 
   &::placeholder {
-    opacity: 0.5;
+    color: var(--text-secondary, rgba(255, 255, 255, 0.6));
   }
 `
 
 const UrlDisplay = styled.div`
   font-size: 11px;
-  opacity: 0.6;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.65));
   margin-bottom: 12px;
   word-break: break-all;
 `
@@ -289,20 +405,38 @@ const ButtonRow = styled.div`
   justify-content: flex-end;
 `
 
-const ACCENT_COLOR = "var(--accent-color)"
+const ACCENT_COLOR = "var(--accent, var(--accent-color))"
 
-const Button = styled.button<{ primary?: boolean }>`
-  padding: 6px 12px;
-  background: ${({ primary }) => (primary ? ACCENT_COLOR : "transparent")};
+const Button = styled.button<{ primary?: boolean; danger?: boolean }>`
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: ${({ primary, danger }) => {
+    if (danger) return "rgba(255, 100, 100, 0.12)"
+    if (primary) return ACCENT_COLOR
+    return "rgba(255, 255, 255, 0.06)"
+  }};
   border: 1px solid
-    ${({ primary }) => (primary ? ACCENT_COLOR : DEFAULT_BTN_COLOR)};
-  color: ${({ primary }) => (primary ? "var(--bg-color)" : DEFAULT_BTN_COLOR)};
-  font-size: 12px;
+    ${({ primary, danger }) => {
+      if (danger) return "rgba(255, 100, 100, 0.25)"
+      if (primary) return "transparent"
+      return "rgba(255, 255, 255, 0.12)"
+    }};
+  color: ${({ primary, danger }) => {
+    if (danger) return "rgba(255, 100, 100, 0.95)"
+    if (primary) return "rgba(18,18,21,0.95)"
+    return "var(--text-primary, var(--default-color))"
+  }};
+  font-size: 13px;
+  font-weight: 650;
   cursor: pointer;
   transition: 0.2s;
 
   &:hover {
-    opacity: 0.8;
+    transform: translateY(-0.5px);
+  }
+
+  &:active {
+    transform: translateY(0.5px);
   }
 `
 
@@ -310,24 +444,30 @@ const Toast = styled.div<{ visible: boolean }>`
   position: fixed;
   bottom: 16px;
   left: 50%;
-  transform: translateX(-50%);
-  background: var(--accent-color);
-  color: var(--bg-color);
-  padding: 8px 16px;
+  background: rgba(18, 18, 21, 0.92);
+  color: var(--text-primary, var(--default-color));
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
   font-size: 12px;
   opacity: ${({ visible }) => (visible ? 1 : 0)};
-  transition: opacity 0.3s;
+  transition: opacity 0.25s, transform 0.25s;
+  transform: ${({ visible }) =>
+    visible
+      ? "translateX(-50%) translateY(0)"
+      : "translateX(-50%) translateY(6px)"};
   z-index: 200;
+  pointer-events: none;
 `
 
 const CheckIcon = styled.span`
-  color: var(--accent-color);
+  color: var(--accent, var(--accent-color));
   margin-right: 6px;
   font-size: 11px;
 `
 
 const globalStyles = css`
-  @import url("https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&display=swap");
   * {
     margin: 0;
     padding: 0;
@@ -336,25 +476,75 @@ const globalStyles = css`
   body {
     margin: 0;
     padding: 0;
+    background: var(--bg-primary, var(--bg-color));
   }
 `
+
+const getHost = (url: string): string => {
+  try {
+    return new URL(url).host
+  } catch {
+    return url
+  }
+}
+
+interface CurrentTab {
+  id?: number
+  url: string
+  title: string
+}
+
+type CurrentTabState = CurrentTab | null
+
+const computeSearchScore = (options: {
+  query: string
+  groupTitle: string
+  label: string
+  value: string
+}): number => {
+  const { query, groupTitle, label, value } = options
+  const groupLower = groupTitle.toLowerCase()
+  const labelLower = label.toLowerCase()
+  const valueLower = value.toLowerCase()
+
+  const groupHit = groupLower.includes(query)
+  const labelHit = labelLower.includes(query)
+  const urlHit = valueLower.includes(query)
+
+  if (!groupHit && !labelHit && !urlHit) return -1
+
+  const labelScore = labelLower.startsWith(query) ? 4 : labelHit ? 3 : 0
+
+  let urlScore = 0
+  if (valueLower.includes(`://${query}`) || valueLower.includes(`.${query}`)) {
+    urlScore = 2
+  } else if (urlHit) {
+    urlScore = 1
+  }
+
+  return labelScore + urlScore + (groupHit ? 0.5 : 0)
+}
+
+interface SearchResult {
+  group: string
+  index: number
+  label: string
+  value: string
+  score: number
+}
 
 // 主组件
 export const Popup = () => {
   const [links, setLinks] = useState<linkGroup[]>([])
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
-  const [currentTab, setCurrentTab] = useState<{
-    url: string
-    title: string
-  } | null>(null)
-  const [colors, setColors] = useState(defaultColors)
+  const [currentTab, setCurrentTab] = useState<CurrentTabState>(null)
+  const [q, setQ] = useState("")
+  const [colors, setColors] = useState<Record<string, string>>(FALLBACK_COLORS)
 
-  // 添加弹窗状态
   const [showAddModal, setShowAddModal] = useState(false)
-  const [addToGroup, setAddToGroup] = useState("")
+  const [groupName, setGroupName] = useState("")
   const [newLinkName, setNewLinkName] = useState("")
 
-  // 编辑弹窗状态
   const [showEditModal, setShowEditModal] = useState(false)
   const [editingLink, setEditingLink] = useState<{
     group: string
@@ -362,17 +552,30 @@ export const Popup = () => {
     label: string
   } | null>(null)
 
-  // 新建群组弹窗状态
-  const [showNewGroupModal, setShowNewGroupModal] = useState(false)
-  const [newGroupName, setNewGroupName] = useState("")
+  const [confirmDelete, setConfirmDelete] = useState<{
+    group: string
+    index: number
+    label: string
+    url: string
+  } | null>(null)
 
-  // Toast 状态
   const [toast, setToast] = useState({ visible: false, message: "" })
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // 初始化
   useEffect(() => {
-    setLinks(getStoredLinks())
-    setColors(getColors())
+    const initialLinks = getStoredLinks()
+    setLinks(initialLinks)
+
+    const design = Settings.Design.getWithFallback()
+    setColors({ ...FALLBACK_COLORS, ...design.colors })
+
+    const lastGroup = localStorage.getItem(LAST_GROUP_KEY)
+    if (lastGroup && initialLinks.some(g => g.title === lastGroup)) {
+      setGroupName(lastGroup)
+    } else if (initialLinks[0]) {
+      setGroupName(initialLinks[0].title)
+    }
 
     // 获取当前标签页
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
@@ -380,288 +583,539 @@ export const Popup = () => {
       void chrome.tabs
         .query({ active: true, currentWindow: true })
         .then(tabs => {
-          if (tabs[0]) {
-            setCurrentTab({
-              url: tabs[0].url ?? "",
-              title: tabs[0].title ?? "",
-            })
-          }
+          if (tabs.length === 0) return
+          const tab = tabs[0]
+          setCurrentTab({
+            id: tab.id,
+            url: tab.url ?? "",
+            title: tab.title ?? "",
+          })
         })
+        .catch(() => undefined)
     }
+  }, [])
+
+  // 同步外部变更（跨页面）到 Popup
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY) setLinks(getStoredLinks())
+      if (e.key === "design") {
+        const design = Settings.Design.getWithFallback()
+        setColors({ ...FALLBACK_COLORS, ...design.colors })
+      }
+    }
+    window.addEventListener("storage", onStorage)
+    return () => window.removeEventListener("storage", onStorage)
   }, [])
 
   // 应用颜色
   useEffect(() => {
-    Object.entries(colors).forEach(([key, value]) => {
-      document.documentElement.style.setProperty(key, value)
-    })
+    applyColors(colors)
   }, [colors])
 
-  // 显示 Toast
-  const showToast = useCallback((message: string) => {
-    setToast({ visible: true, message })
-    setTimeout(() => setToast({ visible: false, message: "" }), 2000)
+  // 清理 Toast 定时器
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    }
   }, [])
 
-  // 切换群组展开
+  const showToast = (message: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    setToast({ visible: true, message })
+    toastTimerRef.current = setTimeout(() => {
+      setToast({ visible: false, message: "" })
+    }, 1900)
+  }
+
   const toggleGroup = (title: string) => {
+    if (q.trim()) return
     setExpandedGroups(prev => {
       const next = new Set(prev)
-      if (next.has(title)) {
-        next.delete(title)
-      } else {
-        next.add(title)
-      }
+      if (next.has(title)) next.delete(title)
+      else next.add(title)
       return next
     })
   }
 
-  // 打开链接
-  const openLink = (url: string) => {
+  const openLink = (url: string, options?: { newTab?: boolean }) => {
+    const newTab = options?.newTab ?? false
+    if (!url) return
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    if (typeof chrome !== "undefined" && chrome?.tabs) {
-      void chrome.tabs.create({ url })
+    if (typeof chrome === "undefined" || !chrome?.tabs) return
+
+    if (!newTab && currentTab?.id != null) {
+      void chrome.tabs.update(currentTab.id, { url }).finally(() => {
+        window.close()
+      })
+      return
     }
+
+    void chrome.tabs.create({ url }).finally(() => {
+      window.close()
+    })
   }
 
-  // 检查链接是否已添加
-  const isLinkAdded = (
-    url: string
-  ): { group: string; index: number } | null => {
+  const findLink = (url: string): { group: string; index: number } | null => {
     for (const group of links) {
       const index = group.links.findIndex(link => link.value === url)
-      if (index !== -1) {
-        return { group: group.title, index }
-      }
+      if (index !== -1) return { group: group.title, index }
     }
     return null
   }
 
-  // 打开添加弹窗
-  const openAddModal = (groupTitle: string) => {
+  const openAddModal = (groupTitle?: string) => {
     if (!currentTab) return
-    setAddToGroup(groupTitle)
+    const preferred = groupTitle ?? groupName
+    if (preferred.trim()) setGroupName(preferred.trim())
+    else if (links[0]) setGroupName(links[0].title)
+    else setGroupName("")
     setNewLinkName(currentTab.title)
     setShowAddModal(true)
   }
 
-  // 添加当前页面到群组
   const addCurrentPage = () => {
-    if (!currentTab || !addToGroup) return
+    if (!currentTab) return
+    if (!currentTab.url.trim()) {
+      showToast("这个页面暂时无法保存")
+      return
+    }
 
-    const newLinks = links.map(group => {
-      if (group.title === addToGroup) {
-        return {
-          ...group,
-          links: [
-            ...group.links,
-            { label: newLinkName || currentTab.title, value: currentTab.url },
-          ],
-        }
-      }
-      return group
-    })
+    const targetName = groupName.trim()
+    if (!targetName) {
+      showToast("请输入群组名称")
+      return
+    }
 
-    setLinks(newLinks)
-    saveLinks(newLinks)
+    const existing = findLink(currentTab.url)
+    if (existing) {
+      setExpandedGroups(prev => new Set([...Array.from(prev), existing.group]))
+      showToast(`已在「${existing.group}」里`)
+      setShowAddModal(false)
+      return
+    }
+
+    const finalLabel =
+      newLinkName.trim() || currentTab.title.trim() || getHost(currentTab.url)
+
+    const matchedGroup = links.find(
+      g => g.title.trim().toLowerCase() === targetName.toLowerCase()
+    )
+    const resolvedGroupTitle = matchedGroup?.title ?? targetName
+
+    const nextLinks = matchedGroup
+      ? links.map(group => {
+          if (group.title !== matchedGroup.title) return group
+          return {
+            ...group,
+            links: [
+              ...group.links,
+              { label: finalLabel, value: currentTab.url },
+            ],
+          }
+        })
+      : [
+          ...links,
+          {
+            title: targetName,
+            links: [{ label: finalLabel, value: currentTab.url }],
+          },
+        ]
+
+    setLinks(nextLinks)
+    saveLinks(nextLinks)
+    localStorage.setItem(LAST_GROUP_KEY, resolvedGroupTitle)
+    setGroupName(resolvedGroupTitle)
+    setExpandedGroups(
+      prev => new Set([...Array.from(prev), resolvedGroupTitle])
+    )
     setShowAddModal(false)
-    showToast(`已添加到 ${addToGroup}`)
+    showToast(`已添加到「${resolvedGroupTitle}」`)
   }
 
-  // 打开编辑弹窗
   const openEditModal = (group: string, index: number, label: string) => {
     setEditingLink({ group, index, label })
     setShowEditModal(true)
   }
 
-  // 保存编辑
   const saveEdit = () => {
     if (!editingLink) return
+    const label = editingLink.label.trim()
+    if (!label) {
+      showToast("名字不能为空")
+      return
+    }
 
-    const newLinks = links.map(group => {
-      if (group.title === editingLink.group) {
-        const newGroupLinks = [...group.links]
-        newGroupLinks[editingLink.index] = {
-          ...newGroupLinks[editingLink.index],
-          label: editingLink.label,
-        }
-        return { ...group, links: newGroupLinks }
+    const nextLinks = links.map(group => {
+      if (group.title !== editingLink.group) return group
+      const groupLinks = [...group.links]
+      groupLinks[editingLink.index] = {
+        ...groupLinks[editingLink.index],
+        label,
       }
-      return group
+      return { ...group, links: groupLinks }
     })
 
-    setLinks(newLinks)
-    saveLinks(newLinks)
+    setLinks(nextLinks)
+    saveLinks(nextLinks)
     setShowEditModal(false)
     showToast("已保存")
   }
 
-  // 删除链接
   const deleteLink = (groupTitle: string, index: number) => {
-    const newLinks = links.map(group => {
-      if (group.title === groupTitle) {
-        const newGroupLinks = [...group.links]
-        newGroupLinks.splice(index, 1)
-        return { ...group, links: newGroupLinks }
-      }
-      return group
+    const nextLinks = links.map(group => {
+      if (group.title !== groupTitle) return group
+      const groupLinks = [...group.links]
+      groupLinks.splice(index, 1)
+      return { ...group, links: groupLinks }
     })
-
-    setLinks(newLinks)
-    saveLinks(newLinks)
+    setLinks(nextLinks)
+    saveLinks(nextLinks)
     showToast("已删除")
   }
 
-  // 打开设置页
   const openSettings = () => {
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    if (typeof chrome !== "undefined" && chrome?.tabs && chrome?.runtime) {
-      void chrome.tabs.create({ url: chrome.runtime.getURL("index.html") })
-    }
-  }
-
-  // 新建群组并添加当前页面
-  const createNewGroup = () => {
-    if (!newGroupName.trim() || !currentTab) return
-
-    // 检查群组名是否已存在
-    if (links.some(g => g.title === newGroupName.trim())) {
-      showToast("群组名称已存在")
+    if (typeof chrome === "undefined" || !chrome?.tabs || !chrome?.runtime) {
       return
     }
-
-    const newGroup: linkGroup = {
-      title: newGroupName.trim(),
-      links: [{ label: currentTab.title, value: currentTab.url }],
-    }
-
-    const newLinks = [...links, newGroup]
-    setLinks(newLinks)
-    saveLinks(newLinks)
-    setShowNewGroupModal(false)
-    setNewGroupName("")
-    // 自动展开新群组
-    setExpandedGroups(prev => new Set([...Array.from(prev), newGroup.title]))
-    showToast(`已创建群组 "${newGroup.title}"`)
+    void chrome.tabs.create({ url: chrome.runtime.getURL("index.html") })
   }
 
-  // 当前页面是否已添加
-  const currentPageAdded = currentTab ? isLinkAdded(currentTab.url) : null
+  useEffect(() => {
+    const hasModal = showAddModal || showEditModal || Boolean(confirmDelete)
+    if (!hasModal) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return
+      setShowAddModal(false)
+      setShowEditModal(false)
+      setConfirmDelete(null)
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [confirmDelete, showAddModal, showEditModal])
+
+  const currentPageAdded = currentTab ? findLink(currentTab.url) : null
+
+  const filteredGroups = useMemo(() => {
+    const query = q.trim().toLowerCase()
+    if (!query) return links
+    return links
+      .map(group => {
+        const titleMatches = group.title.toLowerCase().includes(query)
+        const matchingLinks = group.links.filter(
+          l =>
+            l.label.toLowerCase().includes(query) ||
+            l.value.toLowerCase().includes(query)
+        )
+        if (titleMatches) return group
+        if (matchingLinks.length === 0) return null
+        return { ...group, links: matchingLinks }
+      })
+      .filter(Boolean) as linkGroup[]
+  }, [links, q])
+
+  const searchResults = useMemo((): SearchResult[] => {
+    const query = q.trim().toLowerCase()
+    if (!query) return []
+
+    const results: SearchResult[] = []
+
+    for (const group of links) {
+      const groupTitle = group.title
+      for (let index = 0; index < group.links.length; index += 1) {
+        const link = group.links[index]
+        const score = computeSearchScore({
+          query,
+          groupTitle,
+          label: link.label,
+          value: link.value,
+        })
+        if (score < 0) continue
+        results.push({
+          group: groupTitle,
+          index,
+          label: link.label,
+          value: link.value,
+          score,
+        })
+      }
+    }
+
+    return results
+      .sort((a, b) => b.score - a.score || a.label.localeCompare(b.label))
+      .slice(0, 80)
+  }, [links, q])
 
   return (
     <>
       <Global styles={globalStyles} />
       <Container>
         <Header>
-          <Title>Fluidity</Title>
+          <TitleRow>
+            <SyncStatusDot />
+            <Title>Fluidity</Title>
+          </TitleRow>
           <IconButton onClick={openSettings} title="打开设置">
             <FontAwesomeIcon icon={faCog} />
           </IconButton>
         </Header>
 
-        {links.map(group => (
-          <GroupContainer key={group.title}>
-            <GroupHeader onClick={() => toggleGroup(group.title)}>
-              <GroupIcon>
-                <FontAwesomeIcon
-                  icon={
-                    expandedGroups.has(group.title)
-                      ? faChevronDown
-                      : faChevronRight
-                  }
-                />
-              </GroupIcon>
-              <GroupTitle>{group.title}</GroupTitle>
-            </GroupHeader>
+        <SearchBar>
+          <SearchInput
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            placeholder="搜索链接或群组"
+          />
+        </SearchBar>
 
-            <LinkList expanded={expandedGroups.has(group.title)}>
-              {group.links.map((link, index) => {
-                const isCurrentPage = currentTab?.url === link.value
-                return (
-                  <LinkItem key={link.value} isAdded={isCurrentPage}>
-                    {isCurrentPage && (
-                      <CheckIcon>
-                        <FontAwesomeIcon icon={faCheck} />
-                      </CheckIcon>
-                    )}
-                    <LinkLabel onClick={() => openLink(link.value)}>
-                      {link.label}
-                    </LinkLabel>
-                    <LinkActions>
-                      <ActionBtn
-                        onClick={e => {
-                          e.stopPropagation()
-                          openEditModal(group.title, index, link.label)
-                        }}
-                        title="重命名"
-                      >
-                        <FontAwesomeIcon icon={faPen} />
-                      </ActionBtn>
-                      <ActionBtn
-                        danger
-                        onClick={e => {
-                          e.stopPropagation()
-                          deleteLink(group.title, index)
-                        }}
-                        title="删除"
-                      >
-                        <FontAwesomeIcon icon={faTrash} />
-                      </ActionBtn>
-                      <ActionBtn
-                        onClick={e => {
-                          e.stopPropagation()
-                          openLink(link.value)
-                        }}
-                        title="在新标签页打开"
-                      >
-                        <FontAwesomeIcon icon={faExternalLinkAlt} />
-                      </ActionBtn>
-                    </LinkActions>
-                  </LinkItem>
-                )
-              })}
+        <Scroll>
+          {currentTab && (
+            <Section>
+              <Card>
+                <GroupHeader
+                  onClick={() => {
+                    if (currentPageAdded) {
+                      setExpandedGroups(
+                        prev =>
+                          new Set([...Array.from(prev), currentPageAdded.group])
+                      )
+                      showToast(`已在「${currentPageAdded.group}」里`)
+                      return
+                    }
+                    openAddModal()
+                  }}
+                >
+                  <GroupIcon>
+                    <FontAwesomeIcon
+                      icon={currentPageAdded ? faCheck : faPlus}
+                    />
+                  </GroupIcon>
+                  <GroupTitle>{currentTab.title || "保存当前页面"}</GroupTitle>
+                  <GroupMeta>{getHost(currentTab.url)}</GroupMeta>
+                </GroupHeader>
+              </Card>
+            </Section>
+          )}
 
-              {currentTab && !currentPageAdded && (
-                <AddButton onClick={() => openAddModal(group.title)}>
-                  <AddIcon>
-                    <FontAwesomeIcon icon={faPlus} />
-                  </AddIcon>
-                  添加当前页面
-                </AddButton>
-              )}
-            </LinkList>
-          </GroupContainer>
-        ))}
+          {q.trim() ? (
+            <Section>
+              <SectionHeader>
+                <SectionTitle>搜索结果</SectionTitle>
+                <Chip>{searchResults.length}</Chip>
+              </SectionHeader>
+              <Card>
+                {searchResults.length === 0 && (
+                  <GroupHeader>
+                    <GroupIcon>
+                      <FontAwesomeIcon icon={faChevronRight} />
+                    </GroupIcon>
+                    <GroupTitle>没有匹配的结果</GroupTitle>
+                    <GroupMeta>换个关键词试试</GroupMeta>
+                  </GroupHeader>
+                )}
+                {searchResults.map(result => {
+                  const isCurrentPage = currentTab?.url === result.value
+                  return (
+                    <GroupContainer
+                      key={`${result.group}:${result.index}:${result.value}`}
+                    >
+                      <LinkItem isAdded={isCurrentPage}>
+                        {isCurrentPage && (
+                          <CheckIcon>
+                            <FontAwesomeIcon icon={faCheck} />
+                          </CheckIcon>
+                        )}
+                        <LinkLabel onClick={() => openLink(result.value)}>
+                          {result.label}
+                        </LinkLabel>
+                        <ResultGroup title={result.group}>
+                          {result.group}
+                        </ResultGroup>
+                        <LinkActions>
+                          <ActionBtn
+                            onClick={e => {
+                              e.stopPropagation()
+                              openEditModal(
+                                result.group,
+                                result.index,
+                                result.label
+                              )
+                            }}
+                            title="重命名"
+                          >
+                            <FontAwesomeIcon icon={faPen} />
+                          </ActionBtn>
+                          <ActionBtn
+                            danger
+                            onClick={e => {
+                              e.stopPropagation()
+                              setConfirmDelete({
+                                group: result.group,
+                                index: result.index,
+                                label: result.label,
+                                url: result.value,
+                              })
+                            }}
+                            title="删除"
+                          >
+                            <FontAwesomeIcon icon={faTrash} />
+                          </ActionBtn>
+                          <ActionBtn
+                            onClick={e => {
+                              e.stopPropagation()
+                              openLink(result.value, { newTab: true })
+                            }}
+                            title="在新标签页打开"
+                          >
+                            <FontAwesomeIcon icon={faExternalLinkAlt} />
+                          </ActionBtn>
+                        </LinkActions>
+                      </LinkItem>
+                    </GroupContainer>
+                  )
+                })}
+              </Card>
+            </Section>
+          ) : (
+            <Section>
+              <SectionHeader>
+                <SectionTitle>群组</SectionTitle>
+                <Chip>{filteredGroups.length}</Chip>
+              </SectionHeader>
 
-        {/* 新建群组按钮 */}
-        {currentTab && !currentPageAdded && (
-          <AddButton
-            onClick={() => {
-              setNewGroupName("")
-              setShowNewGroupModal(true)
-            }}
-            style={{
-              borderTop: "1px solid var(--default-color)",
-              opacity: 0.5,
-            }}
-          >
-            <AddIcon>
-              <FontAwesomeIcon icon={faPlus} />
-            </AddIcon>
-            新建群组并添加当前页面
-          </AddButton>
-        )}
+              <Card>
+                {filteredGroups.length === 0 && (
+                  <GroupHeader onClick={() => openAddModal()}>
+                    <GroupIcon>
+                      <FontAwesomeIcon icon={faPlus} />
+                    </GroupIcon>
+                    <GroupTitle>新建一个群组</GroupTitle>
+                    <GroupMeta>从这里开始整理</GroupMeta>
+                  </GroupHeader>
+                )}
 
-        {/* 添加弹窗 */}
+                {filteredGroups.map(group => {
+                  const isExpanded = expandedGroups.has(group.title)
+                  return (
+                    <GroupContainer key={group.title}>
+                      <GroupHeader onClick={() => toggleGroup(group.title)}>
+                        <GroupIcon>
+                          <FontAwesomeIcon
+                            icon={isExpanded ? faChevronDown : faChevronRight}
+                          />
+                        </GroupIcon>
+                        <GroupTitle>{group.title}</GroupTitle>
+                        <GroupMeta>{group.links.length}</GroupMeta>
+                      </GroupHeader>
+
+                      <LinkList expanded={isExpanded}>
+                        {group.links.map((link, index) => {
+                          const isCurrentPage = currentTab?.url === link.value
+                          return (
+                            <LinkItem key={link.value} isAdded={isCurrentPage}>
+                              {isCurrentPage && (
+                                <CheckIcon>
+                                  <FontAwesomeIcon icon={faCheck} />
+                                </CheckIcon>
+                              )}
+                              <LinkLabel onClick={() => openLink(link.value)}>
+                                {link.label}
+                              </LinkLabel>
+                              <LinkActions>
+                                <ActionBtn
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    openEditModal(
+                                      group.title,
+                                      index,
+                                      link.label
+                                    )
+                                  }}
+                                  title="重命名"
+                                >
+                                  <FontAwesomeIcon icon={faPen} />
+                                </ActionBtn>
+                                <ActionBtn
+                                  danger
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    setConfirmDelete({
+                                      group: group.title,
+                                      index,
+                                      label: link.label,
+                                      url: link.value,
+                                    })
+                                  }}
+                                  title="删除"
+                                >
+                                  <FontAwesomeIcon icon={faTrash} />
+                                </ActionBtn>
+                                <ActionBtn
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    openLink(link.value, { newTab: true })
+                                  }}
+                                  title="在新标签页打开"
+                                >
+                                  <FontAwesomeIcon icon={faExternalLinkAlt} />
+                                </ActionBtn>
+                              </LinkActions>
+                            </LinkItem>
+                          )
+                        })}
+
+                        {currentTab && !currentPageAdded && (
+                          <AddButton onClick={() => openAddModal(group.title)}>
+                            <AddIcon>
+                              <FontAwesomeIcon icon={faPlus} />
+                            </AddIcon>
+                            添加当前页面到这里
+                          </AddButton>
+                        )}
+                      </LinkList>
+                    </GroupContainer>
+                  )
+                })}
+
+                {currentTab && !currentPageAdded && (
+                  <GroupContainer key="__new_group">
+                    <AddButton onClick={() => openAddModal()}>
+                      <AddIcon>
+                        <FontAwesomeIcon icon={faPlus} />
+                      </AddIcon>
+                      新建群组并保存当前页面
+                    </AddButton>
+                  </GroupContainer>
+                )}
+              </Card>
+            </Section>
+          )}
+        </Scroll>
+
         {showAddModal && currentTab && (
           <Modal onClick={() => setShowAddModal(false)}>
             <ModalContent onClick={e => e.stopPropagation()}>
-              <ModalTitle>添加到 {addToGroup}</ModalTitle>
+              <ModalTitle>保存当前页面</ModalTitle>
+              <ModalSubtitle>
+                选择一个群组，并给它一个更好记的名字。
+              </ModalSubtitle>
+              <Input
+                list="popup-group-options"
+                value={groupName}
+                onChange={e => setGroupName(e.target.value)}
+                placeholder="群组名称（可直接输入新群组）"
+                autoFocus
+              />
+              <datalist id="popup-group-options">
+                {links.map(group => (
+                  <option key={group.title} value={group.title} />
+                ))}
+              </datalist>
               <Input
                 value={newLinkName}
                 onChange={e => setNewLinkName(e.target.value)}
                 placeholder="链接名称"
-                autoFocus
               />
               <UrlDisplay>{currentTab.url}</UrlDisplay>
               <ButtonRow>
@@ -674,11 +1128,11 @@ export const Popup = () => {
           </Modal>
         )}
 
-        {/* 编辑弹窗 */}
         {showEditModal && editingLink && (
           <Modal onClick={() => setShowEditModal(false)}>
             <ModalContent onClick={e => e.stopPropagation()}>
               <ModalTitle>重命名链接</ModalTitle>
+              <ModalSubtitle>名字短一点，会更干净。</ModalSubtitle>
               <Input
                 value={editingLink.label}
                 onChange={e =>
@@ -697,24 +1151,24 @@ export const Popup = () => {
           </Modal>
         )}
 
-        {/* 新建群组弹窗 */}
-        {showNewGroupModal && currentTab && (
-          <Modal onClick={() => setShowNewGroupModal(false)}>
+        {confirmDelete && (
+          <Modal onClick={() => setConfirmDelete(null)}>
             <ModalContent onClick={e => e.stopPropagation()}>
-              <ModalTitle>新建群组</ModalTitle>
-              <Input
-                value={newGroupName}
-                onChange={e => setNewGroupName(e.target.value)}
-                placeholder="群组名称"
-                autoFocus
-              />
-              <UrlDisplay>将添加当前页面: {currentTab.title}</UrlDisplay>
+              <ModalTitle>删除这个链接？</ModalTitle>
+              <ModalSubtitle>
+                它将从「{confirmDelete.group}」移除。你可以稍后重新添加。
+              </ModalSubtitle>
+              <UrlDisplay>{confirmDelete.url}</UrlDisplay>
               <ButtonRow>
-                <Button onClick={() => setShowNewGroupModal(false)}>
-                  取消
-                </Button>
-                <Button primary onClick={createNewGroup}>
-                  创建
+                <Button onClick={() => setConfirmDelete(null)}>取消</Button>
+                <Button
+                  danger
+                  onClick={() => {
+                    deleteLink(confirmDelete.group, confirmDelete.index)
+                    setConfirmDelete(null)
+                  }}
+                >
+                  删除
                 </Button>
               </ButtonRow>
             </ModalContent>

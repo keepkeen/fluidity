@@ -48,7 +48,8 @@
     ],
     "rules": {
       "check-file/folder-naming-convention": "off",
-      "react/jsx-max-depth": "off"
+      "react/jsx-max-depth": "off",
+      "react/prop-types": "off"
     }
   }
 }

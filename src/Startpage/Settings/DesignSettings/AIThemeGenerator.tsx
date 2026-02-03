@@ -26,7 +26,7 @@ const Title = styled.h3`
 `
 
 const TitleIcon = styled.span`
-  color: var(--accent-color);
+  color: var(--accent);
 `
 
 const FormGroup = styled.div`
@@ -46,7 +46,7 @@ const TextArea = styled.textarea`
   padding: 10px 12px;
   background: transparent;
   border: 2px solid var(--border-color);
-  color: var(--default-color);
+  color: var(--text-primary);
   font-size: 0.9rem;
   font-family: inherit;
   resize: vertical;
@@ -54,18 +54,17 @@ const TextArea = styled.textarea`
 
   &:focus {
     outline: none;
-    border-color: var(--accent-color);
+    border-color: var(--border-active);
   }
 
   &::placeholder {
-    color: var(--default-color);
-    opacity: 0.5;
+    color: var(--text-secondary);
   }
 `
 
 const CharCount = styled.span`
   font-size: 0.75rem;
-  opacity: 0.6;
+  color: var(--text-secondary);
   float: right;
   margin-top: 4px;
 `
@@ -73,30 +72,30 @@ const CharCount = styled.span`
 const Select = styled.select`
   width: 100%;
   padding: 10px 12px;
-  background: var(--bg-color);
+  background: var(--bg-primary);
   border: 2px solid var(--border-color);
-  color: var(--default-color);
+  color: var(--text-primary);
   font-size: 0.9rem;
   cursor: pointer;
   box-sizing: border-box;
 
   &:focus {
     outline: none;
-    border-color: var(--accent-color);
+    border-color: var(--border-active);
   }
 
   option {
-    background: var(--bg-color);
-    color: var(--default-color);
+    background: var(--bg-primary);
+    color: var(--text-primary);
   }
 `
 
 const GenerateButton = styled.button`
   width: 100%;
   padding: 12px;
-  background: var(--accent-color);
-  border: 2px solid var(--default-color);
-  color: var(--bg-color);
+  background: var(--accent);
+  border: 2px solid var(--text-primary);
+  color: var(--accent-text);
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
@@ -107,7 +106,7 @@ const GenerateButton = styled.button`
   gap: 8px;
 
   &:hover:not(:disabled) {
-    background: var(--accent-color2);
+    background: var(--accent-hover);
   }
 
   &:disabled {
@@ -124,7 +123,7 @@ const PreviewContainer = styled.div`
 
 const PreviewTitle = styled.div`
   font-size: 0.85rem;
-  opacity: 0.7;
+  color: var(--text-secondary);
   margin-bottom: 12px;
 `
 
@@ -134,43 +133,55 @@ const ThemeName = styled.div`
   margin-bottom: 16px;
 `
 
+const ColorSection = styled.div`
+  margin-bottom: 16px;
+`
+
+const ColorSectionTitle = styled.div`
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-color);
+`
+
 const ColorGrid = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 12px;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
 
   @media screen and (max-width: 600px) {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
 `
 
 const ColorItem = styled.div`
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 `
 
 const ColorSwatch = styled.div<{ color: string }>`
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   background: ${({ color }) => color};
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--text-primary);
   flex-shrink: 0;
 `
 
 const ColorInfo = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 `
 
 const ColorLabel = styled.span`
-  font-size: 0.75rem;
-  opacity: 0.7;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
 `
 
 const ColorValue = styled.span`
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-family: monospace;
 `
 
@@ -183,11 +194,11 @@ const ButtonRow = styled.div`
 const ActionButton = styled.button<{ variant?: "primary" | "secondary" }>`
   flex: 1;
   padding: 10px 16px;
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--text-primary);
   background: ${({ variant }) =>
-    variant === "primary" ? "var(--accent-color)" : "transparent"};
+    variant === "primary" ? "var(--accent)" : "transparent"};
   color: ${({ variant }) =>
-    variant === "primary" ? "var(--bg-color)" : "var(--default-color)"};
+    variant === "primary" ? "var(--accent-text)" : "var(--text-primary)"};
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
@@ -195,18 +206,18 @@ const ActionButton = styled.button<{ variant?: "primary" | "secondary" }>`
 
   &:hover {
     background: ${({ variant }) =>
-      variant === "primary" ? "var(--accent-color2)" : "var(--accent-color)"};
-    color: var(--bg-color);
+      variant === "primary" ? "var(--accent-hover)" : "var(--accent)"};
+    color: var(--accent-text);
   }
 `
 
 const ErrorMessage = styled.div`
   margin-top: 12px;
   padding: 10px 12px;
-  border: 2px solid var(--accent-color2);
+  border: 2px solid var(--accent-hover);
   background: rgba(255, 100, 100, 0.1);
   font-size: 0.85rem;
-  color: var(--accent-color2);
+  color: var(--accent-hover);
 `
 
 interface Props {
@@ -250,12 +261,19 @@ export const AIThemeGenerator: React.FC<Props> = ({
     name: aiTheme.name,
     image: currentImage,
     colors: {
-      "--bg-color": aiTheme.bgColor,
-      "--default-color": aiTheme.defaultColor,
-      "--secondary-color": aiTheme.secondaryColor,
-      "--border-color": aiTheme.borderColor,
-      "--accent-color": aiTheme.accentColor,
-      "--accent-color2": aiTheme.accentColor2,
+      "--bg-primary": aiTheme.bgPrimary,
+      "--bg-secondary": aiTheme.bgSecondary,
+      "--bg-hover": aiTheme.bgHover,
+      "--text-primary": aiTheme.textPrimary,
+      "--text-secondary": aiTheme.textSecondary,
+      "--text-muted": aiTheme.textMuted,
+      "--border-default": aiTheme.borderDefault,
+      "--border-active": aiTheme.borderActive,
+      "--accent": aiTheme.accent,
+      "--accent-hover": aiTheme.accentHover,
+      "--accent-text": aiTheme.accentText,
+      "--success": aiTheme.success,
+      "--glow": aiTheme.glow,
     },
   })
 
@@ -318,55 +336,124 @@ export const AIThemeGenerator: React.FC<Props> = ({
           <PreviewTitle>预览</PreviewTitle>
           <ThemeName>{generatedTheme.name}</ThemeName>
 
-          <ColorGrid>
-            <ColorItem>
-              <ColorSwatch color={generatedTheme.bgColor} />
-              <ColorInfo>
-                <ColorLabel>背景色</ColorLabel>
-                <ColorValue>{generatedTheme.bgColor}</ColorValue>
-              </ColorInfo>
-            </ColorItem>
+          {/* 背景层 */}
+          <ColorSection>
+            <ColorSectionTitle>背景层</ColorSectionTitle>
+            <ColorGrid>
+              <ColorItem>
+                <ColorSwatch color={generatedTheme.bgPrimary} />
+                <ColorInfo>
+                  <ColorLabel>页面背景</ColorLabel>
+                  <ColorValue>{generatedTheme.bgPrimary}</ColorValue>
+                </ColorInfo>
+              </ColorItem>
+              <ColorItem>
+                <ColorSwatch color={generatedTheme.bgSecondary} />
+                <ColorInfo>
+                  <ColorLabel>卡片背景</ColorLabel>
+                  <ColorValue>{generatedTheme.bgSecondary}</ColorValue>
+                </ColorInfo>
+              </ColorItem>
+              <ColorItem>
+                <ColorSwatch color={generatedTheme.bgHover} />
+                <ColorInfo>
+                  <ColorLabel>悬停背景</ColorLabel>
+                  <ColorValue>{generatedTheme.bgHover}</ColorValue>
+                </ColorInfo>
+              </ColorItem>
+            </ColorGrid>
+          </ColorSection>
 
-            <ColorItem>
-              <ColorSwatch color={generatedTheme.defaultColor} />
-              <ColorInfo>
-                <ColorLabel>主要文字</ColorLabel>
-                <ColorValue>{generatedTheme.defaultColor}</ColorValue>
-              </ColorInfo>
-            </ColorItem>
+          {/* 文字层 */}
+          <ColorSection>
+            <ColorSectionTitle>文字层</ColorSectionTitle>
+            <ColorGrid>
+              <ColorItem>
+                <ColorSwatch color={generatedTheme.textPrimary} />
+                <ColorInfo>
+                  <ColorLabel>主文字</ColorLabel>
+                  <ColorValue>{generatedTheme.textPrimary}</ColorValue>
+                </ColorInfo>
+              </ColorItem>
+              <ColorItem>
+                <ColorSwatch color={generatedTheme.textSecondary} />
+                <ColorInfo>
+                  <ColorLabel>次文字</ColorLabel>
+                  <ColorValue>{generatedTheme.textSecondary}</ColorValue>
+                </ColorInfo>
+              </ColorItem>
+              <ColorItem>
+                <ColorSwatch color={generatedTheme.textMuted} />
+                <ColorInfo>
+                  <ColorLabel>弱化文字</ColorLabel>
+                  <ColorValue>{generatedTheme.textMuted}</ColorValue>
+                </ColorInfo>
+              </ColorItem>
+            </ColorGrid>
+          </ColorSection>
 
-            <ColorItem>
-              <ColorSwatch color={generatedTheme.secondaryColor} />
-              <ColorInfo>
-                <ColorLabel>次要文字</ColorLabel>
-                <ColorValue>{generatedTheme.secondaryColor}</ColorValue>
-              </ColorInfo>
-            </ColorItem>
+          {/* 强调层 */}
+          <ColorSection>
+            <ColorSectionTitle>强调层</ColorSectionTitle>
+            <ColorGrid>
+              <ColorItem>
+                <ColorSwatch color={generatedTheme.accent} />
+                <ColorInfo>
+                  <ColorLabel>强调色</ColorLabel>
+                  <ColorValue>{generatedTheme.accent}</ColorValue>
+                </ColorInfo>
+              </ColorItem>
+              <ColorItem>
+                <ColorSwatch color={generatedTheme.accentHover} />
+                <ColorInfo>
+                  <ColorLabel>强调悬停</ColorLabel>
+                  <ColorValue>{generatedTheme.accentHover}</ColorValue>
+                </ColorInfo>
+              </ColorItem>
+              <ColorItem>
+                <ColorSwatch color={generatedTheme.accentText} />
+                <ColorInfo>
+                  <ColorLabel>强调上文字</ColorLabel>
+                  <ColorValue>{generatedTheme.accentText}</ColorValue>
+                </ColorInfo>
+              </ColorItem>
+            </ColorGrid>
+          </ColorSection>
 
-            <ColorItem>
-              <ColorSwatch color={generatedTheme.borderColor} />
-              <ColorInfo>
-                <ColorLabel>边框色</ColorLabel>
-                <ColorValue>{generatedTheme.borderColor}</ColorValue>
-              </ColorInfo>
-            </ColorItem>
-
-            <ColorItem>
-              <ColorSwatch color={generatedTheme.accentColor} />
-              <ColorInfo>
-                <ColorLabel>强调色 1</ColorLabel>
-                <ColorValue>{generatedTheme.accentColor}</ColorValue>
-              </ColorInfo>
-            </ColorItem>
-
-            <ColorItem>
-              <ColorSwatch color={generatedTheme.accentColor2} />
-              <ColorInfo>
-                <ColorLabel>强调色 2</ColorLabel>
-                <ColorValue>{generatedTheme.accentColor2}</ColorValue>
-              </ColorInfo>
-            </ColorItem>
-          </ColorGrid>
+          {/* 边框和功能层 */}
+          <ColorSection>
+            <ColorSectionTitle>边框和功能</ColorSectionTitle>
+            <ColorGrid>
+              <ColorItem>
+                <ColorSwatch color={generatedTheme.borderDefault} />
+                <ColorInfo>
+                  <ColorLabel>普通边框</ColorLabel>
+                  <ColorValue>{generatedTheme.borderDefault}</ColorValue>
+                </ColorInfo>
+              </ColorItem>
+              <ColorItem>
+                <ColorSwatch color={generatedTheme.borderActive} />
+                <ColorInfo>
+                  <ColorLabel>激活边框</ColorLabel>
+                  <ColorValue>{generatedTheme.borderActive}</ColorValue>
+                </ColorInfo>
+              </ColorItem>
+              <ColorItem>
+                <ColorSwatch color={generatedTheme.success} />
+                <ColorInfo>
+                  <ColorLabel>成功色</ColorLabel>
+                  <ColorValue>{generatedTheme.success}</ColorValue>
+                </ColorInfo>
+              </ColorItem>
+              <ColorItem>
+                <ColorSwatch color={generatedTheme.glow} />
+                <ColorInfo>
+                  <ColorLabel>发光色</ColorLabel>
+                  <ColorValue>{generatedTheme.glow}</ColorValue>
+                </ColorInfo>
+              </ColorItem>
+            </ColorGrid>
+          </ColorSection>
 
           <ButtonRow>
             <ActionButton variant="primary" onClick={handleApply}>

@@ -6,11 +6,19 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
 import { SettingsWindow } from "./SettingsWindow"
 import { setSettingsWindowOpen } from "../../components/AILoadingIndicator"
+import { SyncStatusDot } from "../../components/SyncStatusDot"
 
-const SettingsPopupToggle = styled.button`
+const TopRightControls = styled.div`
   position: fixed;
   top: 20px;
   right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 102;
+`
+
+const SettingsPopupToggle = styled.button`
   font-size: 20px;
 
   color: var(--default-color);
@@ -54,9 +62,12 @@ export const Settings = () => {
 
   return (
     <>
-      <SettingsPopupToggle onClick={() => setShowSettings(true)}>
-        <FontAwesomeIcon icon={faSlidersH} />
-      </SettingsPopupToggle>
+      <TopRightControls>
+        <SyncStatusDot />
+        <SettingsPopupToggle onClick={() => setShowSettings(true)}>
+          <FontAwesomeIcon icon={faSlidersH} />
+        </SettingsPopupToggle>
+      </TopRightControls>
       {showSettings && (
         <>
           <PopupCover />

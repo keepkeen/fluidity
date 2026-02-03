@@ -212,48 +212,6 @@ const AccordionPreviewContainer = styled.div`
   }
 `
 
-// 悬浮卡片预览样式
-const HoverCardPreviewContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 20px;
-  margin: 10px;
-`
-
-const HoverCardPreviewItem = styled.div<{ active?: boolean }>`
-  padding: 12px 16px;
-  border: 2px solid var(--default-color);
-  /* stylelint-disable-next-line */
-  background: ${({ active }) =>
-    // eslint-disable-next-line sonarjs/no-duplicate-string
-    active ? "var(--accent-color)" : "transparent"};
-  color: var(--${({ active }) => (active ? "bg-color" : "default-color")});
-  font-size: 0.9rem;
-  transition: 0.2s;
-`
-
-// 命令面板预览样式
-const CommandPalettePreview = styled.div`
-  width: 280px;
-  margin: 10px;
-  border: 2px solid var(--default-color);
-  background: var(--bg-color);
-`
-
-const CommandPaletteHeader = styled.div`
-  padding: 12px 16px;
-  border-bottom: 2px solid var(--default-color);
-  font-size: 0.9rem;
-  color: var(--accent-color);
-`
-
-const CommandPaletteItem = styled.div`
-  padding: 10px 16px;
-  font-size: 0.85rem;
-  color: var(--default-color);
-`
-
 export const SettingButtonRow = styled.div`
   display: flex;
   justify-content: space-between;
@@ -274,6 +232,11 @@ const AccordionPreview = ({
   )
 }
 
+// CSS 变量常量
+const CSS_BG_COLOR = "var(--bg-color)"
+const CSS_ACCENT_COLOR = "var(--accent-color)"
+const CSS_DEFAULT_COLOR = "var(--default-color)"
+
 // 链接展示模式选择按钮
 const ModeSelector = styled.div`
   display: flex;
@@ -285,11 +248,9 @@ const ModeButton = styled.button<{ active: boolean }>`
   flex: 1;
   min-width: 100px;
   padding: 12px 8px;
-  border: 2px solid var(--default-color);
-  background: ${({ active }) =>
-    active ? "var(--accent-color)" : "transparent"};
-  color: ${({ active }) =>
-    active ? "var(--bg-color)" : "var(--default-color)"};
+  border: 2px solid ${CSS_DEFAULT_COLOR};
+  background: ${({ active }) => (active ? CSS_ACCENT_COLOR : "transparent")};
+  color: ${({ active }) => (active ? CSS_BG_COLOR : CSS_DEFAULT_COLOR)};
   cursor: pointer;
   transition: 0.2s;
   font-size: 0.85rem;
@@ -297,8 +258,8 @@ const ModeButton = styled.button<{ active: boolean }>`
 
   &:hover {
     background: ${({ active }) =>
-      active ? "var(--accent-color)" : "var(--default-color)"};
-    color: var(--bg-color);
+      active ? CSS_ACCENT_COLOR : CSS_DEFAULT_COLOR};
+    color: ${CSS_BG_COLOR};
   }
 `
 
@@ -307,6 +268,44 @@ const ModeDescription = styled.p`
   opacity: 0.6;
   margin-top: 8px;
   line-height: 1.4;
+`
+
+// 开关组件
+const ToggleRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+`
+
+const ToggleLabel = styled.span`
+  font-size: 14px;
+  color: var(--default-color);
+`
+
+const ToggleSwitch = styled.button<{ checked: boolean }>`
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  border: none;
+  background: ${({ checked }) =>
+    checked ? CSS_ACCENT_COLOR : CSS_DEFAULT_COLOR};
+  opacity: ${({ checked }) => (checked ? 1 : 0.3)};
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s, opacity 0.2s;
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: ${({ checked }) => (checked ? "22px" : "2px")};
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: ${CSS_BG_COLOR};
+    transition: left 0.2s;
+  }
 `
 
 interface props {
@@ -406,6 +405,21 @@ export const DesignSettings = ({
             </ModeDescription>
           </SettingElement>
 
+          <SettingElement>
+            <ToggleRow>
+              <ToggleLabel>在新标签页打开链接</ToggleLabel>
+              <ToggleSwitch
+                checked={linkDisplaySettings.openInNewTab}
+                onChange={() =>
+                  setLinkDisplaySettings({
+                    ...linkDisplaySettings,
+                    openInNewTab: !linkDisplaySettings.openInNewTab,
+                  })
+                }
+              />
+            </ToggleRow>
+          </SettingElement>
+
           <SectionDivider />
 
           <SettingsLabel>主题</SettingsLabel>
@@ -476,33 +490,11 @@ export const DesignSettings = ({
       </div>
       <DesignPreview name={design.name} colors={design.colors}>
         <ImagePreviewWithFallback src={design.image} />
-        {linkDisplaySettings.mode === "accordion" && (
-          <AccordionPreviewContainer>
-            <AccordionPreview title={"Default"} colorVar={"--default-color"} />
-            <AccordionPreview title={"Accent"} colorVar={"--accent-color"} />
-            <AccordionPreview title={"Accent 2"} colorVar={"--accent-color2"} />
-          </AccordionPreviewContainer>
-        )}
-        {linkDisplaySettings.mode === "hover-card" && (
-          <HoverCardPreviewContainer>
-            <HoverCardPreviewItem active>Reddit</HoverCardPreviewItem>
-            <HoverCardPreviewItem>3D Modelling</HoverCardPreviewItem>
-            <HoverCardPreviewItem>Design</HoverCardPreviewItem>
-            <HoverCardPreviewItem>Music</HoverCardPreviewItem>
-          </HoverCardPreviewContainer>
-        )}
-        {linkDisplaySettings.mode === "command-palette" && (
-          <CommandPalettePreview>
-            <CommandPaletteHeader>🔍 搜索链接...</CommandPaletteHeader>
-            <CommandPaletteItem>📁 Reddit</CommandPaletteItem>
-            <CommandPaletteItem style={{ paddingLeft: "24px", opacity: 0.8 }}>
-              r/startpages
-            </CommandPaletteItem>
-            <CommandPaletteItem style={{ paddingLeft: "24px", opacity: 0.8 }}>
-              r/unixporn
-            </CommandPaletteItem>
-          </CommandPalettePreview>
-        )}
+        <AccordionPreviewContainer>
+          <AccordionPreview title={"链接"} colorVar={"--default-color"} />
+          <AccordionPreview title={"链接"} colorVar={"--accent-color"} />
+          <AccordionPreview title={"链接"} colorVar={"--accent-color2"} />
+        </AccordionPreviewContainer>
       </DesignPreview>
     </>
   )

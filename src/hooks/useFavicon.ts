@@ -15,11 +15,29 @@ interface UseFaviconResult {
 /**
  * 获取单个 URL 的 favicon
  */
-export const useFavicon = (url: string, size = 16): UseFaviconResult => {
-  const [favicon, setFavicon] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+export const useFavicon = (
+  url: string,
+  size = 16,
+  icon?: string | null
+): UseFaviconResult => {
+  const [favicon, setFavicon] = useState<string | null>(icon ?? null)
+  const [loading, setLoading] = useState(icon ? false : true)
 
   useEffect(() => {
+    // Explicit override from link data model:
+    // - `null` means "known missing" → don't fetch
+    // - string means "already resolved" → don't fetch
+    if (icon === null) {
+      setFavicon(null)
+      setLoading(false)
+      return
+    }
+    if (typeof icon === "string" && icon.length > 0) {
+      setFavicon(icon)
+      setLoading(false)
+      return
+    }
+
     if (!url) {
       setFavicon(null)
       setLoading(false)
@@ -40,7 +58,7 @@ export const useFavicon = (url: string, size = 16): UseFaviconResult => {
       setFavicon(result)
       setLoading(false)
     })
-  }, [url, size])
+  }, [url, size, icon])
 
   return { favicon, loading }
 }
