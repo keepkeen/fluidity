@@ -10,6 +10,7 @@ import {
   getDefaultGreeting,
   refreshAIGreeting,
 } from "../../services/ai"
+import { getDailyReview } from "../../services/dailyReview"
 
 const GreetingContainer = styled.div`
   display: flex;
@@ -74,6 +75,22 @@ const GreetingText = styled.div<{ loading?: boolean }>`
   }
 `
 
+const GreetingContent = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+`
+
+const DailyReviewText = styled.div`
+  font-size: 0.85rem;
+  color: var(--default-color);
+  opacity: 0.7;
+  text-align: center;
+  max-width: 620px;
+  line-height: 1.4;
+`
+
 const RefreshButton = styled.button<{ spinning?: boolean }>`
   width: 36px;
   height: 36px;
@@ -128,6 +145,7 @@ export const AIGreeting = () => {
   const [greeting, setGreeting] = useState("")
   const [loading, setLoading] = useState(true)
   const [isAI, setIsAI] = useState(false)
+  const [dailyReview, setDailyReview] = useState("")
 
   const fetchGreeting = async (refresh = false) => {
     setLoading(true)
@@ -157,6 +175,17 @@ export const AIGreeting = () => {
     void fetchGreeting()
   }, [])
 
+  useEffect(() => {
+    let mounted = true
+    void getDailyReview().then(result => {
+      if (!mounted || !result?.summary) return
+      setDailyReview(result.summary)
+    })
+    return () => {
+      mounted = false
+    }
+  }, [])
+
   const handleRefresh = () => {
     if (!loading) {
       void fetchGreeting(true)
@@ -165,10 +194,15 @@ export const AIGreeting = () => {
 
   return (
     <GreetingContainer>
-      <GreetingText loading={loading}>
-        {loading ? "正在思考..." : greeting}
-        {isAI && !loading && <AIBadge>AI</AIBadge>}
-      </GreetingText>
+      <GreetingContent>
+        <GreetingText loading={loading}>
+          {loading ? "正在思考..." : greeting}
+          {isAI && !loading && <AIBadge>AI</AIBadge>}
+        </GreetingText>
+        {dailyReview && (
+          <DailyReviewText>昨日回顾：{dailyReview}</DailyReviewText>
+        )}
+      </GreetingContent>
       {AISettingsManager.isConfigured() && (
         <RefreshButton
           onClick={handleRefresh}

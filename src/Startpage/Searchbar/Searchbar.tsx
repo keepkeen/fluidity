@@ -16,6 +16,10 @@ import qwant from "../../data/pictures/qwant.svg"
 import { SearchHistory, LinkAnalytics } from "../../services/analytics"
 import { searchLinksOnly, navigateToLink } from "../../services/linkSearch"
 import { getRecommendedTagsForToday } from "../../services/recommendedTags"
+import {
+  ensureSearchRecommendationsForToday,
+  getRecommendedQuickSearchesForToday,
+} from "../../services/searchRecommendations"
 import * as Settings from "../Settings/settingsHandler"
 
 export const queryToken = "{{query}}"
@@ -365,6 +369,11 @@ const getDefaultSuggestions = (searchSettings: SearchType): Suggestion[] => {
     collector.add({ text: tag, type: "tag", icon: "🏷️" })
   })
 
+  // 0.1 推荐快捷搜索
+  getRecommendedQuickSearchesForToday().forEach(item => {
+    collector.add({ text: item.label, type: "fastforward", url: item.url })
+  })
+
   // 1. 最近搜索（优先级最高）
   SearchHistory.getRecent(5).forEach(search => {
     collector.add({ text: search, type: "history" })
@@ -406,6 +415,7 @@ export const Searchbar = () => {
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [isLinkMode, setIsLinkMode] = useState(false) // 是否处于链接搜索模式
   const [tempEngine, setTempEngine] = useState<SearchEngine | null>(null) // 临时选择的引擎
+  const [recommendationTick, setRecommendationTick] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -510,7 +520,21 @@ export const Searchbar = () => {
     searchSettings,
     linkGroups,
     handleEngineModeInput,
+    recommendationTick,
   ])
+
+  useEffect(() => {
+    let mounted = true
+    void ensureSearchRecommendationsForToday().then(updated => {
+      if (!mounted) return
+      if (updated) {
+        setRecommendationTick(t => t + 1)
+      }
+    })
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   // 根据设置决定跳转方式
   const navigateTo = useCallback(

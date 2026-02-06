@@ -5,6 +5,8 @@ import {
 } from "./extensionStore"
 
 export const BROWSER_USAGE_STORAGE_KEY = "fluidity.browserUsage.v1"
+export const BROWSER_USAGE_DOMAIN_APPS_KEY =
+  "fluidity.browserUsage.domainApps.v1"
 
 export interface BrowserUsagePageStat {
   sec: number
@@ -68,6 +70,12 @@ const pad2 = (n: number): string => String(n).padStart(2, "0")
 const toDayStringLocal = (ms: number): string => {
   const d = new Date(ms)
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
+
+const addDaysLocal = (date: Date, offset: number): Date => {
+  const next = new Date(date)
+  next.setDate(next.getDate() + offset)
+  return next
 }
 
 const safeNumber = (n: unknown, fallback = 0): number =>
@@ -146,9 +154,21 @@ export const getBrowserUsageStore =
 export const getDomainApps = async (): Promise<
   Record<string, DomainAppName | undefined>
 > => {
+  if (hasChromeStorage()) {
+    const raw = await getChromeLocal<unknown>(BROWSER_USAGE_DOMAIN_APPS_KEY)
+    if (raw && typeof raw === "object") {
+      return raw as Record<string, DomainAppName | undefined>
+    }
+  }
+
   const st = await getBrowserUsageStore()
   const map = st?.domainApps
   if (!map || typeof map !== "object") return {}
+
+  if (hasChromeStorage()) {
+    await setChromeLocal(BROWSER_USAGE_DOMAIN_APPS_KEY, map)
+  }
+
   return map
 }
 
@@ -171,13 +191,11 @@ export const upsertDomainAppName = async (options: {
   const name = options.name.trim()
   if (!key || !name) return
 
-  const current = await getChromeLocal<unknown>(BROWSER_USAGE_STORAGE_KEY)
-  if (!current || typeof current !== "object") return
-  const st = current as BrowserUsageStoreV1
-
-  const nextMap: Record<string, DomainAppName | undefined> = {
-    ...(st.domainApps ?? {}),
-  }
+  const current = await getChromeLocal<unknown>(BROWSER_USAGE_DOMAIN_APPS_KEY)
+  const nextMap: Record<string, DomainAppName | undefined> =
+    current && typeof current === "object"
+      ? { ...(current as Record<string, DomainAppName | undefined>) }
+      : {}
 
   nextMap[key] = { name, updatedAt: Date.now(), source: options.source }
 
@@ -193,17 +211,11 @@ export const upsertDomainAppName = async (options: {
       trimmed[k] = nextMap[k]
     })
 
-    await setChromeLocal(BROWSER_USAGE_STORAGE_KEY, {
-      ...st,
-      domainApps: trimmed,
-    })
+    await setChromeLocal(BROWSER_USAGE_DOMAIN_APPS_KEY, trimmed)
     return
   }
 
-  await setChromeLocal(BROWSER_USAGE_STORAGE_KEY, {
-    ...st,
-    domainApps: nextMap,
-  })
+  await setChromeLocal(BROWSER_USAGE_DOMAIN_APPS_KEY, nextMap)
 }
 
 const summarizeDay = (
@@ -310,6 +322,23 @@ export const getTodayBrowserUsageSummary =
     if (!st) return emptySummary()
     const today = toDayStringLocal(Date.now())
     return summarizeDay(st.days[today], { domains: 10, pages: 10 })
+  }
+
+export const getBrowserUsageSummaryForDay = async (
+  dayString: string,
+  limits?: { domains?: number; pages?: number }
+): Promise<BrowserUsageSummary> => {
+  const st = await getBrowserUsageStore()
+  if (!st) return emptySummary()
+  if (!dayString) return emptySummary()
+  return summarizeDay(st.days[dayString], limits)
+}
+
+export const getYesterdayBrowserUsageSummary =
+  async (): Promise<BrowserUsageSummary> => {
+    const yesterday = addDaysLocal(new Date(), -1)
+    const dayString = toDayStringLocal(yesterday.getTime())
+    return getBrowserUsageSummaryForDay(dayString, { domains: 10, pages: 10 })
   }
 
 export const getLastHourBrowserUsageSummary =

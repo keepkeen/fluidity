@@ -3,7 +3,10 @@
  * 导出和恢复所有用户数据
  */
 
-import { BROWSER_USAGE_STORAGE_KEY } from "./browserUsage"
+import {
+  BROWSER_USAGE_DOMAIN_APPS_KEY,
+  BROWSER_USAGE_STORAGE_KEY,
+} from "./browserUsage"
 import {
   getChromeLocal,
   hasChromeStorage,
@@ -30,6 +33,8 @@ const BACKUP_KEYS = {
     "link-analytics",
     "search-history",
     "fluidity.ai.recommendedSearchTags.v1",
+    "fluidity.ai.recommendedQuickSearches.v1",
+    "fluidity.ai.dailyReview.v1",
   ],
   // 报告相关
   reports: ["report-state", "report-cache", "todo-contributions"],
@@ -38,7 +43,10 @@ const BACKUP_KEYS = {
 }
 
 // 需要从 chrome.storage.local 读取/写入的键（仅扩展环境存在）
-const CHROME_BACKUP_KEYS = [BROWSER_USAGE_STORAGE_KEY]
+const CHROME_BACKUP_KEYS = [
+  BROWSER_USAGE_STORAGE_KEY,
+  BROWSER_USAGE_DOMAIN_APPS_KEY,
+]
 
 const importChromeBackupKeys = async (
   backup: BackupData,

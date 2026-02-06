@@ -262,6 +262,13 @@ export const Startpage = () => {
     ]
   )
 
+  // 防止轮播项数量变化后索引越界导致空白
+  useEffect(() => {
+    if (carouselItems.length === 0) return
+    if (activeIndex < carouselItems.length) return
+    setActiveIndex(0)
+  }, [carouselItems.length, activeIndex])
+
   // 加载壁纸
   useEffect(() => {
     const loadWallpaper = async () => {
