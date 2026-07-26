@@ -1,0 +1,110 @@
+{
+  "name": "fluidity",
+  "description": "An accordion based startpage.",
+  "version": "0.6.1",
+  "private": true,
+  "homepage": "./",
+  "scripts": {
+    "dev": "vite",
+    "predeploy": "npm run build:extension",
+    "deploy": "gh-pages -d build",
+    "start": "npm run dev",
+    "build": "vite build",
+    "build:extension": "npm run verify && npm run build",
+    "build:zip": "npm run build:extension && node scripts/create-extension-zip.mjs",
+    "serve": "vite preview",
+    "test:e2e:mv3": "npm run build && node scripts/mv3-e2e.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ./src --ext .ts,.tsx",
+    "lint:fix": "npm run lint -- --fix",
+    "verify": "npm run typecheck && npm run lint"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@emotion/react": "^11.11.1",
+    "@emotion/styled": "^11.11.0",
+    "@fortawesome/free-solid-svg-icons": "^6.4.2",
+    "@fortawesome/react-fontawesome": "^0.2.0",
+    "clsx": "^2.1.1",
+    "react": "^18.2.0",
+    "react-color": "^2.19.3",
+    "react-dom": "^18.2.0",
+    "tailwind-merge": "^3.4.0"
+  },
+  "devDependencies": {
+    "@emotion/babel-plugin": "^11.13.5",
+    "@types/chrome": "^0.1.32",
+    "@types/node": "^24.13.1",
+    "@types/react": "^18.2.18",
+    "@types/react-color": "^3.0.6",
+    "@types/react-dom": "^18.2.7",
+    "@typescript-eslint/eslint-plugin": "^8.49.0",
+    "@typescript-eslint/parser": "^8.49.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^8.57.1",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "eslint-plugin-sonarjs": "^0.25.1",
+    "gh-pages": "^6.3.0",
+    "playwright": "^1.60.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.0",
+    "vite-plugin-checker": "^0.8.0"
+  },
+  "browserslist": [
+    "defaults"
+  ],
+  "eslintConfig": {
+    "root": true,
+    "env": {
+      "browser": true,
+      "es2020": true,
+      "webextensions": true
+    },
+    "parser": "@typescript-eslint/parser",
+    "parserOptions": {
+      "ecmaFeatures": {
+        "jsx": true
+      },
+      "ecmaVersion": "latest",
+      "sourceType": "module"
+    },
+    "plugins": [
+      "@typescript-eslint",
+      "react",
+      "react-hooks",
+      "jsx-a11y",
+      "sonarjs"
+    ],
+    "extends": [
+      "eslint:recommended",
+      "plugin:@typescript-eslint/recommended",
+      "plugin:react/recommended",
+      "plugin:react-hooks/recommended",
+      "plugin:jsx-a11y/recommended"
+    ],
+    "settings": {
+      "react": {
+        "version": "detect"
+      }
+    },
+    "rules": {
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-dynamic-delete": "off",
+      "@typescript-eslint/no-non-null-assertion": "off",
+      "@typescript-eslint/no-unnecessary-condition": "off",
+      "jsx-a11y/no-autofocus": "off",
+      "no-empty": "off",
+      "react/jsx-key": "error",
+      "react/jsx-max-depth": "off",
+      "react/no-array-index-key": "off",
+      "react/prop-types": "off",
+      "react/react-in-jsx-scope": "off",
+      "sonarjs/cognitive-complexity": "off",
+      "sonarjs/no-duplicate-string": "off"
+    }
+  }
+}

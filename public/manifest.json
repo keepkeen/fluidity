@@ -1,0 +1,63 @@
+{
+  "manifest_version": 3,
+  "name": "Fluidity 起始页",
+  "version": "0.6.1",
+  "description": "优雅的手风琴式浏览器起始页，支持 AI 智能助手、主题生成、待办事项等功能",
+  "action": {
+    "default_title": "Fluidity",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "logo192.png",
+      "48": "logo192.png",
+      "128": "logo512.png"
+    }
+  },
+  "icons": {
+    "16": "logo192.png",
+    "48": "logo192.png",
+    "128": "logo512.png",
+    "192": "logo192.png",
+    "512": "logo512.png"
+  },
+  "permissions": ["storage", "idle", "scripting", "activeTab"],
+  "host_permissions": [
+    "https://api.deepseek.com/*",
+    "https://api.github.com/*",
+    "https://gist.githubusercontent.com/*",
+    "https://www.bing.com/*",
+    "https://cn.bing.com/*",
+    "https://api.allorigins.win/*"
+  ],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "background": {
+    "service_worker": "assets/background.js",
+    "type": "module"
+  },
+  "chrome_url_overrides": {
+    "newtab": "index.html"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["palette.html"],
+      "matches": ["http://*/*", "https://*/*"]
+    }
+  ],
+  "commands": {
+    "fluidity-open-command-palette": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+K",
+        "mac": "Command+Shift+K"
+      },
+      "description": "打开 Fluidity 链接搜索面板"
+    }
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "fluidity@prettycoffee.github.io",
+      "strict_min_version": "109.0"
+    }
+  }
+}

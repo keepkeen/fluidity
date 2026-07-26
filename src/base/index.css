@@ -1,0 +1,91 @@
+@import "./variables.css"; 
+@import "./animations.css"; 
+
+/***********************
+ * Idk what this does. *
+ *    No touchies.	   *
+ **********************/
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/********************
+ *   	  Fonts 		  *
+ ********************/
+@font-face {
+	font-family: 'Fira Code';
+	font-style: normal;
+	font-weight: 300;
+	src: local('Fira Code'), url('./FiraCode-Light.woff') format('woff');
+}
+@font-face {
+	font-family: 'Fira Code';
+	font-style: normal;
+	font-weight: 500;
+	src: local('Fira Code'), url('./FiraCode-Regular.woff') format('woff');
+}
+
+/* Base Font Settings - Controlled by Theme Mode */
+body, button, input, textarea, select {
+	font-family: var(--font-main, "Fira Code");
+	font-weight: 400;
+}
+
+/* Utility class for forcing monospace */
+.font-mono {
+    font-family: var(--font-mono, "Fira Code", monospace) !important;
+}
+
+/********************
+ * 	   General		  *
+ ********************/
+
+html, body {
+	height:100%;
+	width:100%;
+	margin: 0;
+}
+body {
+	background-color: var(--bg-color);
+	color: var(--default-color);
+	overflow: hidden;
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+#root {
+	height: 100%;
+	width: 100%;
+	overflow-y: auto;
+	overflow-x: hidden;
+}
+p {
+	margin:0px
+}
+a, a:visited, a:active {
+	color: var(--default-color);
+	text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+/********************
+ * 	   Scrollbar	*
+ ********************/
+::-webkit-scrollbar {
+    /* width */
+    width: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+    /* Handle */
+    background: var(--default-color);
+}
+
+::-webkit-scrollbar-thumb:hover {
+	/* Handle on hover */
+    background: var(--default-color);
+}
+
+::-webkit-scrollbar-track-piece {
+    /* not handle on */
+    background: transparent;
+}
