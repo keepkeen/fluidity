@@ -69,27 +69,6 @@ const CharCount = styled.span`
   margin-top: 4px;
 `
 
-const Select = styled.select`
-  width: 100%;
-  padding: 10px 12px;
-  background: var(--bg-primary);
-  border: 2px solid var(--border-default);
-  color: var(--text-primary);
-  font-size: 0.9rem;
-  cursor: pointer;
-  box-sizing: border-box;
-
-  &:focus {
-    outline: none;
-    border-color: var(--border-active);
-  }
-
-  option {
-    background: var(--bg-primary);
-    color: var(--text-primary);
-  }
-`
-
 const GenerateButton = styled.button`
   width: 100%;
   padding: 12px;
@@ -232,7 +211,6 @@ export const AIThemeGenerator: React.FC<Props> = ({
   onSave,
 }) => {
   const [description, setDescription] = useState("")
-  const [model, setModel] = useState("deepseek-chat")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [generatedTheme, setGeneratedTheme] = useState<AIGeneratedTheme | null>(
@@ -246,7 +224,7 @@ export const AIThemeGenerator: React.FC<Props> = ({
     setError(null)
     setGeneratedTheme(null)
 
-    const result = await generateTheme(description, model)
+    const result = await generateTheme(description)
 
     if (result.theme) {
       setGeneratedTheme(result.theme)
@@ -308,14 +286,6 @@ export const AIThemeGenerator: React.FC<Props> = ({
         <CharCount>
           {description.length}/{maxLength}
         </CharCount>
-      </FormGroup>
-
-      <FormGroup>
-        <Label>选择 AI 模型：</Label>
-        <Select value={model} onChange={e => setModel(e.target.value)}>
-          <option value="deepseek-chat">DeepSeek Chat (推荐)</option>
-          <option value="deepseek-reasoner">DeepSeek Reasoner</option>
-        </Select>
       </FormGroup>
 
       <GenerateButton

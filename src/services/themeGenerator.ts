@@ -364,7 +364,7 @@ const tryGenerateTheme = async (
  */
 export const generateTheme = async (
   description: string,
-  model = "deepseek-chat",
+  model?: string,
   options: { maxRetries?: number; useCache?: boolean } = {}
 ): Promise<{
   theme: AIGeneratedTheme | null
@@ -372,6 +372,8 @@ export const generateTheme = async (
   fromCache?: boolean
 }> => {
   const { maxRetries = 2, useCache = true } = options
+  // 未显式指定时使用 AI 设置里配置的模型（支持任意 OpenAI 兼容服务）
+  const resolvedModel = model ?? AISettingsManager.get().model
   const trimmedDescription = description.trim().slice(0, 200)
 
   if (!trimmedDescription) {
@@ -397,7 +399,7 @@ export const generateTheme = async (
 
   for (let i = 0; i <= maxRetries; i++) {
     try {
-      const theme = await tryGenerateTheme(settings.apiKey, prompt, model)
+      const theme = await tryGenerateTheme(settings.apiKey, prompt, resolvedModel)
       if (theme) {
         // 缓存成功生成的主题
         cacheTheme(trimmedDescription, theme)
