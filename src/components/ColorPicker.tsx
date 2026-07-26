@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react"
 
 import styled from "@emotion/styled"
-import ChromePicker from "react-color/es/components/chrome/Chrome.js"
+import { HexColorPicker } from "react-colorful"
 
 import { colorsType } from "../data/data"
 
@@ -106,16 +106,16 @@ const ColorRowWrapper = styled.div`
   position: relative;
 `
 
-const StyledChromePicker = styled.div`
-  .chrome-picker {
-    background: var(--bg-secondary) !important;
-    box-shadow: 0 4px 20px var(--shadow-color) !important;
+const StyledPicker = styled.div`
+  background: var(--bg-secondary);
+  padding: 10px;
+  box-shadow: 0 4px 20px var(--shadow-color);
+
+  .react-colorful {
+    width: 200px;
+    height: 180px;
   }
 `
-
-interface ColorResult {
-  hex: string
-}
 
 interface ColorRowItemProps {
   colorKey: string
@@ -158,9 +158,9 @@ const ColorRowItem = ({
     }
   }
 
-  const handlePickerChange = (result: ColorResult) => {
-    onColorChange(result.hex)
-    setInputValue(result.hex)
+  const handlePickerChange = (hex: string) => {
+    onColorChange(hex)
+    setInputValue(hex)
   }
 
   const label = colorLabels[colorKey] || colorKey.replace(/^--/, "")
@@ -186,13 +186,9 @@ const ColorRowItem = ({
       {isActive && (
         <PickerPopover>
           <PickerCover onClick={onClose} />
-          <StyledChromePicker>
-            <ChromePicker
-              color={colorValue}
-              onChange={handlePickerChange}
-              disableAlpha
-            />
-          </StyledChromePicker>
+          <StyledPicker>
+            <HexColorPicker color={colorValue} onChange={handlePickerChange} />
+          </StyledPicker>
         </PickerPopover>
       )}
     </ColorRowWrapper>
