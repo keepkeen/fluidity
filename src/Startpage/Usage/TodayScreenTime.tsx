@@ -7,6 +7,7 @@ import { resolveAppNameForDomain } from "../../services/ai"
 import {
   BROWSER_USAGE_STORAGE_KEY,
   getBrowserUsageStore,
+  getBrowserUsageSummaryForDay,
   getDomainApps,
   getTodayBrowserUsageSummary,
   guessAppNameFromDomain,
@@ -107,6 +108,33 @@ const Minutes = styled.div`
   text-align: right;
 `
 
+const TrendRow = styled.div`
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 42px;
+  padding: 0 4px;
+`
+
+const TrendBar = styled.div<{ heightPct: number; today: boolean }>`
+  flex: 1;
+  min-width: 0;
+  height: ${({ heightPct }) => Math.max(heightPct, 4)}%;
+  background: ${({ today }) =>
+    today ? "var(--accent)" : "rgba(var(--bg-secondary-rgb), 0.9)"};
+  border: 1px solid
+    ${({ today }) => (today ? "var(--accent)" : "var(--border-default)")};
+  border-radius: 2px 2px 0 0;
+  transition: height 0.3s;
+`
+
+const CompareHint = styled.div<{ over: boolean }>`
+  font-size: 0.78rem;
+  padding: 0 4px;
+  color: ${({ over }) => (over ? "var(--accent-hover)" : "var(--success)")};
+  opacity: 0.9;
+`
+
 const Empty = styled.div`
   font-size: 0.9rem;
   opacity: 0.65;
@@ -115,6 +143,14 @@ const Empty = styled.div`
 `
 
 const secToMin = (sec: number): number => Math.round((sec / 60) * 10) / 10
+
+const pad2 = (n: number): string => String(n).padStart(2, "0")
+
+const dayStringDaysAgo = (daysAgo: number): string => {
+  const d = new Date()
+  d.setDate(d.getDate() - daysAgo)
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
 
 const formatMinutes = (minutes: number): string => {
   if (!Number.isFinite(minutes) || minutes <= 0) return "0"
@@ -216,7 +252,37 @@ export const TodayScreenTime = () => {
   >([])
   const [loading, setLoading] = useState(true)
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null)
+  // 前 6 天的每日总时长（分钟），今天的柱子由 totalMinutes 实时驱动
+  const [history, setHistory] = useState<{ day: string; minutes: number }[]>([])
+  const [avgMinutes, setAvgMinutes] = useState<number | null>(null)
   const resolvingRef = useRef<Set<string>>(new Set())
+
+  // 历史数据一次加载即可（过去的天数不会再变）
+  useEffect(() => {
+    let mounted = true
+    const loadHistory = async () => {
+      const days: { day: string; minutes: number }[] = []
+      for (let i = 7; i >= 1; i--) {
+        const day = dayStringDaysAgo(i)
+        try {
+          const summary = await getBrowserUsageSummaryForDay(day, {
+            domains: 0,
+            pages: 0,
+          })
+          days.push({ day, minutes: secToMin(summary.totalSec) })
+        } catch {
+          days.push({ day, minutes: 0 })
+        }
+      }
+      if (!mounted) return
+      setAvgMinutes(days.reduce((sum, d) => sum + d.minutes, 0) / days.length)
+      setHistory(days.slice(1))
+    }
+    void loadHistory()
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   useEffect(() => {
     let mounted = true
@@ -303,6 +369,33 @@ export const TodayScreenTime = () => {
             ) : null}
           </HeaderHint>
         </HeaderLeft>
+
+        {(history.length > 0 || totalMinutes > 0) && (
+          <TrendRow aria-hidden>
+            {[...history, { day: "今天", minutes: totalMinutes }].map(bar => {
+              const trendMax = Math.max(
+                ...history.map(h => h.minutes),
+                totalMinutes,
+                1
+              )
+              return (
+                <TrendBar
+                  key={bar.day}
+                  heightPct={Math.round((bar.minutes / trendMax) * 100)}
+                  today={bar.day === "今天"}
+                  title={`${bar.day}：${formatMinutes(bar.minutes)} 分钟`}
+                />
+              )
+            })}
+          </TrendRow>
+        )}
+
+        {avgMinutes !== null && avgMinutes > 0 && !loading && (
+          <CompareHint over={totalMinutes > avgMinutes}>
+            比过去 7 天平均{totalMinutes >= avgMinutes ? "多" : "少"}{" "}
+            {formatMinutes(Math.abs(totalMinutes - avgMinutes))} 分钟
+          </CompareHint>
+        )}
 
         {items.length === 0 ? (
           <Empty>{loading ? "正在统计…" : "暂无数据"}</Empty>
