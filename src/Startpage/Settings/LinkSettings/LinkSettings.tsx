@@ -4,6 +4,7 @@ import styled from "@emotion/styled"
 import { faBookmark, faMagic, faSpinner } from "@fortawesome/free-solid-svg-icons"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
+import { LinkGroupEditor } from "./LinkGroupEditor"
 import { OptionTextArea } from "./OptionTextArea"
 import { linkGroup } from "../../../data/data"
 import { AISettingsManager } from "../../../services/ai"
@@ -33,6 +34,22 @@ const HeaderRow = styled.div`
   justify-content: space-between;
   align-items: center;
   margin-bottom: 10px;
+`
+
+const JsonModeToggle = styled.button`
+  align-self: flex-start;
+  margin-top: 8px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 4px 0;
+
+  :hover {
+    color: var(--accent);
+  }
 `
 
 const HeaderButtons = styled.div`
@@ -174,6 +191,7 @@ const showNotification = (
 
 export const LinkSettings = ({ linkGroups, setLinkGroups }: props) => {
   const [isLoading, setIsLoading] = useState(getOrganizeStatus() === "loading")
+  const [jsonMode, setJsonMode] = useState(false)
   const [showPromptDialog, setShowPromptDialog] = useState(false)
   const [customPrompt, setCustomPrompt] = useState("")
 
@@ -279,7 +297,18 @@ export const LinkSettings = ({ linkGroups, setLinkGroups }: props) => {
           </AIButton>
         </HeaderButtons>
       </HeaderRow>
-      <OptionTextArea onChange={setLinkGroups} initialValue={linkGroups} />
+      {jsonMode ? (
+        <OptionTextArea onChange={setLinkGroups} initialValue={linkGroups} />
+      ) : (
+        <LinkGroupEditor linkGroups={linkGroups} onChange={setLinkGroups} />
+      )}
+
+      <JsonModeToggle
+        type="button"
+        onClick={() => setJsonMode(prev => !prev)}
+      >
+        {jsonMode ? "返回列表编辑" : "高级：JSON 批量编辑"}
+      </JsonModeToggle>
 
       {showPromptDialog && (
         <CustomPromptOverlay onClick={() => setShowPromptDialog(false)}>
