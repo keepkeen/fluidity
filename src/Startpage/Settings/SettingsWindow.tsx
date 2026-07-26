@@ -3,7 +3,6 @@ import React, { Suspense, useEffect, useRef, useState } from "react"
 import styled from "@emotion/styled"
 import {
   faTimes,
-  faTrash,
   faSave,
   faFire,
 } from "@fortawesome/free-solid-svg-icons"
@@ -172,10 +171,6 @@ const WindowFooter = styled.div`
     bottom: 12px;
     display: grid;
     grid-template-columns: 1fr 1fr;
-
-    > button:last-child {
-      grid-column: 1 / -1;
-    }
   }
 `
 
@@ -230,6 +225,10 @@ export const SettingsButton = styled(IconButton)`
   padding: 10px 20px;
   :enabled:hover {
     animation: circling-shadow-small 2s ease 0s infinite normal;
+  }
+  :disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 `
 
@@ -297,6 +296,18 @@ const PanelFallback = styled.div`
   width: 100%;
   padding: 20px 0;
   opacity: 0.75;
+`
+
+const UnsavedHint = styled.span<{ visible: boolean }>`
+  align-self: center;
+  color: var(--accent);
+  font-size: 0.85rem;
+  opacity: ${({ visible }) => (visible ? 1 : 0)};
+  transition: opacity 0.2s;
+
+  @media screen and (max-width: 600px) {
+    display: none;
+  }
 `
 
 // tab 用稳定 id 做路由标识，label 仅用于显示——文案改动不能破坏跳转逻辑
@@ -372,6 +383,7 @@ export const SettingsWindow = ({
 
   const snapshotRef = useRef("")
   snapshotRef.current = snapshot()
+  const isDirty = snapshotRef.current !== initialSnapshotRef.current
 
   useEffect(() => {
     registerCloseGuard?.(() => {
@@ -496,29 +508,21 @@ export const SettingsWindow = ({
         <SettingsButton
           type="button"
           onClick={() => applyValues()}
+          disabled={!isDirty}
           text={"应用更改"}
           icon={faSave}
         />
+        <UnsavedHint visible={isDirty} role="status">
+          ● 有未应用的更改
+        </UnsavedHint>
         <SettingsButton
           type="button"
           onClick={() => {
             emitSettingsApplied()
           }}
+          disabled={!isDirty}
           text={"放弃更改"}
           icon={faFire}
-        />
-        <SettingsButton
-          type="button"
-          onClick={() => {
-            const confirmed = window.confirm(
-              "确定要清除全部设置吗？链接、主题、待办和统计数据都会被删除，且无法恢复。"
-            )
-            if (!confirmed) return
-            localStorage.clear()
-            window.location.reload()
-          }}
-          text={"清除全部设置"}
-          icon={faTrash}
         />
       </WindowFooter>
     </StyledSettingsWindow>

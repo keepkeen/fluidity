@@ -833,6 +833,27 @@ export const DataSettings: React.FC = () => {
           </Section>
 
           <Section>
+            <SectionTitle>危险操作</SectionTitle>
+            <Description>
+              删除本机的全部设置与数据（链接、主题、待办、统计、同步配置），且无法恢复。
+            </Description>
+            <Button
+              variant="danger"
+              type="button"
+              onClick={() => {
+                const confirmed = window.confirm(
+                  "确定要清除全部设置吗？链接、主题、待办和统计数据都会被删除，且无法恢复。"
+                )
+                if (!confirmed) return
+                localStorage.clear()
+                window.location.reload()
+              }}
+            >
+              清除全部设置
+            </Button>
+          </Section>
+
+          <Section>
             <SectionTitle>更新日志</SectionTitle>
             <Button
               variant="secondary"
