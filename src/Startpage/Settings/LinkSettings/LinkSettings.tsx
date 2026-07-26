@@ -1,12 +1,16 @@
 import React, { useState, useCallback, useEffect } from "react"
 
 import styled from "@emotion/styled"
-import { faMagic, faSpinner } from "@fortawesome/free-solid-svg-icons"
+import { faBookmark, faMagic, faSpinner } from "@fortawesome/free-solid-svg-icons"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
 import { OptionTextArea } from "./OptionTextArea"
 import { linkGroup } from "../../../data/data"
 import { AISettingsManager } from "../../../services/ai"
+import {
+  importBookmarksAsLinkGroups,
+  isBookmarkImportSupported,
+} from "../../../services/bookmarkImport"
 import {
   organizeLinksWithAI,
   getOrganizeStatus,
@@ -29,6 +33,12 @@ const HeaderRow = styled.div`
   justify-content: space-between;
   align-items: center;
   margin-bottom: 10px;
+`
+
+const HeaderButtons = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
 `
 
 const AIButton = styled.button<{ $loading?: boolean }>`
@@ -212,19 +222,62 @@ export const LinkSettings = ({ linkGroups, setLinkGroups }: props) => {
     }
   }, [linkGroups, customPrompt])
 
+  const handleImportBookmarks = useCallback(async () => {
+    if (!isBookmarkImportSupported()) {
+      showNotification("error", "无法导入", "仅扩展环境支持从浏览器书签导入")
+      return
+    }
+    try {
+      const imported = await importBookmarksAsLinkGroups()
+      if (imported === null) {
+        showNotification("error", "未授权", "需要书签读取权限才能导入")
+        return
+      }
+      const existing = new Set(linkGroups.map(g => g.title))
+      const fresh = imported.filter(g => !existing.has(g.title))
+      if (fresh.length === 0) {
+        showNotification(
+          "success",
+          "没有新的分组",
+          "书签夹中没有找到可导入的新分组"
+        )
+        return
+      }
+      setLinkGroups([...linkGroups, ...fresh])
+      showNotification(
+        "success",
+        "书签已导入",
+        `新增 ${fresh.length} 个分组，点击"应用更改"后生效`
+      )
+    } catch {
+      showNotification("error", "导入失败", "读取浏览器书签时出错")
+    }
+  }, [linkGroups, setLinkGroups])
+
   return (
     <GeneralSettingsContent>
       <HeaderRow>
         <SettingsLabel style={{ margin: 0 }}>链接</SettingsLabel>
-        <AIButton
-          onClick={handleAIOrganize}
-          disabled={isLoading}
-          $loading={isLoading}
-          title={isAIConfigured ? "AI 智能整理链接" : "请先配置 AI"}
-        >
-          <FontAwesomeIcon icon={isLoading ? faSpinner : faMagic} />
-          {isLoading ? "整理中..." : "AI 整理"}
-        </AIButton>
+        <HeaderButtons>
+          <AIButton
+            onClick={() => void handleImportBookmarks()}
+            disabled={isLoading}
+            $loading={false}
+            title="从浏览器书签导入链接分组"
+          >
+            <FontAwesomeIcon icon={faBookmark} />
+            导入书签
+          </AIButton>
+          <AIButton
+            onClick={handleAIOrganize}
+            disabled={isLoading}
+            $loading={isLoading}
+            title={isAIConfigured ? "AI 智能整理链接" : "请先配置 AI"}
+          >
+            <FontAwesomeIcon icon={isLoading ? faSpinner : faMagic} />
+            {isLoading ? "整理中..." : "AI 整理"}
+          </AIButton>
+        </HeaderButtons>
       </HeaderRow>
       <OptionTextArea onChange={setLinkGroups} initialValue={linkGroups} />
 

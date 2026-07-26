@@ -20,6 +20,7 @@
     "512": "logo512.png"
   },
   "permissions": ["storage", "idle", "scripting", "activeTab"],
+  "optional_permissions": ["bookmarks"],
   "host_permissions": ["https://www.bing.com/*", "https://cn.bing.com/*"],
   "optional_host_permissions": [
     "http://*/*",
