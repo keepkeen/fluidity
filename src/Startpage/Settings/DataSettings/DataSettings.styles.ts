@@ -3,10 +3,6 @@ import styled from "@emotion/styled"
 // CSS 变量常量
 const ACCENT_COLOR = "var(--accent)"
 const ACCENT_COLOR2 = "var(--accent-hover)"
-const BG_COLOR = "var(--bg-primary)"
-const VARIANT_PRIMARY = "primary"
-
-const isPrimary = (variant?: string) => variant === VARIANT_PRIMARY
 
 export const ScrollContainer = styled.div`
   width: 100%;
@@ -104,38 +100,7 @@ export const StatsSummary = styled.div`
   font-weight: 600;
 `
 
-export const Button = styled.button<{
-  variant?: "primary" | "secondary"
-}>`
-  width: 100%;
-  min-width: 140px;
-  box-sizing: border-box;
-  padding: 12px 16px;
-  border: 2px solid var(--text-primary);
-  background: ${({ variant }) =>
-    isPrimary(variant) ? ACCENT_COLOR : "transparent"};
-  color: ${({ variant }) =>
-    isPrimary(variant) ? BG_COLOR : "var(--text-primary)"};
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-
-  &:hover {
-    background: ${({ variant }) =>
-      isPrimary(variant) ? ACCENT_COLOR2 : ACCENT_COLOR};
-    color: ${BG_COLOR};
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-`
+export { Button } from "../../../components/Button"
 
 export const HiddenInput = styled.input`
   display: none;
@@ -220,36 +185,6 @@ export const CheckboxRow = styled.label`
   &:hover {
     opacity: 0.8;
   }
-`
-
-export const Checkbox = styled.input`
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  border: 2px solid var(--text-primary);
-  border-radius: 4px;
-  cursor: pointer;
-  position: relative;
-  transition: 0.2s;
-
-  &:checked {
-    background: ${ACCENT_COLOR};
-    border-color: ${ACCENT_COLOR};
-  }
-
-  &:checked::after {
-    content: "✓";
-    position: absolute;
-    top: -2px;
-    left: 3px;
-    color: ${BG_COLOR};
-    font-size: 14px;
-    font-weight: 700;
-  }
-`
-
-export const CheckboxLabel = styled.span`
-  font-size: 0.9rem;
 `
 
 export const ResultMessage = styled.div<{ success: boolean }>`

@@ -37,6 +37,7 @@ import {
   setSyncPasswordForSession,
 } from "../../../services/gistSync"
 import { ensureSyncPermissions } from "../../../services/optionalPermissions"
+import { Toggle } from "../../../components/Toggle"
 import { emitSettingsApplied } from "../../../services/settingsEvents"
 import {
   getSyncRuntimeStatus,
@@ -45,9 +46,6 @@ import {
 } from "../../../services/syncRuntime"
 import {
   Button,
-  Checkbox,
-  CheckboxLabel,
-  CheckboxRow,
   Container,
   Description,
   HiddenInput,
@@ -506,47 +504,30 @@ export const DataSettings: React.FC = () => {
               默认关闭。启用后扩展会在已授权的网站上统计浏览时长；默认仅保存域名，不保存路径或标题。
             </Description>
 
-            <CheckboxRow>
-              <Checkbox
-                type="checkbox"
-                checked={usageSettings.enabled}
-                disabled={usageBusy}
-                onChange={e =>
-                  void handleUsageEnabledChange(e.target.checked)
-                }
-              />
-              <CheckboxLabel>启用浏览时长统计</CheckboxLabel>
-            </CheckboxRow>
+            <Toggle
+              label="启用浏览时长统计"
+              checked={usageSettings.enabled}
+              disabled={usageBusy}
+              onChange={checked => void handleUsageEnabledChange(checked)}
+            />
 
-            <CheckboxRow>
-              <Checkbox
-                type="checkbox"
-                checked={usageSettings.includePagePath}
-                disabled={usageBusy || !usageSettings.enabled}
-                onChange={e =>
-                  void handleUsagePrivacyChange(
-                    "includePagePath",
-                    e.target.checked
-                  )
-                }
-              />
-              <CheckboxLabel>记录页面路径（默认仅记录域名）</CheckboxLabel>
-            </CheckboxRow>
+            <Toggle
+              label="记录页面路径（默认仅记录域名）"
+              checked={usageSettings.includePagePath}
+              disabled={usageBusy || !usageSettings.enabled}
+              onChange={checked =>
+                void handleUsagePrivacyChange("includePagePath", checked)
+              }
+            />
 
-            <CheckboxRow>
-              <Checkbox
-                type="checkbox"
-                checked={usageSettings.includePageTitle}
-                disabled={usageBusy || !usageSettings.enabled}
-                onChange={e =>
-                  void handleUsagePrivacyChange(
-                    "includePageTitle",
-                    e.target.checked
-                  )
-                }
-              />
-              <CheckboxLabel>记录页面标题（可能包含敏感信息）</CheckboxLabel>
-            </CheckboxRow>
+            <Toggle
+              label="记录页面标题（可能包含敏感信息）"
+              checked={usageSettings.includePageTitle}
+              disabled={usageBusy || !usageSettings.enabled}
+              onChange={checked =>
+                void handleUsagePrivacyChange("includePageTitle", checked)
+              }
+            />
 
             {(usageSettings.includePagePath ||
               usageSettings.includePageTitle) &&
@@ -581,16 +562,11 @@ export const DataSettings: React.FC = () => {
               将所有设置和数据导出为 JSON 文件，可用于备份或迁移到其他设备
             </Description>
 
-            <CheckboxRow>
-              <Checkbox
-                type="checkbox"
-                checked={includeApiKey}
-                onChange={e => setIncludeApiKey(e.target.checked)}
-              />
-              <CheckboxLabel>
-                包含 API Key（不推荐，存在安全风险）
-              </CheckboxLabel>
-            </CheckboxRow>
+            <Toggle
+              label="包含 API Key（不推荐，存在安全风险）"
+              checked={includeApiKey}
+              onChange={setIncludeApiKey}
+            />
 
             {includeApiKey && (
               <WarningBox>
@@ -749,14 +725,11 @@ export const DataSettings: React.FC = () => {
               autoComplete="off"
             />
 
-            <CheckboxRow>
-              <Checkbox
-                type="checkbox"
-                checked={rememberPassword}
-                onChange={e => setRememberPassword(e.target.checked)}
-              />
-              <CheckboxLabel>记住同步密码（不推荐）</CheckboxLabel>
-            </CheckboxRow>
+            <Toggle
+              label="记住同步密码（不推荐）"
+              checked={rememberPassword}
+              onChange={setRememberPassword}
+            />
 
             {rememberPassword && (
               <WarningBox>

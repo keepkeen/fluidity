@@ -5,6 +5,7 @@ import { faPlus, faMinus, faSave } from "@fortawesome/free-solid-svg-icons"
 
 import { AIThemeGenerator } from "./AIThemeGenerator"
 import { ColorPicker } from "../../../components/ColorPicker"
+import { Toggle } from "../../../components/Toggle"
 import { Dropdown } from "../../../components/Dropdown"
 import { OptionSlider } from "../../../components/OptionSlider"
 import { OptionTextInput } from "../../../components/OptionTextInput"
@@ -270,44 +271,6 @@ const ModeDescription = styled.p`
   line-height: 1.4;
 `
 
-// 开关组件
-const ToggleRow = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-`
-
-const ToggleLabel = styled.span`
-  font-size: 14px;
-  color: var(--text-primary);
-`
-
-const ToggleSwitch = styled.button<{ checked: boolean }>`
-  width: 44px;
-  height: 24px;
-  border-radius: 12px;
-  border: none;
-  background: ${({ checked }) =>
-    checked ? CSS_ACCENT_COLOR : CSS_DEFAULT_COLOR};
-  opacity: ${({ checked }) => (checked ? 1 : 0.3)};
-  position: relative;
-  cursor: pointer;
-  transition: background 0.2s, opacity 0.2s;
-
-  &::after {
-    content: "";
-    position: absolute;
-    top: 2px;
-    left: ${({ checked }) => (checked ? "22px" : "2px")};
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: ${CSS_BG_COLOR};
-    transition: left 0.2s;
-  }
-`
-
 interface props {
   design: Theme
   setDesign: (design: Theme) => void
@@ -405,18 +368,16 @@ export const DesignSettings = ({
           </SettingElement>
 
           <SettingElement>
-            <ToggleRow>
-              <ToggleLabel>在新标签页打开链接</ToggleLabel>
-              <ToggleSwitch
-                checked={linkDisplaySettings.openInNewTab}
-                onChange={() =>
-                  setLinkDisplaySettings({
-                    ...linkDisplaySettings,
-                    openInNewTab: !linkDisplaySettings.openInNewTab,
-                  })
-                }
-              />
-            </ToggleRow>
+            <Toggle
+              label="在新标签页打开链接"
+              checked={linkDisplaySettings.openInNewTab}
+              onChange={checked =>
+                setLinkDisplaySettings({
+                  ...linkDisplaySettings,
+                  openInNewTab: checked,
+                })
+              }
+            />
           </SettingElement>
 
           <SectionDivider />

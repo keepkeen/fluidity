@@ -9,6 +9,8 @@ import {
 } from "@fortawesome/free-solid-svg-icons"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
+import { Button } from "../../../components/Button"
+import { Toggle } from "../../../components/Toggle"
 import {
   AISettings as AISettingsType,
   DEFAULT_AI_BASE_URL,
@@ -55,38 +57,6 @@ const GroupTitle = styled.h3`
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border-default);
   opacity: 0.9;
-`
-
-const ToggleContainer = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 0;
-`
-
-const Toggle = styled.button<{ active: boolean }>`
-  width: 50px;
-  height: 26px;
-  border-radius: 13px;
-  border: 2px solid var(--text-primary);
-  background: ${({ active }) =>
-    active ? "var(--accent)" : "transparent"};
-  cursor: pointer;
-  position: relative;
-  transition: 0.3s;
-
-  &::after {
-    content: "";
-    position: absolute;
-    top: 2px;
-    left: ${({ active }) => (active ? "24px" : "2px")};
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: ${({ active }) =>
-      active ? "var(--bg-primary)" : "var(--text-primary)"};
-    transition: 0.3s;
-  }
 `
 
 const InputContainer = styled.div`
@@ -166,30 +136,9 @@ const StatValue = styled.span`
   color: var(--accent);
 `
 
-const TestButton = styled.button`
-  width: 100%;
-  padding: 12px;
-  margin-top: 12px;
-  background: var(--accent);
-  border: 2px solid var(--text-primary);
-  color: var(--bg-primary);
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: 0.2s;
+const ButtonRow = styled.div`
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-
-  &:hover {
-    background: var(--accent-hover);
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
+  gap: 12px;
 `
 
 const TestResult = styled.div<{ error?: boolean }>`
@@ -200,31 +149,6 @@ const TestResult = styled.div<{ error?: boolean }>`
   font-size: 0.9rem;
   line-height: 1.5;
   word-break: break-word;
-`
-
-const PrivacyButtonRow = styled.div`
-  display: flex;
-  gap: 12px;
-`
-
-const PrivacyButton = styled.button`
-  flex: 1;
-  padding: 10px 12px;
-  background: transparent;
-  border: 2px solid var(--accent-hover);
-  color: var(--accent-hover);
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-
-  &:hover {
-    background: var(--accent-hover);
-    color: var(--bg-primary);
-  }
 `
 
 interface Props {
@@ -306,27 +230,19 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
             <GroupTitle>AI 智能助手</GroupTitle>
 
             <SettingElement>
-              <ToggleContainer>
-                <SettingsLabel style={{ padding: 0 }}>
-                  启用 AI 提示
-                </SettingsLabel>
-                <Toggle
-                  type="button"
-                  active={aiSettings.enabled}
-                  aria-label="启用 AI 提示"
-                  aria-pressed={aiSettings.enabled}
-                  onClick={() => {
-                    const enabling = !aiSettings.enabled
-                    setAISettings(prev => ({ ...prev, enabled: enabling }))
-                    // 在用户手势中按需申请 AI 接口域名权限
-                    if (enabling) {
-                      void ensureAIPermissionsFor(
-                        aiSettings.apiBaseUrl.trim() || DEFAULT_AI_BASE_URL
-                      )
-                    }
-                  }}
-                />
-              </ToggleContainer>
+              <Toggle
+                label="启用 AI 提示"
+                checked={aiSettings.enabled}
+                onChange={enabling => {
+                  setAISettings(prev => ({ ...prev, enabled: enabling }))
+                  // 在用户手势中按需申请 AI 接口域名权限
+                  if (enabling) {
+                    void ensureAIPermissionsFor(
+                      aiSettings.apiBaseUrl.trim() || DEFAULT_AI_BASE_URL
+                    )
+                  }
+                }}
+              />
               <HelpText>
                 开启后，页面顶部会显示 AI 生成的个性化问候和提醒
               </HelpText>
@@ -415,14 +331,15 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
               </HelpText>
             </SettingElement>
 
-            <TestButton
+            <Button
               type="button"
+              variant="primary"
               onClick={() => void handleTestAPI()}
               disabled={testing}
             >
               <FontAwesomeIcon icon={faSync} spin={testing} />
               {testing ? "测试中..." : "测试 API 连接"}
-            </TestButton>
+            </Button>
 
             {testResult && (
               <TestResult error={testResult.error}>
@@ -477,9 +394,11 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
             </HelpText>
 
             <SettingElement>
-              <PrivacyButtonRow>
-                <PrivacyButton
+              <ButtonRow>
+                <Button
                   type="button"
+                  variant="danger"
+                  size="sm"
                   onClick={() => {
                     SearchHistory.clear()
                     emitSettingsApplied()
@@ -487,9 +406,11 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
                 >
                   <FontAwesomeIcon icon={faTrash} />
                   清除搜索历史
-                </PrivacyButton>
-                <PrivacyButton
+                </Button>
+                <Button
                   type="button"
+                  variant="danger"
+                  size="sm"
                   onClick={() => {
                     LinkAnalytics.clear()
                     emitSettingsApplied()
@@ -497,24 +418,24 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
                 >
                   <FontAwesomeIcon icon={faTrash} />
                   清除点击记录
-                </PrivacyButton>
-              </PrivacyButtonRow>
+                </Button>
+              </ButtonRow>
             </SettingElement>
 
             <SettingElement>
-              <PrivacyButton
+              <Button
                 type="button"
+                variant="danger"
                 onClick={() => {
                   SearchHistory.clear()
                   LinkAnalytics.clear()
                   localStorage.removeItem("ai-cache")
                   emitSettingsApplied()
                 }}
-                style={{ width: "100%" }}
               >
                 <FontAwesomeIcon icon={faTrash} />
                 清除所有行为数据
-              </PrivacyButton>
+              </Button>
             </SettingElement>
 
             <HelpText>
@@ -532,44 +453,30 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
             </HelpText>
 
             <SettingElement>
-              <ToggleContainer>
-                <SettingsLabel style={{ padding: 0 }}>
-                  记录链接点击
-                </SettingsLabel>
-                <Toggle
-                  type="button"
-                  active={aiSettings.collectLinkClicks}
-                  aria-label="记录链接点击"
-                  aria-pressed={aiSettings.collectLinkClicks}
-                  onClick={() =>
-                    setAISettings(prev => ({
-                      ...prev,
-                      collectLinkClicks: !prev.collectLinkClicks,
-                    }))
-                  }
-                />
-              </ToggleContainer>
+              <Toggle
+                label="记录链接点击"
+                checked={aiSettings.collectLinkClicks}
+                onChange={checked =>
+                  setAISettings(prev => ({
+                    ...prev,
+                    collectLinkClicks: checked,
+                  }))
+                }
+              />
               <HelpText>记录你点击的链接，用于统计最常访问</HelpText>
             </SettingElement>
 
             <SettingElement>
-              <ToggleContainer>
-                <SettingsLabel style={{ padding: 0 }}>
-                  记录搜索历史
-                </SettingsLabel>
-                <Toggle
-                  type="button"
-                  active={aiSettings.collectSearchHistory}
-                  aria-label="记录搜索历史"
-                  aria-pressed={aiSettings.collectSearchHistory}
-                  onClick={() =>
-                    setAISettings(prev => ({
-                      ...prev,
-                      collectSearchHistory: !prev.collectSearchHistory,
-                    }))
-                  }
-                />
-              </ToggleContainer>
+              <Toggle
+                label="记录搜索历史"
+                checked={aiSettings.collectSearchHistory}
+                onChange={checked =>
+                  setAISettings(prev => ({
+                    ...prev,
+                    collectSearchHistory: checked,
+                  }))
+                }
+              />
               <HelpText>记录你的搜索内容，用于统计搜索习惯</HelpText>
             </SettingElement>
           </SettingsGroup>
@@ -581,46 +488,29 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
             </HelpText>
 
             <SettingElement>
-              <ToggleContainer>
-                <SettingsLabel style={{ padding: 0 }}>
-                  发送使用习惯
-                </SettingsLabel>
-                <Toggle
-                  type="button"
-                  active={aiSettings.shareHabits}
-                  aria-label="向 AI 发送使用习惯"
-                  aria-pressed={aiSettings.shareHabits}
-                  onClick={() =>
-                    setAISettings(prev => ({
-                      ...prev,
-                      shareHabits: !prev.shareHabits,
-                    }))
-                  }
-                />
-              </ToggleContainer>
+              <Toggle
+                label="发送使用习惯"
+                checked={aiSettings.shareHabits}
+                onChange={checked =>
+                  setAISettings(prev => ({ ...prev, shareHabits: checked }))
+                }
+              />
               <HelpText>
                 包含常用链接、最近搜索、待办事项与点击/搜索统计
               </HelpText>
             </SettingElement>
 
             <SettingElement>
-              <ToggleContainer>
-                <SettingsLabel style={{ padding: 0 }}>
-                  发送浏览记录
-                </SettingsLabel>
-                <Toggle
-                  type="button"
-                  active={aiSettings.shareBrowserUsage}
-                  aria-label="向 AI 发送浏览记录"
-                  aria-pressed={aiSettings.shareBrowserUsage}
-                  onClick={() =>
-                    setAISettings(prev => ({
-                      ...prev,
-                      shareBrowserUsage: !prev.shareBrowserUsage,
-                    }))
-                  }
-                />
-              </ToggleContainer>
+              <Toggle
+                label="发送浏览记录"
+                checked={aiSettings.shareBrowserUsage}
+                onChange={checked =>
+                  setAISettings(prev => ({
+                    ...prev,
+                    shareBrowserUsage: checked,
+                  }))
+                }
+              />
               <HelpText>
                 仅在你已启用浏览时长统计时有数据；默认不发送给 AI
               </HelpText>
