@@ -13,6 +13,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
 import { AccordionContainer, AccordionGroup } from "./Accordion/Accordion"
 import { CommandPalette } from "./CommandPalette/CommandPalette"
+import { GridLinks } from "./GridLinks/GridLinks"
 import {
   DragDropProvider,
   SortableContext,
@@ -376,6 +377,17 @@ export const LinkContainer = () => {
       </ConfirmOverlay>
     </Modal>
   )
+
+  // 智能网格模式 - frecency 两档展示（/ 键搜索仍可用）
+  if (displayMode === "grid") {
+    return (
+      <>
+        <GridLinks linkGroups={linkGroups} />
+        <CommandPalette linkGroups={linkGroups} onDeleteLink={requestDelete} />
+        {DeleteConfirmDialog}
+      </>
+    )
+  }
 
   // 命令面板模式 - 显示占位提示和触发按钮
   if (displayMode === "command-palette") {

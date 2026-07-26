@@ -292,6 +292,11 @@ const themeEquals = (theme1: Theme, theme2: Theme) => {
 
 const modeOptions: { value: LinkDisplayMode; label: string; desc: string }[] = [
   { value: "accordion", label: "手风琴", desc: "经典水平展开模式" },
+  {
+    value: "grid",
+    label: "智能网格",
+    desc: "常用链接自动放大，其余按分组收纳",
+  },
   { value: "command-palette", label: "命令面板", desc: "按 / 键快速搜索" },
 ]
 

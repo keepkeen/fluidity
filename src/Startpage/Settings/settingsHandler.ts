@@ -78,7 +78,9 @@ const isLinkDisplaySettings = (
   value: unknown
 ): value is LinkDisplaySettings =>
   isRecord(value) &&
-  ["accordion", "hover-card", "command-palette"].includes(String(value.mode))
+  ["accordion", "grid", "hover-card", "command-palette"].includes(
+    String(value.mode)
+  )
 
 const isWallpaperSettings = (value: unknown): value is WallpaperSettings =>
   isRecord(value)

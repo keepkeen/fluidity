@@ -98,6 +98,7 @@ const SYNCED_LOCAL_STORAGE_KEYS = new Set<string>([
   "link-display-settings",
   "wallpaper-settings",
   "card-area-settings",
+  "fluidity.linkPins.v1",
   // AI (no apiKey in ciphertext export by default)
   "ai-settings",
   "ai-cache",
