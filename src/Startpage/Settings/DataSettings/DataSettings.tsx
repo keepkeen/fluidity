@@ -37,6 +37,7 @@ import {
   restoreConflictCopy,
   setSyncPasswordForSession,
 } from "../../../services/gistSync"
+import { ensureSyncPermissions } from "../../../services/optionalPermissions"
 import { emitSettingsApplied } from "../../../services/settingsEvents"
 import {
   getSyncRuntimeStatus,
@@ -577,6 +578,10 @@ export const DataSettings: React.FC = () => {
     setSyncError(null)
     setSyncSuccess(null)
     try {
+      if (!(await ensureSyncPermissions())) {
+        setSyncError("未授予 GitHub API 访问权限，无法使用云同步")
+        return
+      }
       await validateGitHubToken(token.trim())
       setSyncSuccess(
         "Token 验证成功。下一步点击连接并自动发现；有旧备份会提示输入同步密码，没有旧备份会创建新的私有加密 Gist。"
@@ -596,6 +601,10 @@ export const DataSettings: React.FC = () => {
       const t = token.trim()
       if (!t) {
         setSyncError("请先输入 GitHub Token")
+        return
+      }
+      if (!(await ensureSyncPermissions())) {
+        setSyncError("未授予 GitHub API 访问权限，无法使用云同步")
         return
       }
 

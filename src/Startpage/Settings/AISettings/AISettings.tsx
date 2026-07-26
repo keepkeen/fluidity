@@ -10,6 +10,7 @@ import {
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
 import { AISettings as AISettingsType } from "../../../services/ai"
+import { ensureAIPermissions } from "../../../services/optionalPermissions"
 import { emitSettingsApplied } from "../../../services/settingsEvents"
 import {
   getAnalyticsSummary,
@@ -287,6 +288,13 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
     setTestResult(null)
 
     try {
+      if (!(await ensureAIPermissions())) {
+        setTestResult({
+          message: "❌ 未授予 DeepSeek API 访问权限，无法调用 AI",
+          error: true,
+        })
+        return
+      }
       const { callDeepSeekAPI } = await import("../../../services/ai")
       const result = await callDeepSeekAPI(
         aiSettings.apiKey,
@@ -322,9 +330,12 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
                   active={aiSettings.enabled}
                   aria-label="启用 AI 提示"
                   aria-pressed={aiSettings.enabled}
-                  onClick={() =>
-                    setAISettings(prev => ({ ...prev, enabled: !prev.enabled }))
-                  }
+                  onClick={() => {
+                    const enabling = !aiSettings.enabled
+                    setAISettings(prev => ({ ...prev, enabled: enabling }))
+                    // 在用户手势中按需申请 DeepSeek 域名权限
+                    if (enabling) void ensureAIPermissions()
+                  }}
                 />
               </ToggleContainer>
               <HelpText>

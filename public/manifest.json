@@ -20,14 +20,14 @@
     "512": "logo512.png"
   },
   "permissions": ["storage", "idle", "scripting", "activeTab"],
-  "host_permissions": [
+  "host_permissions": ["https://www.bing.com/*", "https://cn.bing.com/*"],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*",
     "https://api.deepseek.com/*",
     "https://api.github.com/*",
-    "https://gist.githubusercontent.com/*",
-    "https://www.bing.com/*",
-    "https://cn.bing.com/*"
+    "https://gist.githubusercontent.com/*"
   ],
-  "optional_host_permissions": ["http://*/*", "https://*/*"],
   "background": {
     "service_worker": "assets/background.js",
     "type": "module"
@@ -56,7 +56,7 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "fluidity@prettycoffee.github.io",
+      "id": "fluidity@cuteliam666.gmail.com",
       "strict_min_version": "109.0"
     }
   }
