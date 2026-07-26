@@ -32,17 +32,17 @@ const DesignPreview = styled.div<{ name: string; colors: colorsType }>`
     )
   }}
 
-  background-color: var(--bg-color);
+  background-color: var(--bg-primary);
   display: flex;
   justify-content: space-evenly;
   align-items: center;
-  border: 2px solid var(--accent-color);
+  border: 2px solid var(--accent);
   width: calc(100% - 400px);
   height: 100%;
   position: relative;
   ::before {
     content: "${({ name }) => name}";
-    color: var(--accent-color);
+    color: var(--accent);
     position: absolute;
     top: 10px;
     left: 15px;
@@ -50,7 +50,7 @@ const DesignPreview = styled.div<{ name: string; colors: colorsType }>`
   }
   ::after {
     content: "设计预览";
-    color: var(--accent-color);
+    color: var(--accent);
     position: absolute;
     top: 10px;
     right: 15px;
@@ -94,7 +94,7 @@ const ImagePreviewWrapper = styled.div`
   margin: 10px;
   height: 300px;
   width: 300px;
-  border: 1px solid var(--default-color);
+  border: 1px solid var(--text-primary);
   padding: 5px;
   position: relative;
   animation: circling-shadow-small 4s ease 0s infinite normal;
@@ -112,8 +112,8 @@ const ImageFallback = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-color);
-  color: var(--default-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
   font-size: 0.8rem;
   text-align: center;
   opacity: 0.5;
@@ -172,7 +172,7 @@ const StyledAccordionPreview = styled.div<{ colorVar: string }>`
       margin-left: -90px;
       margin-top: -140px;
       border-radius: 37%;
-      background: var(--bg-color);
+      background: var(--bg-primary);
       animation: wave 12s infinite cubic-bezier(0.71, 0.33, 0.33, 0.68);
     }
     @keyframes wave {
@@ -198,7 +198,7 @@ const SectionDivider = styled.div`
 const AccordionPreviewTitle = styled.h2`
   transform: rotate(90deg);
   min-width: max-content;
-  color: var(--bg-color);
+  color: var(--bg-primary);
   transition: 0.5s;
   letter-spacing: 5px;
 `
@@ -233,9 +233,9 @@ const AccordionPreview = ({
 }
 
 // CSS 变量常量
-const CSS_BG_COLOR = "var(--bg-color)"
-const CSS_ACCENT_COLOR = "var(--accent-color)"
-const CSS_DEFAULT_COLOR = "var(--default-color)"
+const CSS_BG_COLOR = "var(--bg-primary)"
+const CSS_ACCENT_COLOR = "var(--accent)"
+const CSS_DEFAULT_COLOR = "var(--text-primary)"
 
 // 链接展示模式选择按钮
 const ModeSelector = styled.div`
@@ -280,7 +280,7 @@ const ToggleRow = styled.div`
 
 const ToggleLabel = styled.span`
   font-size: 14px;
-  color: var(--default-color);
+  color: var(--text-primary);
 `
 
 const ToggleSwitch = styled.button<{ checked: boolean }>`

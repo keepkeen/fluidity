@@ -60,7 +60,7 @@ const HeightResizeHandle = styled.div<{ position: "top" | "bottom" }>`
     content: "";
     width: 40px;
     height: 3px;
-    background: var(--accent-color);
+    background: var(--accent);
     border-radius: 2px;
     transition: width 0.2s;
   }
@@ -94,7 +94,7 @@ const WidthResizeHandle = styled.div`
     content: "";
     width: 4px;
     height: 40px;
-    background: var(--accent-color);
+    background: var(--accent);
     border-radius: 2px;
   }
 `
@@ -104,9 +104,9 @@ const SoundToggleButton = styled.button<{ enabled: boolean }>`
   top: -40px;
   right: 0;
   background: transparent;
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--text-primary);
   color: ${({ enabled }) =>
-    enabled ? "var(--accent-color)" : "var(--default-color)"};
+    enabled ? "var(--accent)" : "var(--text-primary)"};
   width: 32px;
   height: 32px;
   cursor: pointer;
@@ -118,7 +118,7 @@ const SoundToggleButton = styled.button<{ enabled: boolean }>`
 
   &:hover {
     opacity: 1;
-    border-color: var(--accent-color);
+    border-color: var(--accent);
   }
 `
 
@@ -185,7 +185,7 @@ const StyledAccordionGroup = styled.div<{
   display: flex;
   padding: 0 10px;
   flex-direction: row;
-  border: var(--border-width) solid var(--default-color);
+  border: var(--border-width) solid var(--text-primary);
   border-right: none;
   border-left: none;
   position: relative;
@@ -200,11 +200,11 @@ const StyledAccordionGroup = styled.div<{
 
   /* Remove adjacent border hacks */
   &:first-of-type {
-    border-left: var(--border-width) solid var(--default-color);
+    border-left: var(--border-width) solid var(--text-primary);
   }
 
   &:last-of-type {
-    border-right: var(--border-width) solid var(--default-color);
+    border-right: var(--border-width) solid var(--text-primary);
   }
 
   @media screen and (max-height: 700px) {
@@ -259,7 +259,7 @@ const AccordionContent = styled.div<{ width: number }>`
   }
 
   &::-webkit-scrollbar-thumb {
-    background: var(--default-color);
+    background: var(--text-primary);
     opacity: 0.3;
     border-radius: 4px;
   }
@@ -275,8 +275,8 @@ const AccordionTitleWrapper = styled.button<{
   fillPercent: number
 }>`
   padding: 0;
-  background-color: var(--bg-color);
-  border: var(--border-width) solid var(--accent-color);
+  background-color: var(--bg-primary);
+  border: var(--border-width) solid var(--accent);
   height: 100%;
   width: 90px;
   cursor: ${({ active }) => (active ? "default" : "pointer")};
@@ -297,7 +297,7 @@ const AccordionTitleWrapper = styled.button<{
     width: 100%;
     height: ${({ active, fillPercent }) =>
       active ? "92%" : `${fillPercent}%`};
-    background-color: var(--accent-color);
+    background-color: var(--accent);
     transition: height ${({ active }) => (active ? "0.6s" : "0.4s")}
       cubic-bezier(0.4, 0, 0.2, 1);
   }
@@ -345,7 +345,7 @@ const AccordionTitleWrapper = styled.button<{
       margin-left: -90px;
       margin-top: -140px;
       border-radius: 37%;
-      background-color: var(--bg-color);
+      background-color: var(--bg-primary);
       animation: wave 12s infinite cubic-bezier(0.71, 0.33, 0.33, 0.68);
     }
 
@@ -369,11 +369,11 @@ const AccordionTitle = styled.h1<{ title: string; active: boolean }>`
   writing-mode: vertical-rl;
   text-orientation: mixed;
   color: ${({ active }) =>
-    active ? "var(--text-on-accent)" : "var(--default-color)"};
+    active ? "var(--accent-text)" : "var(--text-primary)"};
   text-shadow: ${({ active }) =>
     active
       ? "0 1px 2px rgba(0, 0, 0, 0.3)"
-      : "0 0 8px var(--bg-color), 0 0 16px var(--bg-color)"};
+      : "0 0 8px var(--bg-primary), 0 0 16px var(--bg-primary)"};
   transition: 0.5s;
   letter-spacing: 3px;
   font-size: 1.1rem;

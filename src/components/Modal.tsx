@@ -15,7 +15,7 @@ const Overlay = styled.div<{ dim: "light" | "dark" }>`
   left: 0;
   z-index: 100;
   background-color: ${({ dim }) =>
-    dim === "dark" ? "rgba(0, 0, 0, 0.6)" : "var(--bg-color)"};
+    dim === "dark" ? "rgba(0, 0, 0, 0.6)" : "var(--bg-primary)"};
   opacity: ${({ dim }) => (dim === "light" ? 0.7 : 1)};
 `
 

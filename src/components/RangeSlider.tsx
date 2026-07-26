@@ -15,12 +15,12 @@ const SliderHeader = styled.div`
 
 const SliderLabel = styled.label`
   font-size: 14px;
-  color: var(--default-color);
+  color: var(--text-primary);
 `
 
 const SliderValue = styled.span`
   font-size: 12px;
-  color: var(--secondary-color);
+  color: var(--text-secondary);
   min-width: 40px;
   text-align: right;
 `
@@ -31,7 +31,7 @@ const StyledSlider = styled.input`
   width: 100%;
   height: 6px;
   border-radius: 3px;
-  background: var(--border-color);
+  background: var(--border-default);
   outline: none;
   cursor: pointer;
 
@@ -41,13 +41,13 @@ const StyledSlider = styled.input`
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: var(--accent-color);
+    background: var(--accent);
     cursor: pointer;
     transition: transform 0.2s, box-shadow 0.2s;
 
     &:hover {
       transform: scale(1.1);
-      box-shadow: 0 0 8px var(--accent-color);
+      box-shadow: 0 0 8px var(--accent);
     }
   }
 
@@ -55,14 +55,14 @@ const StyledSlider = styled.input`
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: var(--accent-color);
+    background: var(--accent);
     cursor: pointer;
     border: none;
     transition: transform 0.2s, box-shadow 0.2s;
 
     &:hover {
       transform: scale(1.1);
-      box-shadow: 0 0 8px var(--accent-color);
+      box-shadow: 0 0 8px var(--accent);
     }
   }
 
@@ -74,7 +74,7 @@ const StyledSlider = styled.input`
   &::-moz-range-track {
     height: 6px;
     border-radius: 3px;
-    background: var(--border-color);
+    background: var(--border-default);
   }
 `
 

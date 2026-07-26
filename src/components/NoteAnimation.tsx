@@ -34,10 +34,10 @@ const NoteContainer = styled.div`
 const Note = styled.span<{ delay: number }>`
   position: absolute;
   font-size: 1.5rem;
-  color: var(--accent-color);
+  color: var(--accent);
   animation: ${floatUp} 0.8s ease-out forwards;
   animation-delay: ${({ delay }) => delay}ms;
-  text-shadow: 0 0 10px var(--accent-color);
+  text-shadow: 0 0 10px var(--accent);
 `
 
 interface NoteAnimationProps {

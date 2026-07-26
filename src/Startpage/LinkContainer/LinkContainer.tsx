@@ -56,14 +56,14 @@ const LinkItem = styled.a`
     content: "";
     height: 4px;
     width: 100%;
-    background-color: var(--accent-color);
+    background-color: var(--accent);
     transition: 0.5s;
     opacity: 0.7;
   }
 
   :hover,
   :focus {
-    color: var(--accent-color2);
+    color: var(--accent-hover);
     animation: text-flicker 0.01s ease 0s infinite alternate;
     outline: none;
   }
@@ -72,7 +72,7 @@ const LinkItem = styled.a`
 const DeleteButton = styled.button`
   background: transparent;
   border: none;
-  color: var(--default-color);
+  color: var(--text-primary);
   cursor: pointer;
   padding: 6px 8px;
   opacity: 0;
@@ -85,7 +85,7 @@ const DeleteButton = styled.button`
 
   &:hover {
     opacity: 1 !important;
-    color: var(--accent-color2);
+    color: var(--accent-hover);
   }
 `
 
@@ -104,8 +104,8 @@ const ConfirmOverlay = styled.div`
 `
 
 const ConfirmDialog = styled.div`
-  background: var(--bg-color);
-  border: 2px solid var(--default-color);
+  background: var(--bg-primary);
+  border: 2px solid var(--text-primary);
   padding: 24px;
   max-width: 320px;
   text-align: center;
@@ -113,13 +113,13 @@ const ConfirmDialog = styled.div`
 
 const ConfirmTitle = styled.h3`
   margin: 0 0 12px 0;
-  color: var(--accent-color);
+  color: var(--accent);
   font-size: 1.1rem;
 `
 
 const ConfirmText = styled.p`
   margin: 0 0 20px 0;
-  color: var(--default-color);
+  color: var(--text-primary);
   font-size: 0.9rem;
   opacity: 0.8;
 `
@@ -134,11 +134,11 @@ const ConfirmButton = styled.button<{ danger?: boolean }>`
   padding: 8px 20px;
   border: 2px solid
     ${({ danger }) =>
-      danger ? "var(--accent-color2)" : "var(--default-color)"};
+      danger ? "var(--accent-hover)" : "var(--text-primary)"};
   background: ${({ danger }) =>
-    danger ? "var(--accent-color2)" : "transparent"};
+    danger ? "var(--accent-hover)" : "transparent"};
   color: ${({ danger }) =>
-    danger ? "var(--bg-color)" : "var(--default-color)"};
+    danger ? "var(--bg-primary)" : "var(--text-primary)"};
   cursor: pointer;
   font-size: 0.9rem;
   transition: 0.2s;
@@ -165,7 +165,7 @@ const CommandPalettePlaceholder = styled.div`
   justify-content: center;
   gap: 16px;
   padding: 40px;
-  border: 2px dashed var(--default-color);
+  border: 2px dashed var(--text-primary);
   opacity: 0.5;
   text-align: center;
 
@@ -176,12 +176,12 @@ const CommandPalettePlaceholder = styled.div`
 
 const PlaceholderText = styled.p`
   font-size: 1rem;
-  color: var(--default-color);
+  color: var(--text-primary);
 `
 
 const PlaceholderHint = styled.p`
   font-size: 0.85rem;
-  color: var(--accent-color);
+  color: var(--accent);
 `
 
 // 删除确认状态类型

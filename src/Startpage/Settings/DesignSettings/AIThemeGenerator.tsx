@@ -13,7 +13,7 @@ import {
 const Container = styled.div`
   margin-top: 24px;
   padding: 16px;
-  border: 2px solid var(--border-color);
+  border: 2px solid var(--border-default);
 `
 
 const Title = styled.h3`
@@ -45,7 +45,7 @@ const TextArea = styled.textarea`
   min-height: 80px;
   padding: 10px 12px;
   background: transparent;
-  border: 2px solid var(--border-color);
+  border: 2px solid var(--border-default);
   color: var(--text-primary);
   font-size: 0.9rem;
   font-family: inherit;
@@ -73,7 +73,7 @@ const Select = styled.select`
   width: 100%;
   padding: 10px 12px;
   background: var(--bg-primary);
-  border: 2px solid var(--border-color);
+  border: 2px solid var(--border-default);
   color: var(--text-primary);
   font-size: 0.9rem;
   cursor: pointer;
@@ -118,7 +118,7 @@ const GenerateButton = styled.button`
 const PreviewContainer = styled.div`
   margin-top: 16px;
   padding: 16px;
-  border: 2px dashed var(--border-color);
+  border: 2px dashed var(--border-default);
 `
 
 const PreviewTitle = styled.div`
@@ -142,7 +142,7 @@ const ColorSectionTitle = styled.div`
   color: var(--text-secondary);
   margin-bottom: 8px;
   padding-bottom: 4px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-default);
 `
 
 const ColorGrid = styled.div`

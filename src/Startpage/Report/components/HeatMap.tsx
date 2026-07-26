@@ -62,13 +62,13 @@ const Cell = styled.div<{ color: string; isHighlight: boolean }>`
   border-radius: 4px;
   border: 2px solid
     ${({ isHighlight }) =>
-      isHighlight ? "var(--accent-color)" : "transparent"};
+      isHighlight ? "var(--accent)" : "transparent"};
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 0.75rem;
   color: ${({ color }) =>
-    color === COLORS.empty ? "var(--default-color)" : "#fff"};
+    color === COLORS.empty ? "var(--text-primary)" : "#fff"};
   opacity: ${({ color }) => (color === COLORS.empty ? 0.5 : 1)};
   transition: transform 0.2s;
 

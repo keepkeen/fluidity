@@ -26,7 +26,7 @@ const Container = styled.div`
 
 const AISection = styled.div`
   padding: 12px 16px;
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--text-primary);
   background: rgba(0, 0, 0, 0.1);
 `
 
@@ -70,13 +70,13 @@ const ContentColumn = styled.div`
   flex-direction: column;
   gap: 12px;
   padding: 12px;
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--text-primary);
   background: rgba(0, 0, 0, 0.1);
 `
 
 const TopLinksSection = styled.div`
   padding: 12px 16px;
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--text-primary);
   background: rgba(0, 0, 0, 0.1);
 `
 

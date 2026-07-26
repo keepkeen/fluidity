@@ -22,8 +22,8 @@ const DropdownButton = styled(IconButton)`
   align-items: space-between;
   justify-content: space-between;
   padding: 10px 20px;
-  border: 2px solid var(--border-color);
-  background-color: var(--bg-color);
+  border: 2px solid var(--border-default);
+  background-color: var(--bg-primary);
 
   :enabled:hover,
   :focus,
@@ -41,7 +41,7 @@ const DropdownPopup = styled.div<{ height: number; items: number }>`
   left: 4px;
   top: 40px;
   width: calc(100% - 3px);
-  background-color: var(--bg-color);
+  background-color: var(--bg-primary);
   overflow: hidden;
   z-index: 9;
   animation: box-flicker 0.01s ease 0s infinite alternate;
@@ -61,8 +61,8 @@ const DropdownItem = styled(IconButton)`
   :enabled:hover {
     animation: none;
     opacity: 1;
-    background-color: var(--default-color);
-    color: var(--bg-color);
+    background-color: var(--text-primary);
+    color: var(--bg-primary);
   }
 `
 

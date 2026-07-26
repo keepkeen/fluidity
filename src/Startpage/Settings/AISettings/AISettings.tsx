@@ -53,7 +53,7 @@ const GroupTitle = styled.h3`
   font-weight: 600;
   margin-bottom: 12px;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-default);
   opacity: 0.9;
 `
 
@@ -68,9 +68,9 @@ const Toggle = styled.button<{ active: boolean }>`
   width: 50px;
   height: 26px;
   border-radius: 13px;
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--text-primary);
   background: ${({ active }) =>
-    active ? "var(--accent-color)" : "transparent"};
+    active ? "var(--accent)" : "transparent"};
   cursor: pointer;
   position: relative;
   transition: 0.3s;
@@ -84,7 +84,7 @@ const Toggle = styled.button<{ active: boolean }>`
     height: 18px;
     border-radius: 50%;
     background: ${({ active }) =>
-      active ? "var(--bg-color)" : "var(--default-color)"};
+      active ? "var(--bg-primary)" : "var(--text-primary)"};
     transition: 0.3s;
   }
 `
@@ -100,18 +100,18 @@ const Input = styled.input`
   flex: 1;
   padding: 10px 12px;
   background: transparent;
-  border: 2px solid var(--border-color);
-  color: var(--default-color);
+  border: 2px solid var(--border-default);
+  color: var(--text-primary);
   font-size: 0.9rem;
   transition: 0.2s;
 
   &:focus {
     outline: none;
-    border-color: var(--accent-color);
+    border-color: var(--accent);
   }
 
   &::placeholder {
-    color: var(--default-color);
+    color: var(--text-primary);
     opacity: 0.5;
   }
 `
@@ -119,14 +119,14 @@ const Input = styled.input`
 const IconBtn = styled.button`
   padding: 10px;
   background: transparent;
-  border: 2px solid var(--default-color);
-  color: var(--default-color);
+  border: 2px solid var(--text-primary);
+  color: var(--text-primary);
   cursor: pointer;
   transition: 0.2s;
 
   &:hover {
-    background: var(--accent-color);
-    color: var(--bg-color);
+    background: var(--accent);
+    color: var(--bg-primary);
   }
 `
 
@@ -140,7 +140,7 @@ const HelpText = styled.p`
 
 const StatsCard = styled.div`
   padding: 16px;
-  border: 2px solid var(--border-color);
+  border: 2px solid var(--border-default);
   margin-top: 12px;
 `
 
@@ -148,7 +148,7 @@ const StatRow = styled.div`
   display: flex;
   justify-content: space-between;
   padding: 6px 0;
-  border-bottom: 1px dashed var(--border-color);
+  border-bottom: 1px dashed var(--border-default);
   opacity: 0.8;
 
   &:last-child {
@@ -163,16 +163,16 @@ const StatLabel = styled.span`
 const StatValue = styled.span`
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--accent-color);
+  color: var(--accent);
 `
 
 const TestButton = styled.button`
   width: 100%;
   padding: 12px;
   margin-top: 12px;
-  background: var(--accent-color);
-  border: 2px solid var(--default-color);
-  color: var(--bg-color);
+  background: var(--accent);
+  border: 2px solid var(--text-primary);
+  color: var(--bg-primary);
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
@@ -183,7 +183,7 @@ const TestButton = styled.button`
   gap: 8px;
 
   &:hover {
-    background: var(--accent-color2);
+    background: var(--accent-hover);
   }
 
   &:disabled {
@@ -196,7 +196,7 @@ const TestResult = styled.div<{ error?: boolean }>`
   margin-top: 12px;
   padding: 12px;
   border: 2px solid
-    ${({ error }) => (error ? "var(--accent-color2)" : "var(--accent-color)")};
+    ${({ error }) => (error ? "var(--accent-hover)" : "var(--accent)")};
   font-size: 0.9rem;
   line-height: 1.5;
   word-break: break-word;
@@ -211,8 +211,8 @@ const PrivacyButton = styled.button`
   flex: 1;
   padding: 10px 12px;
   background: transparent;
-  border: 2px solid var(--accent-color2);
-  color: var(--accent-color2);
+  border: 2px solid var(--accent-hover);
+  color: var(--accent-hover);
   font-size: 0.85rem;
   cursor: pointer;
   transition: 0.2s;
@@ -222,8 +222,8 @@ const PrivacyButton = styled.button`
   gap: 8px;
 
   &:hover {
-    background: var(--accent-color2);
-    color: var(--bg-color);
+    background: var(--accent-hover);
+    color: var(--bg-primary);
   }
 `
 

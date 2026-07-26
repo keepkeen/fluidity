@@ -63,16 +63,16 @@ const Item = styled.div`
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border: var(--border-width) solid var(--default-color);
+  border: var(--border-width) solid var(--text-primary);
   border-radius: var(--radius-sm);
-  color: var(--default-color);
+  color: var(--text-primary);
   background: rgba(var(--bg-secondary-rgb), 0.2);
   overflow: hidden;
   transition: 0.2s;
 
   &:hover {
     background: rgba(var(--bg-secondary-rgb), 0.4);
-    border-color: var(--accent-color);
+    border-color: var(--accent);
   }
 `
 
@@ -82,14 +82,14 @@ const Fill = styled.div<{ width: number }>`
   left: 0;
   bottom: 0;
   width: ${({ width }) => width}%;
-  background: linear-gradient(90deg, var(--accent-color), var(--accent-color2));
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
   opacity: 0.18;
   pointer-events: none;
 `
 
 const Rank = styled.div`
   font-weight: 700;
-  color: var(--accent-color);
+  color: var(--accent);
 `
 
 const Domain = styled.div`

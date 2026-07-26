@@ -48,8 +48,8 @@ const Bar = styled.div<{ width: number; isMax: boolean }>`
   width: ${({ width }) => width}%;
   background: ${({ isMax }) =>
     isMax
-      ? "linear-gradient(90deg, var(--accent-color), var(--accent-color2))"
-      : "var(--accent-color)"};
+      ? "linear-gradient(90deg, var(--accent), var(--accent-hover))"
+      : "var(--accent)"};
   border-radius: 2px;
   transition: width 0.3s ease;
 `
@@ -63,7 +63,7 @@ const Percentage = styled.span`
 
 const MaxIndicator = styled.span`
   font-size: 0.65rem;
-  color: var(--accent-color);
+  color: var(--accent);
   margin-left: 4px;
 `
 

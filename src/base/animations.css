@@ -1,63 +1,63 @@
 @keyframes circling-shadow {
     0%{ filter:
-        drop-shadow(-10px -10px 0 var(--accent-color2))
-        drop-shadow(10px 10px 0 var(--accent-color));
+        drop-shadow(-10px -10px 0 var(--accent-hover))
+        drop-shadow(10px 10px 0 var(--accent));
     }
     25%{ filter:
-        drop-shadow(-10px 10px 0 var(--accent-color2))
-        drop-shadow(10px -10px 0 var(--accent-color));
+        drop-shadow(-10px 10px 0 var(--accent-hover))
+        drop-shadow(10px -10px 0 var(--accent));
     }
     50%{ filter:
-        drop-shadow(10px 10px 0 var(--accent-color))
-        drop-shadow(-10px -10px 0 var(--accent-color2));
+        drop-shadow(10px 10px 0 var(--accent))
+        drop-shadow(-10px -10px 0 var(--accent-hover));
     }
     75%{ filter:
-        drop-shadow(10px -10px 0 var(--accent-color))
-        drop-shadow(-10px 10px 0 var(--accent-color2));
+        drop-shadow(10px -10px 0 var(--accent))
+        drop-shadow(-10px 10px 0 var(--accent-hover));
     }
     100%{ filter:
-        drop-shadow(-10px -10px 0 var(--accent-color2))
-        drop-shadow(10px 10px 0 var(--accent-color));
+        drop-shadow(-10px -10px 0 var(--accent-hover))
+        drop-shadow(10px 10px 0 var(--accent));
     }
 }
 @keyframes circling-shadow-small {
     0%{ filter:
-        drop-shadow(-5px -5px 0 var(--accent-color2))
-        drop-shadow(5px 5px 0 var(--accent-color));
+        drop-shadow(-5px -5px 0 var(--accent-hover))
+        drop-shadow(5px 5px 0 var(--accent));
     }
     25%{ filter:
-        drop-shadow(-5px 5px 0 var(--accent-color2))
-        drop-shadow(5px -5px 0 var(--accent-color));
+        drop-shadow(-5px 5px 0 var(--accent-hover))
+        drop-shadow(5px -5px 0 var(--accent));
     }
     50%{ filter:
-        drop-shadow(5px 5px 0 var(--accent-color))
-        drop-shadow(-5px -5px 0 var(--accent-color2));
+        drop-shadow(5px 5px 0 var(--accent))
+        drop-shadow(-5px -5px 0 var(--accent-hover));
     }
     75%{ filter:
-        drop-shadow(5px -5px 0 var(--accent-color))
-        drop-shadow(-5px 5px 0 var(--accent-color2));
+        drop-shadow(5px -5px 0 var(--accent))
+        drop-shadow(-5px 5px 0 var(--accent-hover));
     }
     100%{ filter:
-        drop-shadow(-5px -5px 0 var(--accent-color2))
-        drop-shadow(5px 5px 0 var(--accent-color));
+        drop-shadow(-5px -5px 0 var(--accent-hover))
+        drop-shadow(5px 5px 0 var(--accent));
     }
 }
 
 @keyframes text-flicker {
     from {
-        text-shadow: 1px 0 0 var(--accent-color), -2px 0 0 var(--accent-color2);
+        text-shadow: 1px 0 0 var(--accent), -2px 0 0 var(--accent-hover);
     }
     to {
-        text-shadow: 2px 0.5px 2px var(--accent-color), -1px -0.5px 2px var(--accent-color2);
+        text-shadow: 2px 0.5px 2px var(--accent), -1px -0.5px 2px var(--accent-hover);
     }
 }
 
 @keyframes box-flicker {
     from {
-        filter: drop-shadow(1px 0 0 var(--accent-color)) drop-shadow(-2px 0 0 var(--accent-color2));
+        filter: drop-shadow(1px 0 0 var(--accent)) drop-shadow(-2px 0 0 var(--accent-hover));
     }
     to {
-        filter: drop-shadow(2px 0.5px 2px var(--accent-color)) drop-shadow( -1px -0.5px 2px var(--accent-color2));
+        filter: drop-shadow(2px 0.5px 2px var(--accent)) drop-shadow( -1px -0.5px 2px var(--accent-hover));
     }
 }
 

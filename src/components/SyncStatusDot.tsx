@@ -22,7 +22,7 @@ const StatusButton = styled.button<{ interactive: boolean }>`
   cursor: ${({ interactive }) => (interactive ? "pointer" : "default")};
 
   &:focus-visible {
-    outline: 2px solid var(--accent-color);
+    outline: 2px solid var(--accent);
     outline-offset: 3px;
   }
 `
@@ -32,7 +32,7 @@ const Dot = styled.span<{ color: string }>`
   height: 10px;
   border-radius: 999px;
   background: ${({ color }) => color};
-  box-shadow: 0 0 0 2px var(--bg-color);
+  box-shadow: 0 0 0 2px var(--bg-primary);
   flex: 0 0 auto;
 `
 

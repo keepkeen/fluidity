@@ -19,9 +19,9 @@ interface NotificationData {
 }
 
 const getColorByType = (type: string): string => {
-  if (type === "success") return "var(--accent-color)"
-  if (type === "error") return "var(--accent-color2)"
-  return "var(--default-color)"
+  if (type === "success") return "var(--accent)"
+  if (type === "error") return "var(--accent-hover)"
+  return "var(--text-primary)"
 }
 
 const NotificationContainer = styled.div<{ visible: boolean; type: string }>`
@@ -30,7 +30,7 @@ const NotificationContainer = styled.div<{ visible: boolean; type: string }>`
   right: 20px;
   min-width: 300px;
   max-width: 400px;
-  background: var(--bg-color);
+  background: var(--bg-primary);
   border: 2px solid ${({ type }) => getColorByType(type)};
   box-shadow: 8px 8px 0px ${({ type }) => getColorByType(type)};
   padding: 16px;
@@ -60,7 +60,7 @@ const NotificationTitle = styled.div<{ type: string }>`
 const CloseButton = styled.button`
   background: transparent;
   border: none;
-  color: var(--default-color);
+  color: var(--text-primary);
   cursor: pointer;
   padding: 4px;
   opacity: 0.6;
@@ -73,7 +73,7 @@ const CloseButton = styled.button`
 
 const NotificationMessage = styled.p`
   margin: 0;
-  color: var(--default-color);
+  color: var(--text-primary);
   font-size: 0.9rem;
   opacity: 0.8;
   line-height: 1.4;

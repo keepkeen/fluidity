@@ -178,7 +178,7 @@ const CarouselItem = styled.div<{ active: boolean }>`
 const Image = styled.img`
   height: calc(100% - 24px);
   width: calc(100% - 24px);
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--text-primary);
   padding: 10px;
   object-fit: cover;
   animation: circling-shadow 4s ease 0s infinite normal;
@@ -207,15 +207,15 @@ const Indicator = styled.button<{ active: boolean }>`
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--text-primary);
   background: ${({ active }) =>
-    active ? "var(--accent-color)" : "transparent"};
+    active ? "var(--accent)" : "transparent"};
   cursor: pointer;
   padding: 0;
   transition: background 0.3s, transform 0.2s;
   &:hover {
     transform: scale(1.2);
-    background: var(--accent-color2);
+    background: var(--accent-hover);
   }
 `
 

@@ -1,10 +1,10 @@
 import styled from "@emotion/styled"
 
 // CSS 变量常量
-export const CSS_ACCENT_COLOR = "var(--accent-color)"
-export const CSS_BORDER_COLOR = "var(--border-color)"
-export const CSS_BG_COLOR = "var(--bg-color)"
-export const CSS_DEFAULT_COLOR = "var(--default-color)"
+export const CSS_ACCENT_COLOR = "var(--accent)"
+export const CSS_BORDER_COLOR = "var(--border-default)"
+export const CSS_BG_COLOR = "var(--bg-primary)"
+export const CSS_DEFAULT_COLOR = "var(--text-primary)"
 
 export const Container = styled.div`
   display: flex;
@@ -13,11 +13,11 @@ export const Container = styled.div`
 `
 
 export const WallpaperPreview = styled.div`
-  background-color: var(--bg-color);
+  background-color: var(--bg-primary);
   display: flex;
   justify-content: center;
   align-items: center;
-  border: 2px solid var(--accent-color);
+  border: 2px solid var(--accent);
   width: calc(100% - 400px);
   height: 100%;
   position: relative;
@@ -25,7 +25,7 @@ export const WallpaperPreview = styled.div`
   min-width: 360px;
   ::after {
     content: "主页预览";
-    color: var(--accent-color);
+    color: var(--accent);
     position: absolute;
     top: 10px;
     right: 15px;
@@ -42,7 +42,7 @@ export const PreviewStage = styled.div<{
 }>`
   position: absolute;
   inset: 0;
-  background: var(--bg-color);
+  background: var(--bg-primary);
 
   ::before {
     content: "";
@@ -77,7 +77,7 @@ export const PreviewContent = styled.div`
   height: 78%;
   max-height: 520px;
   border-radius: 18px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-default);
   background: rgba(0, 0, 0, 0.18);
   backdrop-filter: blur(12px);
   overflow: hidden;
@@ -90,13 +90,13 @@ export const PreviewLeftCard = styled.div<{ hidden: boolean }>`
   flex-direction: column;
   padding: 16px;
   gap: 12px;
-  border-right: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-default);
 `
 
 export const PreviewCard = styled.div<{ imageUrl: string; visible: boolean }>`
   flex: 1;
   border-radius: 14px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-default);
   overflow: hidden;
   position: relative;
   background: rgba(0, 0, 0, 0.18);
@@ -117,7 +117,7 @@ export const PreviewCard = styled.div<{ imageUrl: string; visible: boolean }>`
 export const PreviewSearch = styled.div`
   height: 40px;
   border-radius: 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-default);
   background: rgba(255, 255, 255, 0.06);
 `
 
@@ -130,7 +130,7 @@ export const PreviewMain = styled.div`
 
 export const PreviewHint = styled.div`
   font-size: 12px;
-  color: var(--secondary-color);
+  color: var(--text-secondary);
   line-height: 1.5;
 `
 
@@ -143,10 +143,10 @@ export const Section = styled.div`
 export const SectionTitle = styled.h3`
   font-size: 14px;
   font-weight: 600;
-  color: var(--accent-color);
+  color: var(--accent);
   margin: 0;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-default);
 `
 
 export const OptionGroup = styled.div`
@@ -208,7 +208,7 @@ export const Input = styled.input`
   border: 2px solid ${CSS_BORDER_COLOR};
   border-radius: 8px;
   background: transparent;
-  color: var(--default-color);
+  color: var(--text-primary);
   font-size: 14px;
   outline: none;
   transition: border-color 0.2s;
@@ -218,7 +218,7 @@ export const Input = styled.input`
   }
 
   &::placeholder {
-    color: var(--secondary-color);
+    color: var(--text-secondary);
   }
 `
 
@@ -233,7 +233,7 @@ export const UploadButton = styled.button`
   border: 2px dashed ${CSS_BORDER_COLOR};
   border-radius: 8px;
   background: transparent;
-  color: var(--default-color);
+  color: var(--text-primary);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
@@ -263,20 +263,20 @@ export const UploadPreview = styled.div`
 export const UploadInfo = styled.div`
   flex: 1;
   font-size: 12px;
-  color: var(--secondary-color);
+  color: var(--text-secondary);
 `
 
 export const RemoveButton = styled.button`
   padding: 6px 12px;
-  border: 1px solid var(--accent-color2);
+  border: 1px solid var(--accent-hover);
   border-radius: 4px;
   background: transparent;
-  color: var(--accent-color2);
+  color: var(--accent-hover);
   font-size: 12px;
   cursor: pointer;
 
   &:hover {
-    background: var(--accent-color2) 22;
+    background: var(--accent-hover) 22;
   }
 `
 
@@ -288,7 +288,7 @@ export const BingConfig = styled.div`
 
 export const BingInfo = styled.div`
   font-size: 12px;
-  color: var(--secondary-color);
+  color: var(--text-secondary);
   line-height: 1.5;
 `
 
@@ -337,14 +337,14 @@ export const ToggleSwitch = styled.div<{ checked: boolean }>`
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    background: var(--default-color);
+    background: var(--text-primary);
     transition: left 0.2s;
   }
 `
 
 export const ToggleLabel = styled.span`
   font-size: 14px;
-  color: var(--default-color);
+  color: var(--text-primary);
 `
 
 export const HiddenInput = styled.input`
@@ -380,7 +380,7 @@ export const CarouselImageItem = styled.div`
 export const CarouselImageInfo = styled.div`
   flex: 1;
   font-size: 13px;
-  color: var(--default-color);
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -396,7 +396,7 @@ export const SmallButton = styled.button`
   border: 1px solid ${CSS_BORDER_COLOR};
   border-radius: 4px;
   background: transparent;
-  color: var(--default-color);
+  color: var(--text-primary);
   font-size: 12px;
   cursor: pointer;
   transition: all 0.2s;
@@ -421,7 +421,7 @@ export const AddImageButtons = styled.div`
 export const EmptyState = styled.div`
   padding: 20px;
   text-align: center;
-  color: var(--secondary-color);
+  color: var(--text-secondary);
   font-size: 13px;
   border: 2px dashed ${CSS_BORDER_COLOR};
   border-radius: 8px;

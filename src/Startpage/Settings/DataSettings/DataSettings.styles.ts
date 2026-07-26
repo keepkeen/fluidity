@@ -1,9 +1,9 @@
 import styled from "@emotion/styled"
 
 // CSS 变量常量
-const ACCENT_COLOR = "var(--accent-color)"
-const ACCENT_COLOR2 = "var(--accent-color2)"
-const BG_COLOR = "var(--bg-color)"
+const ACCENT_COLOR = "var(--accent)"
+const ACCENT_COLOR2 = "var(--accent-hover)"
+const BG_COLOR = "var(--bg-primary)"
 const VARIANT_PRIMARY = "primary"
 
 const isPrimary = (variant?: string) => variant === VARIANT_PRIMARY
@@ -54,7 +54,7 @@ export const SectionTitle = styled.h3`
   font-weight: 600;
   margin: 0;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-default);
   opacity: 0.9;
 `
 
@@ -67,7 +67,7 @@ export const Description = styled.p`
 
 export const StatsCard = styled.div`
   padding: 16px;
-  border: 2px solid var(--border-color);
+  border: 2px solid var(--border-default);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -78,7 +78,7 @@ export const StatsRow = styled.div`
   justify-content: space-between;
   align-items: center;
   padding: 6px 0;
-  border-bottom: 1px dashed var(--border-color);
+  border-bottom: 1px dashed var(--border-default);
   opacity: 0.8;
 
   &:last-child {
@@ -111,11 +111,11 @@ export const Button = styled.button<{
   min-width: 140px;
   box-sizing: border-box;
   padding: 12px 16px;
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--text-primary);
   background: ${({ variant }) =>
     isPrimary(variant) ? ACCENT_COLOR : "transparent"};
   color: ${({ variant }) =>
-    isPrimary(variant) ? BG_COLOR : "var(--default-color)"};
+    isPrimary(variant) ? BG_COLOR : "var(--text-primary)"};
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
@@ -146,9 +146,9 @@ export const TextInput = styled.input`
   min-width: 0;
   box-sizing: border-box;
   padding: 10px 12px;
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--text-primary);
   background: transparent;
-  color: var(--default-color);
+  color: var(--text-primary);
   font-size: 0.9rem;
 
   &:focus {
@@ -173,7 +173,7 @@ export const StatusRow = styled.div`
   justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
-  border: 2px solid var(--border-color);
+  border: 2px solid var(--border-default);
   min-width: 0;
 
   @media screen and (max-width: 600px) {
@@ -226,7 +226,7 @@ export const Checkbox = styled.input`
   appearance: none;
   width: 18px;
   height: 18px;
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--text-primary);
   border-radius: 4px;
   cursor: pointer;
   position: relative;

@@ -55,18 +55,18 @@ const AddInput = styled.input`
   flex: 1;
   padding: 8px 10px;
   background: rgba(var(--bg-secondary-rgb), 0.3);
-  color: var(--default-color);
-  border: var(--border-width) solid var(--default-color);
+  color: var(--text-primary);
+  border: var(--border-width) solid var(--text-primary);
   border-radius: var(--radius-sm);
   transition: 0.2s;
 
   ::placeholder {
-    color: var(--default-color);
+    color: var(--text-primary);
     opacity: 0.5;
   }
   :focus {
     outline: none;
-    border-color: var(--accent-color);
+    border-color: var(--accent);
     background: rgba(var(--bg-secondary-rgb), 0.5);
   }
 `
@@ -76,8 +76,8 @@ const AddButton = styled.button`
   height: 36px;
   border: none;
   border-radius: var(--radius-sm);
-  background: var(--accent-color);
-  color: var(--bg-color);
+  background: var(--accent);
+  color: var(--bg-primary);
   cursor: pointer;
   transition: 0.2s;
   display: flex;
@@ -89,7 +89,7 @@ const AddButton = styled.button`
     cursor: not-allowed;
   }
   :not(:disabled):hover {
-    background: var(--accent-color2);
+    background: var(--accent-hover);
     transform: var(--hover-transform);
   }
 `
@@ -119,7 +119,7 @@ const Item = styled.div<{
       ? "rgba(var(--bg-secondary-rgb), 0.2)"
       : "rgba(var(--bg-secondary-rgb), 0.4)"};
   border: 1px solid transparent;
-  color: var(--default-color);
+  color: var(--text-primary);
   transition: 0.25s;
   opacity: ${({ removing }) => (removing ? 0 : 1)};
   transform: ${({ removing }) =>
@@ -128,14 +128,14 @@ const Item = styled.div<{
 
   &:hover {
     background: rgba(var(--bg-secondary-rgb), 0.6);
-    border-color: var(--default-color);
+    border-color: var(--text-primary);
   }
 
   ${({ celebrating }) =>
     celebrating &&
     css`
       animation: ${bounceAnimation} 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-      border-color: var(--accent-color);
+      border-color: var(--accent);
     `}
 `
 
@@ -143,21 +143,21 @@ const Checkbox = styled.input`
   appearance: none;
   width: 18px;
   height: 18px;
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--text-primary);
   border-radius: 4px;
   cursor: pointer;
   position: relative;
   transition: 0.2s;
   :checked {
-    background: var(--accent-color);
-    border-color: var(--accent-color);
+    background: var(--accent);
+    border-color: var(--accent);
   }
   :checked::after {
     content: "✓";
     position: absolute;
     top: -2px;
     left: 2px;
-    color: var(--bg-color);
+    color: var(--bg-primary);
     font-size: 14px;
     font-weight: 700;
   }
@@ -173,14 +173,14 @@ const Text = styled.div<{ done: boolean }>`
 const DeleteButton = styled.button`
   border: none;
   background: transparent;
-  color: var(--default-color);
+  color: var(--text-primary);
   cursor: pointer;
   transition: 0.2s;
   opacity: 0.6;
   padding: 4px;
 
   :hover {
-    color: var(--accent-color2);
+    color: var(--accent-hover);
     opacity: 1;
     transform: rotate(-10deg);
   }
@@ -188,7 +188,7 @@ const DeleteButton = styled.button`
 
 const Empty = styled.div`
   text-align: center;
-  color: var(--default-color);
+  color: var(--text-primary);
   opacity: 0.6;
   padding: 20px 0;
   font-size: 0.9rem;
@@ -367,7 +367,7 @@ export const TodoPanel = () => {
           style={{
             opacity: 0.6,
             fontSize: "0.8rem",
-            color: "var(--default-color)",
+            color: "var(--text-primary)",
           }}
         >
           {sortedTodos.filter(t => !t.done).length} 剩余

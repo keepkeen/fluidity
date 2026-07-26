@@ -11,8 +11,8 @@ const ToggleSwitch = styled.div<{ checked: boolean }>`
   width: 44px;
   height: 24px;
   background: ${({ checked }) =>
-    checked ? "var(--accent-color)" : "var(--border-color)"};
-  border: 2px solid var(--default-color);
+    checked ? "var(--accent)" : "var(--border-default)"};
+  border: 2px solid var(--text-primary);
   border-radius: 12px;
   position: relative;
   transition: 0.2s;
@@ -24,14 +24,14 @@ const ToggleSwitch = styled.div<{ checked: boolean }>`
     left: ${({ checked }) => (checked ? "20px" : "2px")};
     width: 16px;
     height: 16px;
-    background: var(--default-color);
+    background: var(--text-primary);
     border-radius: 50%;
     transition: 0.2s;
   }
 `
 
 const ToggleLabel = styled.span`
-  color: var(--default-color);
+  color: var(--text-primary);
   font-size: 0.95rem;
 `
 

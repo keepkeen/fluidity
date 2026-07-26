@@ -42,12 +42,12 @@ interface DragDropProviderProps {
 // 拖拽覆盖层样式
 const DragOverlayContent = styled.div`
   padding: 8px 16px;
-  background: var(--accent-color);
-  color: var(--bg-color);
-  border: 2px solid var(--default-color);
+  background: var(--accent);
+  color: var(--bg-primary);
+  border: 2px solid var(--text-primary);
   font-size: 0.9rem;
   opacity: 0.9;
-  box-shadow: 4px 4px 0 var(--default-color);
+  box-shadow: 4px 4px 0 var(--text-primary);
 `
 
 /**

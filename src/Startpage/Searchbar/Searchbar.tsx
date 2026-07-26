@@ -88,12 +88,12 @@ const StyledSearchbar = styled.input`
   font-size: 30pt;
 
   background-color: transparent;
-  color: var(--default-color);
+  color: var(--text-primary);
   transition: 0.3s;
   border: none;
 
   ::placeholder {
-    color: var(--default-color);
+    color: var(--text-primary);
     opacity: 0.6;
   }
 
@@ -115,7 +115,7 @@ const SearchIcon = styled.div<{ src: string }>`
   width: 3.1rem;
   margin: auto 10px auto 0;
 
-  background: var(--default-color);
+  background: var(--text-primary);
 
   mask-size: cover;
   mask-image: url(${({ src }) => src});
@@ -138,8 +138,8 @@ const EngineTag = styled.span`
   align-items: center;
   padding: 4px 10px;
   margin-right: 8px;
-  background: var(--accent-color);
-  color: var(--bg-color);
+  background: var(--accent);
+  color: var(--bg-primary);
   border-radius: 4px;
   font-size: 14px;
   font-weight: 500;
@@ -189,13 +189,13 @@ const SuggestionItem = styled.li<{ selected: boolean }>`
   gap: 12px;
   transition: 0.15s;
   background: ${({ selected }) =>
-    selected ? "var(--accent-color)" : "transparent"};
+    selected ? "var(--accent)" : "transparent"};
   color: ${({ selected }) =>
-    selected ? "var(--bg-color)" : "var(--default-color)"};
+    selected ? "var(--bg-primary)" : "var(--text-primary)"};
 
   &:hover {
-    background: var(--accent-color);
-    color: var(--bg-color);
+    background: var(--accent);
+    color: var(--bg-primary);
   }
 `
 
@@ -211,7 +211,7 @@ const SuggestionType = styled.span<{ selected: boolean }>`
   font-size: 0.75rem;
   padding: 2px 8px;
   border: 1px solid
-    ${({ selected }) => (selected ? "var(--bg-color)" : "var(--default-color)")};
+    ${({ selected }) => (selected ? "var(--bg-primary)" : "var(--text-primary)")};
   opacity: 0.7;
 `
 

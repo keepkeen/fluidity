@@ -27,7 +27,7 @@ const TopRightControls = styled.div`
 const SettingsPopupToggle = styled.button`
   font-size: 20px;
 
-  color: var(--default-color);
+  color: var(--text-primary);
   background-color: transparent;
   border: none;
   opacity: 0.3;
@@ -37,14 +37,14 @@ const SettingsPopupToggle = styled.button`
 
   :hover {
     opacity: 0.5;
-    color: var(--accent-color2);
+    color: var(--accent-hover);
     animation: box-flicker 0.01s ease 0s infinite alternate;
   }
   :focus {
     outline: none;
   }
   :focus-visible {
-    outline: 2px solid var(--accent-color);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
     opacity: 0.8;
   }

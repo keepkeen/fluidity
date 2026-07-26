@@ -60,7 +60,7 @@ const WallpaperSettings = React.lazy(() =>
 )
 
 const StyledSettingsWindow = styled.div`
-  background-color: var(--bg-color);
+  background-color: var(--bg-primary);
   position: fixed;
 
   top: var(--settings-window-gap);
@@ -68,9 +68,9 @@ const StyledSettingsWindow = styled.div`
   bottom: var(--settings-window-gap);
   left: var(--settings-window-gap);
 
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--text-primary);
   padding: 60px 30px 30px 30px;
-  box-shadow: 10px 10px 0px var(--accent-color);
+  box-shadow: 10px 10px 0px var(--accent);
   z-index: 101;
 
   /* 中等屏幕优化 */
@@ -97,7 +97,7 @@ const StyledSettingsWindow = styled.div`
     bottom: 10px;
     left: 10px;
     padding: 46px 12px 12px 12px;
-    box-shadow: 5px 5px 0px var(--accent-color);
+    box-shadow: 5px 5px 0px var(--accent);
   }
 `
 const WindowContent = styled.div`
@@ -125,8 +125,8 @@ const WindowHeader = styled.div`
     margin: 5px 20px 0 10px;
     white-space: nowrap;
   }
-  color: var(--bg-color);
-  background-color: var(--default-color);
+  color: var(--bg-primary);
+  background-color: var(--text-primary);
   width: 100%;
   height: 32px;
   position: absolute;
@@ -180,7 +180,7 @@ const WindowFooter = styled.div`
 `
 
 export const StyledSettingsContent = styled.div`
-  background-color: var(--bg-color);
+  background-color: var(--bg-primary);
   width: 400px;
   height: 100%;
   margin-right: 30px;
@@ -208,7 +208,7 @@ export const SettingsLabel = styled.p`
 `
 
 export const SettingElement = styled.div`
-  background-color: var(--bg-color);
+  background-color: var(--bg-primary);
   position: relative;
   padding: 10px 0px;
   + {
@@ -224,8 +224,8 @@ const CloseButton = styled(IconButton)`
 `
 
 export const SettingsButton = styled(IconButton)`
-  background-color: var(--default-color);
-  color: var(--bg-color);
+  background-color: var(--text-primary);
+  color: var(--bg-primary);
   font-size: 1rem;
   padding: 10px 20px;
   :enabled:hover {
@@ -285,9 +285,9 @@ const MobileTabSelect = styled.select`
     flex: 1;
     min-width: 0;
     height: 24px;
-    border: 1px solid var(--bg-color);
-    background: var(--default-color);
-    color: var(--bg-color);
+    border: 1px solid var(--bg-primary);
+    background: var(--text-primary);
+    color: var(--bg-primary);
     font-size: 0.95rem;
     font-weight: 600;
   }

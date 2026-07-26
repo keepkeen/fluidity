@@ -112,7 +112,7 @@ export const AI = {
 
 export const A11Y = {
   // 焦点管理
-  FOCUS_VISIBLE_OUTLINE: "2px solid var(--accent-color)",
+  FOCUS_VISIBLE_OUTLINE: "2px solid var(--accent)",
   FOCUS_VISIBLE_OFFSET: "2px",
 
   // 最小触摸目标

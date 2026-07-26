@@ -47,16 +47,16 @@ const AIButton = styled.button<{ $loading?: boolean }>`
   gap: 8px;
   padding: 8px 16px;
   background: transparent;
-  border: 2px solid var(--accent-color);
-  color: var(--accent-color);
+  border: 2px solid var(--accent);
+  color: var(--accent);
   cursor: ${({ $loading }) => ($loading ? "wait" : "pointer")};
   font-size: 0.85rem;
   transition: 0.2s;
   opacity: ${({ $loading }) => ($loading ? 0.7 : 1)};
 
   &:hover:not(:disabled) {
-    background: var(--accent-color);
-    color: var(--bg-color);
+    background: var(--accent);
+    color: var(--bg-primary);
   }
 
   &:disabled {
@@ -92,8 +92,8 @@ const CustomPromptOverlay = styled.div`
 `
 
 const CustomPromptDialog = styled.div`
-  background: var(--bg-color);
-  border: 2px solid var(--default-color);
+  background: var(--bg-primary);
+  border: 2px solid var(--text-primary);
   padding: 24px;
   max-width: 500px;
   width: 90%;
@@ -101,13 +101,13 @@ const CustomPromptDialog = styled.div`
 
 const DialogTitle = styled.h3`
   margin: 0 0 16px 0;
-  color: var(--accent-color);
+  color: var(--accent);
   font-size: 1.1rem;
 `
 
 const DialogDescription = styled.p`
   margin: 0 0 16px 0;
-  color: var(--default-color);
+  color: var(--text-primary);
   font-size: 0.85rem;
   opacity: 0.8;
   line-height: 1.5;
@@ -118,20 +118,20 @@ const CustomPromptInput = styled.textarea`
   min-height: 100px;
   padding: 12px;
   background: transparent;
-  border: 2px solid var(--default-color);
-  color: var(--default-color);
+  border: 2px solid var(--text-primary);
+  color: var(--text-primary);
   font-size: 0.9rem;
   resize: vertical;
   margin-bottom: 16px;
 
   &::placeholder {
-    color: var(--default-color);
+    color: var(--text-primary);
     opacity: 0.4;
   }
 
   &:focus {
     outline: none;
-    border-color: var(--accent-color);
+    border-color: var(--accent);
   }
 `
 
@@ -141,14 +141,14 @@ const DialogButtons = styled.div`
   justify-content: flex-end;
 `
 
-const ACCENT_COLOR = "var(--accent-color)"
-const DEFAULT_COLOR = "var(--default-color)"
+const ACCENT_COLOR = "var(--accent)"
+const DEFAULT_COLOR = "var(--text-primary)"
 
 const DialogButton = styled.button<{ primary?: boolean }>`
   padding: 8px 20px;
   border: 2px solid ${({ primary }) => (primary ? ACCENT_COLOR : DEFAULT_COLOR)};
   background: ${({ primary }) => (primary ? ACCENT_COLOR : "transparent")};
-  color: ${({ primary }) => (primary ? "var(--bg-color)" : DEFAULT_COLOR)};
+  color: ${({ primary }) => (primary ? "var(--bg-primary)" : DEFAULT_COLOR)};
   cursor: pointer;
   font-size: 0.9rem;
   transition: 0.2s;

@@ -83,16 +83,16 @@ const ModalContainer = styled.div<{ closing: boolean }>`
 `
 
 const ModalContent = styled.div`
-  background: var(--bg-color);
-  border: 2px solid var(--default-color);
-  box-shadow: 10px 10px 0px var(--accent-color);
+  background: var(--bg-primary);
+  border: 2px solid var(--text-primary);
+  box-shadow: 10px 10px 0px var(--accent);
   padding: 32px;
   max-height: calc(100vh - 40px);
   overflow-y: auto;
 
   @media screen and (max-width: 600px) {
     padding: 20px;
-    box-shadow: 5px 5px 0px var(--accent-color);
+    box-shadow: 5px 5px 0px var(--accent);
   }
 `
 
@@ -116,14 +116,14 @@ const Title = styled.h1`
 `
 
 const TitleIcon = styled.span`
-  color: var(--accent-color);
+  color: var(--accent);
   font-size: 1.3rem;
 `
 
 const CloseButton = styled.button`
   background: transparent;
-  border: 2px solid var(--border-color);
-  color: var(--default-color);
+  border: 2px solid var(--border-default);
+  color: var(--text-primary);
   width: 36px;
   height: 36px;
   display: flex;
@@ -133,9 +133,9 @@ const CloseButton = styled.button`
   transition: 0.2s;
 
   &:hover {
-    background: var(--accent-color2);
-    color: var(--bg-color);
-    border-color: var(--accent-color2);
+    background: var(--accent-hover);
+    color: var(--bg-primary);
+    border-color: var(--accent-hover);
   }
 `
 
@@ -147,18 +147,18 @@ const StepIndicator = styled.div`
 `
 
 // eslint-disable-next-line sonarjs/no-duplicate-string
-const ACCENT_COLOR_VAR = "var(--accent-color)"
+const ACCENT_COLOR_VAR = "var(--accent)"
 
 const StepDot = styled.button<{ active: boolean; completed: boolean }>`
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--text-primary);
   background: ${({ active, completed }) =>
     active
       ? ACCENT_COLOR_VAR
       : completed
-      ? "var(--default-color)"
+      ? "var(--text-primary)"
       : "transparent"};
   cursor: pointer;
   padding: 0;
@@ -179,7 +179,7 @@ const StepDescription = styled.p`
   font-size: 0.95rem;
   line-height: 1.6;
   margin: 0 0 20px 0;
-  color: var(--secondary-color);
+  color: var(--text-secondary);
 `
 
 const FeatureList = styled.ul`
@@ -193,7 +193,7 @@ const FeatureItem = styled.li`
   align-items: flex-start;
   gap: 12px;
   padding: 12px 0;
-  border-bottom: 1px dashed var(--border-color);
+  border-bottom: 1px dashed var(--border-default);
 
   &:last-child {
     border-bottom: none;
@@ -201,7 +201,7 @@ const FeatureItem = styled.li`
 `
 
 const FeatureIcon = styled.span`
-  color: var(--accent-color);
+  color: var(--accent);
   font-size: 1.1rem;
   flex-shrink: 0;
   width: 24px;
@@ -219,7 +219,7 @@ const FeatureTitle = styled.div`
 
 const FeatureDesc = styled.div`
   font-size: 0.85rem;
-  color: var(--secondary-color);
+  color: var(--text-secondary);
 `
 
 const ButtonRow = styled.div`
@@ -232,11 +232,11 @@ const ButtonRow = styled.div`
 
 const Button = styled.button<{ variant?: "primary" | "secondary" }>`
   padding: 12px 24px;
-  border: 2px solid var(--default-color);
+  border: 2px solid var(--text-primary);
   background: ${({ variant }) =>
-    variant === "primary" ? "var(--accent-color)" : "transparent"};
+    variant === "primary" ? "var(--accent)" : "transparent"};
   color: ${({ variant }) =>
-    variant === "primary" ? "var(--bg-color)" : "var(--default-color)"};
+    variant === "primary" ? "var(--bg-primary)" : "var(--text-primary)"};
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
@@ -247,21 +247,21 @@ const Button = styled.button<{ variant?: "primary" | "secondary" }>`
 
   &:hover {
     background: ${({ variant }) =>
-      variant === "primary" ? "var(--accent-color2)" : "var(--accent-color)"};
-    color: var(--bg-color);
+      variant === "primary" ? "var(--accent-hover)" : "var(--accent)"};
+    color: var(--bg-primary);
   }
 `
 
 const SkipButton = styled.button`
   background: transparent;
   border: none;
-  color: var(--secondary-color);
+  color: var(--text-secondary);
   font-size: 0.85rem;
   cursor: pointer;
   padding: 8px;
 
   &:hover {
-    color: var(--default-color);
+    color: var(--text-primary);
     text-decoration: underline;
   }
 `
@@ -271,8 +271,8 @@ const KeyboardHint = styled.div`
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  background: var(--bg-color);
-  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
   border-radius: 4px;
   font-family: monospace;
   font-size: 0.85rem;

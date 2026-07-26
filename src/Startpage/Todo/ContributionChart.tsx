@@ -52,7 +52,7 @@ const DayColumn = styled.div`
 
 const DayLabel = styled.span`
   font-size: 0.75rem;
-  color: var(--default-color);
+  color: var(--text-primary);
   opacity: 0.7;
 `
 
@@ -62,13 +62,13 @@ const DayCell = styled.div<{ color: string; isToday: boolean }>`
   background: ${({ color }) => color};
   border-radius: var(--radius-sm);
   border: 2px solid
-    ${({ isToday }) => (isToday ? "var(--accent-color)" : "transparent")};
+    ${({ isToday }) => (isToday ? "var(--accent)" : "transparent")};
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 0.85rem;
   color: ${({ color }) =>
-    color === COLORS.empty ? "var(--default-color)" : "#fff"};
+    color === COLORS.empty ? "var(--text-primary)" : "#fff"};
   opacity: ${({ color }) => (color === COLORS.empty ? 0.5 : 1)};
   transition: transform 0.2s, box-shadow 0.2s;
 
@@ -86,7 +86,7 @@ const DayCell = styled.div<{ color: string; isToday: boolean }>`
 
 const TotalSection = styled.div`
   text-align: center;
-  color: var(--default-color);
+  color: var(--text-primary);
 `
 
 const TotalNumber = styled.span`
@@ -107,7 +107,7 @@ const Legend = styled.div`
   justify-content: center;
   gap: 4px;
   font-size: 0.75rem;
-  color: var(--default-color);
+  color: var(--text-primary);
   opacity: 0.7;
 `
 
@@ -120,7 +120,7 @@ const LegendCell = styled.div<{ color: string }>`
 
 const EmptyMessage = styled.div`
   text-align: center;
-  color: var(--default-color);
+  color: var(--text-primary);
   opacity: 0.6;
   font-size: 0.9rem;
   line-height: 1.6;
@@ -146,7 +146,7 @@ export const ContributionChart: React.FC = () => {
           style={{
             opacity: 0.6,
             fontSize: "0.85rem",
-            color: "var(--default-color)",
+            color: "var(--text-primary)",
           }}
         >
           最近 7 天

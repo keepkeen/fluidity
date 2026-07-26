@@ -23,7 +23,7 @@ const DragHandle = styled.div`
   justify-content: center;
   padding: 8px;
   cursor: grab;
-  color: var(--default-color);
+  color: var(--text-primary);
   opacity: 0.3;
   transition: opacity 0.2s;
   touch-action: none;
@@ -44,7 +44,7 @@ const SortableWrapper = styled.div<{ isDragging: boolean }>`
   align-items: center;
   opacity: ${({ isDragging }) => (isDragging ? 0.5 : 1)};
   background: ${({ isDragging }) =>
-    isDragging ? "var(--accent-color)" : "transparent"};
+    isDragging ? "var(--accent)" : "transparent"};
   transition: background 0.2s;
 
   &:hover .sortable-link-drag-handle {

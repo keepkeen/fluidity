@@ -84,7 +84,7 @@ const globalStyles = css`
   body {
     margin: 0;
     padding: 0;
-    background: var(--bg-primary, var(--bg-color));
+    background: var(--bg-primary);
   }
 `
 

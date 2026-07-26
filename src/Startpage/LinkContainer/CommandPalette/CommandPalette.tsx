@@ -55,7 +55,7 @@ const SearchHeader = styled.div`
 `
 
 const SearchIcon = styled.div`
-  color: var(--accent-color);
+  color: var(--accent);
   font-size: 1.2rem;
 `
 
@@ -63,12 +63,12 @@ const SearchInput = styled.input`
   flex: 1;
   background: transparent;
   border: none;
-  color: var(--default-color);
+  color: var(--text-primary);
   font-size: 1.1rem;
   outline: none;
 
   &::placeholder {
-    color: var(--default-color);
+    color: var(--text-primary);
     opacity: 0.5;
   }
 `
@@ -76,7 +76,7 @@ const SearchInput = styled.input`
 const CloseButton = styled.button`
   background: transparent;
   border: none;
-  color: var(--default-color);
+  color: var(--text-primary);
   cursor: pointer;
   padding: 8px;
   opacity: 0.6;
@@ -84,14 +84,14 @@ const CloseButton = styled.button`
 
   &:hover {
     opacity: 1;
-    color: var(--accent-color);
+    color: var(--accent);
   }
 `
 
 const ShortcutHint = styled.span`
   font-size: 0.75rem;
   padding: 4px 8px;
-  border: 1px solid var(--default-color);
+  border: 1px solid var(--text-primary);
   opacity: 0.5;
 `
 
@@ -110,7 +110,7 @@ const ResultsContainer = styled.div`
   }
 
   &::-webkit-scrollbar-thumb {
-    background: var(--default-color);
+    background: var(--text-primary);
     opacity: 0.5;
   }
 `
@@ -127,7 +127,7 @@ const GroupHeader = styled.div`
   padding: 10px 16px;
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--accent-color);
+  color: var(--accent);
   background: rgba(255, 255, 255, 0.03);
   display: flex;
   align-items: center;
@@ -143,10 +143,10 @@ const LinkItemWrapper = styled.div<{ selected: boolean }>`
   align-items: center;
   transition: 0.1s;
   background: ${({ selected }) =>
-    selected ? "var(--accent-color)" : "transparent"};
+    selected ? "var(--accent)" : "transparent"};
 
   &:hover {
-    background: var(--accent-color);
+    background: var(--accent);
   }
 `
 
@@ -156,14 +156,14 @@ const LinkItem = styled.a<{ selected: boolean }>`
   align-items: center;
   gap: 8px;
   padding: 12px 16px 12px 32px;
-  color: var(--default-color);
+  color: var(--text-primary);
   text-decoration: none;
   transition: 0.1s;
   color: ${({ selected }) =>
-    selected ? "var(--bg-color)" : "var(--default-color)"};
+    selected ? "var(--bg-primary)" : "var(--text-primary)"};
 
   .link-item-wrapper:hover & {
-    color: var(--bg-color);
+    color: var(--bg-primary);
   }
 `
 
@@ -171,7 +171,7 @@ const DeleteBtn = styled.button<{ selected: boolean }>`
   background: transparent;
   border: none;
   color: ${({ selected }) =>
-    selected ? "var(--bg-color)" : "var(--default-color)"};
+    selected ? "var(--bg-primary)" : "var(--text-primary)"};
   cursor: pointer;
   padding: 8px 16px;
   opacity: 0;
@@ -179,7 +179,7 @@ const DeleteBtn = styled.button<{ selected: boolean }>`
 
   .link-item-wrapper:hover & {
     opacity: 0.7;
-    color: var(--bg-color);
+    color: var(--bg-primary);
   }
 
   &:hover {
@@ -190,7 +190,7 @@ const DeleteBtn = styled.button<{ selected: boolean }>`
 const NoResults = styled.div`
   padding: 40px 16px;
   text-align: center;
-  color: var(--default-color);
+  color: var(--text-primary);
   opacity: 0.5;
 `
 
@@ -205,7 +205,7 @@ const TriggerButton = styled.button`
   background: rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  color: var(--default-color);
+  color: var(--text-primary);
   cursor: pointer;
   font-size: 1.2rem;
   opacity: 0.6;
@@ -215,7 +215,7 @@ const TriggerButton = styled.button`
   &:hover {
     opacity: 1;
     background: rgba(0, 0, 0, 0.5);
-    color: var(--accent-color);
+    color: var(--accent);
   }
 `
 

@@ -1,12 +1,3 @@
-export const COLOR_ALIASES: Record<string, string> = {
-  "--bg-primary": "--bg-color",
-  "--text-primary": "--default-color",
-  "--text-secondary": "--secondary-color",
-  "--border-default": "--border-color",
-  "--accent": "--accent-color",
-  "--accent-hover": "--accent-color2",
-}
-
 export const FALLBACK_COLORS: Record<string, string> = {
   "--bg-primary": "#121215",
   "--bg-secondary": "#1a1a20",
@@ -31,10 +22,5 @@ export const applyColors = (colors: Record<string, string>): void => {
 
   Object.entries(resolvedColors).forEach(([key, value]) => {
     root.style.setProperty(key, value)
-
-    const alias = COLOR_ALIASES[key]
-    if (alias) {
-      root.style.setProperty(alias, value)
-    }
   })
 }

@@ -25,12 +25,6 @@
 	--glow: #FFB4E6;
 
 	/* ===== 兼容性别名（映射旧变量名到新变量） ===== */
-	--bg-color: var(--bg-primary);
-	--default-color: var(--text-primary);
-	--secondary-color: var(--text-secondary);
-	--accent-color: var(--accent);
-	--accent-color2: var(--accent-hover);
-	--border-color: var(--border-default);
 
 	/* ===== 新设计系统 Tokens (See theme.ts) ===== */
 	/* 默认值为 Retro 模式 (Fira Code, 直角) */

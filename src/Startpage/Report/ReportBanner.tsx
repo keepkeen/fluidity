@@ -107,10 +107,10 @@ const ModalContainer = styled.div<{ closing: boolean }>`
 const ModalContent = styled.div`
   position: relative;
   padding: 20px;
-  border: 2px solid var(--default-color);
-  background: var(--bg-color);
-  color: var(--default-color);
-  box-shadow: 10px 10px 0px var(--accent-color);
+  border: 2px solid var(--text-primary);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-shadow: 10px 10px 0px var(--accent);
   max-height: calc(100vh - 60px);
   display: flex;
   flex-direction: column;
@@ -118,7 +118,7 @@ const ModalContent = styled.div`
   @media screen and (max-width: 600px) {
     padding: 12px;
     max-height: calc(100vh - 20px);
-    box-shadow: 5px 5px 0px var(--accent-color);
+    box-shadow: 5px 5px 0px var(--accent);
   }
 `
 
@@ -128,7 +128,7 @@ const Header = styled.div`
   justify-content: space-between;
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 2px solid var(--default-color);
+  border-bottom: 2px solid var(--text-primary);
   flex-shrink: 0;
 `
 
@@ -150,7 +150,7 @@ const TitleIcon = styled.span`
 `
 
 const TitleText = styled.span`
-  background: linear-gradient(90deg, var(--accent-color), var(--accent-color2));
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -158,8 +158,8 @@ const TitleText = styled.span`
 
 const CloseButton = styled.button`
   background: transparent;
-  border: 2px solid var(--default-color);
-  color: var(--default-color);
+  border: 2px solid var(--text-primary);
+  color: var(--text-primary);
   width: 36px;
   height: 36px;
   display: flex;
@@ -169,9 +169,9 @@ const CloseButton = styled.button`
   transition: 0.2s;
 
   &:hover {
-    background: var(--accent-color2);
-    color: var(--bg-color);
-    border-color: var(--accent-color2);
+    background: var(--accent-hover);
+    color: var(--bg-primary);
+    border-color: var(--accent-hover);
   }
 `
 
@@ -189,7 +189,7 @@ const Content = styled.div`
   }
 
   &::-webkit-scrollbar-thumb {
-    background: var(--default-color);
+    background: var(--text-primary);
     border-radius: 3px;
   }
 `

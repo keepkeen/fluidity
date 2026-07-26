@@ -42,9 +42,9 @@ const IndicatorContainer = styled.div<{ visible: boolean }>`
   align-items: center;
   gap: 10px;
   padding: 12px 20px;
-  background: var(--bg-color);
-  border: 2px solid var(--accent-color);
-  box-shadow: 6px 6px 0px var(--accent-color);
+  background: var(--bg-primary);
+  border: 2px solid var(--accent);
+  box-shadow: 6px 6px 0px var(--accent);
   z-index: 50;
   opacity: ${({ visible }) => (visible ? 1 : 0)};
   transform: ${({ visible }) =>
@@ -54,7 +54,7 @@ const IndicatorContainer = styled.div<{ visible: boolean }>`
 `
 
 const SpinnerIcon = styled(FontAwesomeIcon)`
-  color: var(--accent-color);
+  color: var(--accent);
   animation: spin 1s linear infinite;
 
   @keyframes spin {
@@ -68,7 +68,7 @@ const SpinnerIcon = styled(FontAwesomeIcon)`
 `
 
 const LoadingText = styled.span`
-  color: var(--default-color);
+  color: var(--text-primary);
   font-size: 0.9rem;
 `
 

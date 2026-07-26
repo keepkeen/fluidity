@@ -48,7 +48,7 @@ const EngineItem = styled.div<{ isBuiltin?: boolean }>`
   padding: 10px 12px;
   background: ${({ isBuiltin }) =>
     isBuiltin ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.08)"};
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-default);
   border-radius: 6px;
 `
 
@@ -60,15 +60,15 @@ const EngineInfo = styled.div`
 const EngineName = styled.div`
   font-size: 14px;
   font-weight: 500;
-  color: var(--default-color);
+  color: var(--text-primary);
 `
 
 const EngineShortcut = styled.span`
   display: inline-block;
   padding: 2px 6px;
   margin-left: 8px;
-  background: var(--accent-color);
-  color: var(--bg-color);
+  background: var(--accent);
+  color: var(--bg-primary);
   border-radius: 4px;
   font-size: 12px;
   font-weight: 500;
@@ -76,7 +76,7 @@ const EngineShortcut = styled.span`
 
 const EngineUrl = styled.div`
   font-size: 12px;
-  color: var(--secondary-color);
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -89,17 +89,17 @@ const EngineActions = styled.div`
 
 const SmallButton = styled.button`
   padding: 4px 10px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-default);
   border-radius: 4px;
   background: transparent;
-  color: var(--default-color);
+  color: var(--text-primary);
   font-size: 12px;
   cursor: pointer;
   transition: all 0.2s;
 
   &:hover {
-    border-color: var(--accent-color);
-    color: var(--accent-color);
+    border-color: var(--accent);
+    color: var(--accent);
   }
 
   &.danger:hover {
@@ -108,9 +108,9 @@ const SmallButton = styled.button`
   }
 
   &.primary {
-    background: var(--accent-color);
-    color: var(--bg-color);
-    border-color: var(--accent-color);
+    background: var(--accent);
+    color: var(--bg-primary);
+    border-color: var(--accent);
   }
 `
 
@@ -120,7 +120,7 @@ const AddEngineForm = styled.div`
   gap: 10px;
   padding: 12px;
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-default);
   border-radius: 6px;
   margin-top: 12px;
 `
@@ -133,19 +133,19 @@ const FormRow = styled.div`
 const FormInput = styled.input`
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-default);
   border-radius: 4px;
   background: transparent;
-  color: var(--default-color);
+  color: var(--text-primary);
   font-size: 13px;
 
   &:focus {
     outline: none;
-    border-color: var(--accent-color);
+    border-color: var(--accent);
   }
 
   &::placeholder {
-    color: var(--secondary-color);
+    color: var(--text-secondary);
   }
 `
 
@@ -156,13 +156,13 @@ const ShortcutInput = styled(FormInput)`
 
 const HelpText = styled.div`
   font-size: 12px;
-  color: var(--secondary-color);
+  color: var(--text-secondary);
   line-height: 1.5;
 `
 
 const SectionTitle = styled.div`
   font-size: 13px;
-  color: var(--secondary-color);
+  color: var(--text-secondary);
   margin-top: 16px;
   margin-bottom: 8px;
 `
@@ -288,7 +288,7 @@ export const SearchSettings = ({
       <SettingElement>
         <Flex>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, color: "var(--default-color)" }}>
+            <div style={{ fontSize: 14, color: "var(--text-primary)" }}>
               在任意页面呼出「/ 搜索链接」面板
             </div>
             <div
@@ -296,7 +296,7 @@ export const SearchSettings = ({
                 fontSize: 12,
                 opacity: 0.7,
                 marginTop: 4,
-                color: "var(--secondary-color)",
+                color: "var(--text-secondary)",
               }}
             >
               当前快捷键：

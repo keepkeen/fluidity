@@ -7,8 +7,8 @@ export const Container = styled.div`
   width: 380px;
   max-height: 600px;
   overflow: hidden;
-  background: var(--bg-primary, var(--bg-color));
-  color: var(--text-primary, var(--default-color));
+  background: var(--bg-primary);
+  color: var(--text-primary, var(--text-primary));
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text",
     "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-size: 13px;
@@ -55,7 +55,7 @@ export const Title = styled.h1`
   font-size: 13px;
   font-weight: 650;
   margin: 0;
-  color: var(--text-primary, var(--default-color));
+  color: var(--text-primary, var(--text-primary));
 `
 
 export const IconButton = styled.button`
@@ -64,7 +64,7 @@ export const IconButton = styled.button`
   border-radius: 10px;
   background: transparent;
   border: none;
-  color: var(--text-secondary, var(--default-color));
+  color: var(--text-secondary, var(--text-primary));
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -73,7 +73,7 @@ export const IconButton = styled.button`
 
   &:hover {
     background: rgba(255, 255, 255, 0.06);
-    color: var(--text-primary, var(--default-color));
+    color: var(--text-primary, var(--text-primary));
   }
 
   &:active {
@@ -91,7 +91,7 @@ export const SearchInput = styled.input`
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--border-default, rgba(255, 255, 255, 0.12));
-  color: var(--text-primary, var(--default-color));
+  color: var(--text-primary, var(--text-primary));
   font-size: 13px;
 
   &::placeholder {
@@ -160,14 +160,14 @@ export const GroupHeader = styled.div`
 export const GroupTitle = styled.span`
   flex: 1;
   font-weight: 650;
-  color: var(--text-primary, var(--default-color));
+  color: var(--text-primary, var(--text-primary));
 `
 
 export const GroupIcon = styled.span`
   margin-right: 8px;
   font-size: 11px;
   opacity: 0.75;
-  color: var(--text-secondary, var(--default-color));
+  color: var(--text-secondary, var(--text-primary));
 `
 
 export const GroupMeta = styled.span`
@@ -211,7 +211,7 @@ export const LinkLabel = styled.span`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-primary, var(--default-color));
+  color: var(--text-primary, var(--text-primary));
 `
 
 export const LinkActions = styled.div`
@@ -237,7 +237,7 @@ export const ActionBtn = styled.button<{ danger?: boolean }>`
   &:hover {
     background: rgba(255, 255, 255, 0.06);
     color: ${({ danger }) =>
-      danger ? DANGER_COLOR : "var(--text-primary, var(--default-color))"};
+      danger ? DANGER_COLOR : "var(--text-primary, var(--text-primary))"};
   }
 
   &:active {
@@ -256,13 +256,13 @@ export const AddButton = styled.div`
 
   &:hover {
     background: rgba(255, 255, 255, 0.06);
-    color: var(--text-primary, var(--default-color));
+    color: var(--text-primary, var(--text-primary));
   }
 `
 
 export const AddIcon = styled.span`
   margin-right: 8px;
-  color: var(--accent, var(--accent-color));
+  color: var(--accent, var(--accent));
 `
 
 // 弹窗样式
@@ -293,7 +293,7 @@ export const ModalTitle = styled.h3`
   margin: 0 0 12px 0;
   font-size: 13px;
   font-weight: 700;
-  color: var(--text-primary, var(--default-color));
+  color: var(--text-primary, var(--text-primary));
 `
 
 export const ModalSubtitle = styled.p`
@@ -309,7 +309,7 @@ export const Input = styled.input`
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--border-default, rgba(255, 255, 255, 0.12));
-  color: var(--text-primary, var(--default-color));
+  color: var(--text-primary, var(--text-primary));
   font-size: 13px;
   margin-bottom: 8px;
   box-sizing: border-box;
@@ -338,7 +338,7 @@ export const ButtonRow = styled.div`
   justify-content: flex-end;
 `
 
-const ACCENT_COLOR = "var(--accent, var(--accent-color))"
+const ACCENT_COLOR = "var(--accent, var(--accent))"
 
 export const Button = styled.button<{ primary?: boolean; danger?: boolean }>`
   padding: 8px 12px;
@@ -357,7 +357,7 @@ export const Button = styled.button<{ primary?: boolean; danger?: boolean }>`
   color: ${({ primary, danger }) => {
     if (danger) return DANGER_COLOR
     if (primary) return "rgba(18,18,21,0.95)"
-    return "var(--text-primary, var(--default-color))"
+    return "var(--text-primary, var(--text-primary))"
   }};
   font-size: 13px;
   font-weight: 650;
@@ -374,7 +374,7 @@ export const Button = styled.button<{ primary?: boolean; danger?: boolean }>`
 `
 
 export const CheckIcon = styled.span`
-  color: var(--accent, var(--accent-color));
+  color: var(--accent, var(--accent));
   margin-right: 6px;
   font-size: 11px;
 `

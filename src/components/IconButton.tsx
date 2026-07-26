@@ -6,7 +6,7 @@ import {
 
 const StyledIconButton = styled.button<{ inverted?: boolean }>`
   color: ${({ inverted }) =>
-    inverted ? "var(--bg-color)" : "var(--default-color)"};
+    inverted ? "var(--bg-primary)" : "var(--text-primary)"};
   background-color: transparent;
   min-width: 50px;
   font-size: 20px;
@@ -21,10 +21,10 @@ const StyledIconButton = styled.button<{ inverted?: boolean }>`
     ${({ inverted }) =>
       inverted
         ? `filter: 
-            drop-shadow(2px 2px 0 var(--accent-color))
-            drop-shadow(-2px -2px 0 var(--accent-color))
-            drop-shadow(-2px 2px 0 var(--accent-color))
-            drop-shadow(2px -2px 0 var(--accent-color))`
+            drop-shadow(2px 2px 0 var(--accent))
+            drop-shadow(-2px -2px 0 var(--accent))
+            drop-shadow(-2px 2px 0 var(--accent))
+            drop-shadow(2px -2px 0 var(--accent))`
         : "animation: box-flicker 0.01s ease 0s infinite alternate"};
   }
   :focus {

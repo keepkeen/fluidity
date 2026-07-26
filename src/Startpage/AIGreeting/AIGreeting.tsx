@@ -36,7 +36,7 @@ const GreetingContainer = styled.div`
 
 const GreetingText = styled.div<{ $loading?: boolean }>`
   font-size: 1.1rem;
-  color: var(--default-color);
+  color: var(--text-primary);
   text-align: center;
   padding: 12px 24px;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -84,7 +84,7 @@ const GreetingContent = styled.div`
 
 const DailyReviewText = styled.div`
   font-size: 0.85rem;
-  color: var(--default-color);
+  color: var(--text-primary);
   opacity: 0.7;
   text-align: center;
   max-width: 620px;
@@ -99,7 +99,7 @@ const RefreshButton = styled.button<{ spinning?: boolean }>`
   background: rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  color: var(--default-color);
+  color: var(--text-primary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -108,7 +108,7 @@ const RefreshButton = styled.button<{ spinning?: boolean }>`
 
   &:hover {
     background: rgba(0, 0, 0, 0.5);
-    color: var(--accent-color);
+    color: var(--accent);
   }
 
   &:disabled {
@@ -134,8 +134,8 @@ const RefreshButton = styled.button<{ spinning?: boolean }>`
 const AIBadge = styled.span`
   font-size: 0.7rem;
   padding: 2px 6px;
-  background: var(--accent-color);
-  color: var(--bg-color);
+  background: var(--accent);
+  color: var(--bg-primary);
   margin-left: 8px;
   vertical-align: middle;
   opacity: 0.8;
