@@ -13,7 +13,6 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
 import { AccordionContainer, AccordionGroup } from "./Accordion/Accordion"
 import { CommandPalette } from "./CommandPalette/CommandPalette"
-import { HoverCardLinks } from "./HoverCard/HoverCardLinks"
 import {
   DragDropProvider,
   SortableContext,
@@ -150,15 +149,6 @@ const ConfirmButton = styled.button<{ danger?: boolean }>`
 `
 
 // 悬浮卡片模式的容器 - 填充剩余空间
-const HoverCardContainer = styled.div`
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  flex: 1;
-  min-width: 300px;
-  max-width: 100%;
-`
-
 // 命令面板模式的占位容器 - 只显示触发按钮
 const CommandPaletteContainer = styled.div`
   display: flex;
@@ -397,22 +387,6 @@ export const LinkContainer = () => {
             <PlaceholderHint>或点击右下角按钮</PlaceholderHint>
           </CommandPalettePlaceholder>
         </CommandPaletteContainer>
-        <CommandPalette linkGroups={linkGroups} onDeleteLink={requestDelete} />
-        {DeleteConfirmDialog}
-      </>
-    )
-  }
-
-  // 悬浮卡片模式 - 也支持 / 键搜索
-  if (displayMode === "hover-card") {
-    return (
-      <>
-        <HoverCardContainer>
-          <HoverCardLinks
-            linkGroups={linkGroups}
-            onDeleteLink={requestDelete}
-          />
-        </HoverCardContainer>
         <CommandPalette linkGroups={linkGroups} onDeleteLink={requestDelete} />
         {DeleteConfirmDialog}
       </>

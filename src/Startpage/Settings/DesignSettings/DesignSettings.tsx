@@ -329,7 +329,6 @@ const themeEquals = (theme1: Theme, theme2: Theme) => {
 
 const modeOptions: { value: LinkDisplayMode; label: string; desc: string }[] = [
   { value: "accordion", label: "手风琴", desc: "经典水平展开模式" },
-  { value: "hover-card", label: "悬浮卡片", desc: "悬停显示链接卡片" },
   { value: "command-palette", label: "命令面板", desc: "按 / 键快速搜索" },
 ]
 

@@ -285,7 +285,7 @@ export const searchSettings: Search = {
 }
 
 // 链接展示模式
-export type LinkDisplayMode = "accordion" | "hover-card" | "command-palette"
+export type LinkDisplayMode = "accordion" | "command-palette"
 
 export interface LinkDisplaySettings {
   mode: LinkDisplayMode

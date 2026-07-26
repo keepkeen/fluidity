@@ -66,6 +66,7 @@ const isSearchSettings = (value: unknown): value is SearchType =>
   typeof value.engine === "string" &&
   isRecord(value.fastForward)
 
+// "hover-card" 是已移除的历史模式，读到时按 accordion 处理（见 getWithFallback）
 const isLinkDisplaySettings = (
   value: unknown
 ): value is LinkDisplaySettings =>
@@ -402,7 +403,11 @@ export const LinkDisplay = {
   },
   getWithFallback: () => {
     try {
-      return LinkDisplay.get() ?? linkDisplaySettings
+      const stored = LinkDisplay.get() ?? linkDisplaySettings
+      if ((stored.mode as string) === "hover-card") {
+        return { ...stored, mode: "accordion" as const }
+      }
+      return stored
     } catch {
       settingsLogger.error(
         "Your currently applied link display settings appear to be corrupted."
