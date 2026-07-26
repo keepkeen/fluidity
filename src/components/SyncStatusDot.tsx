@@ -39,6 +39,7 @@ const Dot = styled.span<{ color: string }>`
 const getColor = (state: SyncRuntimeStatus["state"]): string => {
   if (state === "ok") return "#39d353"
   if (state === "syncing") return "#f1e05a"
+  if (state === "disabled") return "#8b949e"
   return "#ff6464"
 }
 

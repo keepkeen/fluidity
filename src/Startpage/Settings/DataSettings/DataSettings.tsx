@@ -25,13 +25,16 @@ import {
 } from "../../../services/browserUsageSettings"
 import { validateGitHubToken } from "../../../services/gistApi"
 import {
+  ConflictCopy,
   connectOrDiscover,
   disconnectGistSync,
   getGistSyncConfig,
   getTokenPrefillUrl,
   hasRememberedSyncPassword,
+  listConflictCopies,
   pullNow,
   pushNow,
+  restoreConflictCopy,
   setSyncPasswordForSession,
 } from "../../../services/gistSync"
 import { emitSettingsApplied } from "../../../services/settingsEvents"
@@ -438,6 +441,9 @@ export const DataSettings: React.FC = () => {
   const [syncEnabled, setSyncEnabled] = useState(false)
   const [hasGist, setHasGist] = useState(false)
   const [hasRememberedPassword, setHasRememberedPassword] = useState(false)
+  const [conflictCopies, setConflictCopies] = useState<ConflictCopy[] | null>(
+    null
+  )
   const [runtimeStatus, setRuntimeStatus] = useState<SyncRuntimeStatus>(() =>
     getSyncRuntimeStatus()
   )
@@ -632,6 +638,42 @@ export const DataSettings: React.FC = () => {
       setHasRememberedPassword(false)
     } catch (error) {
       setSyncError(formatSyncError(error, "断开失败"))
+    } finally {
+      setIsSyncBusy(false)
+    }
+  }
+
+  const handleListConflicts = async () => {
+    setIsSyncBusy(true)
+    setSyncError(null)
+    setSyncSuccess(null)
+    try {
+      const copies = await listConflictCopies()
+      setConflictCopies(copies)
+      if (copies.length === 0) setSyncSuccess("云端没有冲突副本")
+    } catch (error) {
+      setSyncError(formatSyncError(error, "获取冲突副本失败"))
+    } finally {
+      setIsSyncBusy(false)
+    }
+  }
+
+  const handleRestoreConflict = async (filename: string) => {
+    const confirmed = window.confirm(
+      "用该冲突副本覆盖本地数据？当前本地数据将被替换，且无法撤销。"
+    )
+    if (!confirmed) return
+    setIsSyncBusy(true)
+    setSyncError(null)
+    try {
+      await restoreConflictCopy(filename)
+      emitSettingsApplied()
+    } catch (error) {
+      setSyncError(
+        error instanceof Error && error.message === "NEED_PASSWORD"
+          ? "需要先输入同步密码（解锁并拉取一次）"
+          : formatSyncError(error, "恢复冲突副本失败")
+      )
     } finally {
       setIsSyncBusy(false)
     }
@@ -966,7 +1008,7 @@ export const DataSettings: React.FC = () => {
                   <FontAwesomeIcon icon={faExclamationTriangle} />
                 </WarningIcon>
                 <span>
-                  同步密码将保存在浏览器本地存储中，可能被同机其他人获取。建议仅在个人设备启用。
+                  同步密码只保存在会话存储中，浏览器完全关闭后需重新输入。
                 </span>
               </WarningBox>
             )}
@@ -1006,6 +1048,35 @@ export const DataSettings: React.FC = () => {
             >
               断开云同步
             </Button>
+
+            <Button
+              variant="secondary"
+              type="button"
+              onClick={() => void handleListConflicts()}
+              disabled={isSyncBusy || !hasGist}
+            >
+              查看云端冲突副本
+            </Button>
+
+            {conflictCopies && conflictCopies.length > 0 && (
+              <>
+                <Description>
+                  推送冲突时另存的加密快照（最多保留 3 份），可用其覆盖本地数据：
+                </Description>
+                {conflictCopies.map(copy => (
+                  <Button
+                    key={copy.filename}
+                    variant="secondary"
+                    type="button"
+                    onClick={() => void handleRestoreConflict(copy.filename)}
+                    disabled={isSyncBusy}
+                  >
+                    恢复 {new Date(copy.timestamp).toLocaleString()}（设备{" "}
+                    {copy.deviceId.slice(0, 8)}）
+                  </Button>
+                ))}
+              </>
+            )}
 
             {syncSuccess && (
               <ResultMessage success>

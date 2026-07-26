@@ -13,6 +13,7 @@ import {
 import {
   createGist,
   getGist,
+  GitHubRateLimitError,
   listGists,
   updateGist,
   validateGitHubToken,
@@ -83,6 +84,8 @@ const DEFAULT_ITERATIONS = 200_000
 
 const LEADER_KEY = "fluidity-sync.leader.v1"
 const REQUEST_KEY = "fluidity-sync.request.v1"
+
+const MAX_CONFLICT_COPIES = 3
 
 const RUNTIME_IGNORE_PREFIXES = ["fluidity-sync.", "fluidity.gistSync."]
 
@@ -543,7 +546,7 @@ export const disconnectGistSync = async (): Promise<void> => {
   await storeRememberedPassword(null)
   clearSyncPasswordForSession()
   setSyncRuntimeStatus({
-    state: "error",
+    state: "disabled",
     updatedAt: Date.now(),
     message: "已断开云同步",
   })
@@ -610,7 +613,7 @@ export const pullNow = async (): Promise<void> => {
   const config = await getConfig()
   if (!config.enabled || !config.token || !config.gistId) {
     setSyncRuntimeStatus({
-      state: "error",
+      state: "disabled",
       updatedAt: Date.now(),
       message: "未配置云同步",
     })
@@ -676,13 +679,71 @@ export const pullNow = async (): Promise<void> => {
   }
 }
 
+export interface ConflictCopy {
+  filename: string
+  timestamp: number
+  deviceId: string
+}
+
+const parseConflictName = (filename: string): ConflictCopy | null => {
+  const match = /^conflict\.(\d+)\.(.+)\.json$/.exec(filename)
+  if (!match) return null
+  return {
+    filename,
+    timestamp: Number(match[1]),
+    deviceId: match[2],
+  }
+}
+
+/** 列出云端的冲突副本（推送冲突时另存的加密快照） */
+export const listConflictCopies = async (): Promise<ConflictCopy[]> => {
+  const config = await getConfig()
+  if (!config.enabled || !config.token || !config.gistId) return []
+
+  const gist = await getGist(config.token, config.gistId)
+  return Object.keys(gist.files)
+    .map(parseConflictName)
+    .filter((c): c is ConflictCopy => c !== null)
+    .sort((a, b) => b.timestamp - a.timestamp)
+}
+
+/** 用某份冲突副本覆盖本地数据（解密后走标准导入流程） */
+export const restoreConflictCopy = async (filename: string): Promise<void> => {
+  const config = await getConfig()
+  if (!config.enabled || !config.token || !config.gistId) {
+    throw new Error("NOT_CONFIGURED")
+  }
+  const password = await getPassword()
+  if (!password) throw new Error("NEED_PASSWORD")
+
+  const gist = await getGist(config.token, config.gistId)
+  const file = await getGistFileContent(gist, filename, config.token)
+  if (!file) throw new Error("GIST_FILE_MISSING")
+
+  const envelope = parseEnvelope(file)
+  let plaintext: string
+  try {
+    plaintext = await decryptEnvelope({ password, envelope })
+  } catch {
+    throw new Error("DECRYPT_FAILED")
+  }
+  const backup = JSON.parse(plaintext) as Parameters<typeof importDataAsync>[0]
+
+  isApplyingRemote = true
+  try {
+    await importDataAsync(backup, { overwrite: true, skipApiKey: true })
+  } finally {
+    isApplyingRemote = false
+  }
+}
+
 export const pushNow = async (
   options: { force?: boolean } = {}
 ): Promise<void> => {
   const config = await getConfig()
   if (!config.enabled || !config.token || !config.gistId) {
     setSyncRuntimeStatus({
-      state: "error",
+      state: "disabled",
       updatedAt: Date.now(),
       message: "未配置云同步",
     })
@@ -742,11 +803,17 @@ export const pushNow = async (
     })
 
     const conflictName = `conflict.${Date.now()}.${config.deviceId}.json`
-    await updateGist(config.token, config.gistId, {
-      files: {
-        [conflictName]: { content: JSON.stringify(envelope) },
-      },
-    })
+    // 冲突副本只保留最近几份，否则 gist 会无限膨胀
+    const staleConflicts = Object.keys(gist.files)
+      .filter(name => name.startsWith("conflict."))
+      .sort()
+      .reverse()
+      .slice(MAX_CONFLICT_COPIES - 1)
+    const files: Record<string, { content: string } | null> = {
+      [conflictName]: { content: JSON.stringify(envelope) },
+    }
+    for (const name of staleConflicts) files[name] = null
+    await updateGist(config.token, config.gistId, { files })
 
     setSyncRuntimeStatus({
       state: "error",
@@ -782,6 +849,38 @@ export const pushNow = async (
   })
 }
 
+// 需要用户介入的错误重试没有意义
+const NO_RETRY_ERRORS = new Set([
+  "NOT_CONFIGURED",
+  "NEED_PASSWORD",
+  "CONFLICT",
+  "DECRYPT_FAILED",
+])
+
+const PUSH_RETRY_DELAYS_MS = [30_000, 120_000, 600_000]
+let pushRetryCount = 0
+let pushRetryTimer: ReturnType<typeof setTimeout> | null = null
+
+const schedulePushRetry = (error: unknown): void => {
+  if (error instanceof Error && NO_RETRY_ERRORS.has(error.message)) return
+  if (pushRetryTimer) return
+
+  // 命中 GitHub 限流时按服务端要求的时间等待，否则指数退避
+  const delay =
+    error instanceof GitHubRateLimitError
+      ? Math.max(error.retryAfterMs, 30_000)
+      : PUSH_RETRY_DELAYS_MS[
+          Math.min(pushRetryCount, PUSH_RETRY_DELAYS_MS.length - 1)
+        ]
+  if (pushRetryCount >= PUSH_RETRY_DELAYS_MS.length) return
+  pushRetryCount += 1
+
+  pushRetryTimer = setTimeout(() => {
+    pushRetryTimer = null
+    runPush()
+  }, delay)
+}
+
 function runPush(): void {
   if (isPushing) {
     pushQueued = true
@@ -793,11 +892,15 @@ function runPush(): void {
     .then(() => {
       lastSuccessfulPushAt = Date.now()
       usageDirtyAt = null
+      pushRetryCount = 0
+      if (pushRetryTimer) clearTimeout(pushRetryTimer)
+      pushRetryTimer = null
       if (usagePushTimer) clearTimeout(usagePushTimer)
       usagePushTimer = null
     })
-    .catch(() => {
-      // Keep usageDirtyAt so we can retry on the next trigger.
+    .catch(error => {
+      // 网络类失败不再依赖"下一次本地改动"才重试
+      schedulePushRetry(error)
     })
     .finally(() => {
       isPushing = false
