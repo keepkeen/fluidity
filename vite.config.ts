@@ -43,6 +43,7 @@ export default defineConfig(async ({ command }) => {
     base: "./",
     build: {
       outDir: "build",
+      emptyOutDir: true,
       // Chrome may warn about unused `link rel="modulepreload"` in extension pages.
       // Disabling modulepreload avoids noisy Performance warnings and is fine for local extension assets.
       modulePreload: false,

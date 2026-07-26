@@ -31,9 +31,17 @@ if (existsSync(outputFile)) {
   throw new Error(`Refusing to overwrite existing file: ${outputFile}`)
 }
 
-execFileSync("zip", ["-r", outputFile, "."], {
-  cwd: buildDir,
+execFileSync(process.execPath, [resolve(rootDir, "scripts/verify-build.mjs")], {
   stdio: "inherit",
 })
+
+execFileSync(
+  "zip",
+  ["-r", outputFile, ".", "-x", ".DS_Store", "*/.DS_Store", "* 2.*"],
+  {
+    cwd: buildDir,
+    stdio: "inherit",
+  },
+)
 
 console.log(`Created ${outputFile}`)
