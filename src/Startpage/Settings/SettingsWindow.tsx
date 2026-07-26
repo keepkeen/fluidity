@@ -10,6 +10,7 @@ import {
 
 import * as Settings from "./settingsHandler"
 import { IconButton } from "../../components/IconButton"
+import { emitSettingsApplied } from "../../services/settingsEvents"
 import {
   CardAreaSettings,
   LinkDisplaySettings,
@@ -241,6 +242,13 @@ const Tabbar = styled.div`
   display: flex;
   justify-content: center;
   min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+
+  /* 7 个 tab 总宽超过视口时必须可滚动，且不能用 center（首个 tab 会被裁掉） */
+  @media screen and (max-width: 1200px) {
+    justify-content: flex-start;
+  }
 
   @media screen and (max-width: 600px) {
     display: none;
@@ -263,6 +271,13 @@ const TabOption = styled.button<{ active: boolean }>`
   ${({ active }) => active && "text-shadow: var(--text-shadow-downwards)"};
   :hover {
     text-shadow: var(--text-shadow-downwards);
+  }
+
+  @media screen and (max-width: 1200px) {
+    min-width: auto;
+    flex: 0 0 auto;
+    padding: 0 16px;
+    white-space: nowrap;
   }
 `
 
@@ -288,15 +303,21 @@ const PanelFallback = styled.div`
   opacity: 0.75;
 `
 
-const TabOptions = [
-  "链接",
-  "外观",
-  "壁纸",
-  "搜索栏",
-  "AI 助手",
-  "数据",
-  "更新日志",
-]
+// tab 用稳定 id 做路由标识，label 仅用于显示——文案改动不能破坏跳转逻辑
+const TAB_OPTIONS = [
+  { id: "links", label: "链接" },
+  { id: "design", label: "外观" },
+  { id: "wallpaper", label: "壁纸" },
+  { id: "search", label: "搜索栏" },
+  { id: "ai", label: "AI 助手" },
+  { id: "data", label: "数据" },
+  { id: "changelog", label: "更新日志" },
+] as const
+
+export type SettingsTabId = (typeof TAB_OPTIONS)[number]["id"]
+
+const isTabId = (value: string | undefined): value is SettingsTabId =>
+  TAB_OPTIONS.some(option => option.id === value)
 
 interface props {
   hidePopup: () => void
@@ -304,8 +325,8 @@ interface props {
 }
 
 export const SettingsWindow = ({ hidePopup, initialTab }: props) => {
-  const [currentTab, setCurrentTab] = useState(
-    initialTab && TabOptions.includes(initialTab) ? initialTab : TabOptions[0]
+  const [currentTab, setCurrentTab] = useState<SettingsTabId>(
+    isTabId(initialTab) ? initialTab : TAB_OPTIONS[0].id
   )
   const [design, setDesign] = useState(Settings.Design.getWithFallback())
   const [themes, setThemes] = useState(Settings.Themes.getWithFallback())
@@ -325,7 +346,7 @@ export const SettingsWindow = ({ hidePopup, initialTab }: props) => {
   )
 
   useEffect(() => {
-    if (initialTab && TabOptions.includes(initialTab)) {
+    if (isTabId(initialTab)) {
       setCurrentTab(initialTab)
     }
   }, [initialTab])
@@ -339,33 +360,35 @@ export const SettingsWindow = ({ hidePopup, initialTab }: props) => {
     Settings.Wallpaper.set(wallpaperSettings)
     Settings.CardArea.set(cardAreaSettings)
     AISettingsManager.set(aiSettings)
-    window.location.reload()
+    emitSettingsApplied()
   }
 
   return (
     <StyledSettingsWindow>
       <WindowHeader>
         <Tabbar>
-          {TabOptions.map(option => (
+          {TAB_OPTIONS.map(option => (
             <TabOption
-              key={option}
+              key={option.id}
               type="button"
-              active={option === currentTab}
-              aria-pressed={option === currentTab}
-              onClick={() => setCurrentTab(option)}
+              active={option.id === currentTab}
+              aria-pressed={option.id === currentTab}
+              onClick={() => setCurrentTab(option.id)}
             >
-              {option}
+              {option.label}
             </TabOption>
           ))}
         </Tabbar>
         <MobileTabSelect
           value={currentTab}
           aria-label="设置分类"
-          onChange={e => setCurrentTab(e.target.value)}
+          onChange={e => {
+            if (isTabId(e.target.value)) setCurrentTab(e.target.value)
+          }}
         >
-          {TabOptions.map(option => (
-            <option key={option} value={option}>
-              {option}
+          {TAB_OPTIONS.map(option => (
+            <option key={option.id} value={option.id}>
+              {option.label}
             </option>
           ))}
         </MobileTabSelect>
@@ -380,14 +403,14 @@ export const SettingsWindow = ({ hidePopup, initialTab }: props) => {
 
       <WindowContent>
         <Suspense fallback={<PanelFallback>正在加载设置...</PanelFallback>}>
-          {currentTab === "链接" && (
+          {currentTab === "links" && (
             <LinkSettings
               linkGroups={linkGroups}
               setLinkGroups={setLinkGroups}
             />
           )}
 
-          {currentTab === "外观" && (
+          {currentTab === "design" && (
             <DesignSettings
               design={design}
               setDesign={setDesign}
@@ -398,7 +421,7 @@ export const SettingsWindow = ({ hidePopup, initialTab }: props) => {
             />
           )}
 
-          {currentTab === "壁纸" && (
+          {currentTab === "wallpaper" && (
             <WallpaperSettings
               wallpaperSettings={wallpaperSettings}
               cardAreaSettings={cardAreaSettings}
@@ -407,20 +430,20 @@ export const SettingsWindow = ({ hidePopup, initialTab }: props) => {
             />
           )}
 
-          {currentTab === "搜索栏" && (
+          {currentTab === "search" && (
             <SearchSettings
               searchSettings={searchSettings}
               setSearchSettings={setSearchSettings}
             />
           )}
 
-          {currentTab === "AI 助手" && (
+          {currentTab === "ai" && (
             <AISettings aiSettings={aiSettings} setAISettings={setAISettings} />
           )}
 
-          {currentTab === "数据" && <DataSettings />}
+          {currentTab === "data" && <DataSettings />}
 
-          {currentTab === "更新日志" && <Changelog />}
+          {currentTab === "changelog" && <Changelog />}
         </Suspense>
       </WindowContent>
 
@@ -434,7 +457,7 @@ export const SettingsWindow = ({ hidePopup, initialTab }: props) => {
         <SettingsButton
           type="button"
           onClick={() => {
-            window.location.reload()
+            emitSettingsApplied()
           }}
           text={"放弃更改"}
           icon={faFire}

@@ -68,7 +68,7 @@ export const Settings = () => {
     const params = new URLSearchParams(window.location.search)
     const requestedTab = params.get("settings")
     if (requestedTab === "data") {
-      setInitialTab("数据")
+      setInitialTab("data")
       setShowSettings(true)
     }
   }, [])
@@ -79,7 +79,7 @@ export const Settings = () => {
     setShowSettings(true)
   }
   const showDataSettings = () => {
-    setInitialTab("数据")
+    setInitialTab("data")
     setShowSettings(true)
   }
 

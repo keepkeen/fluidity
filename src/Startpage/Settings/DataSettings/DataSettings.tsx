@@ -34,6 +34,7 @@ import {
   pushNow,
   setSyncPasswordForSession,
 } from "../../../services/gistSync"
+import { emitSettingsApplied } from "../../../services/settingsEvents"
 import {
   getSyncRuntimeStatus,
   subscribeSyncRuntimeStatus,
@@ -551,9 +552,9 @@ export const DataSettings: React.FC = () => {
       setImportResult(result)
 
       if (result.success) {
-        // 延迟刷新页面以显示结果
+        // 延迟刷新以显示结果
         setTimeout(() => {
-          window.location.reload()
+          emitSettingsApplied()
         }, 2000)
       }
     } finally {
@@ -611,7 +612,7 @@ export const DataSettings: React.FC = () => {
       if (pwd) {
         setSyncPasswordForSession(pwd)
         await pullNow()
-        window.location.reload()
+        emitSettingsApplied()
       }
     } catch (error) {
       setSyncError(formatSyncError(error, "连接失败"))
@@ -649,7 +650,7 @@ export const DataSettings: React.FC = () => {
       setSyncPasswordForSession(pwd)
       setHasRememberedPassword(Boolean(rememberPassword))
       await pullNow()
-      window.location.reload()
+      emitSettingsApplied()
     } catch (error) {
       setSyncError(formatSyncError(error, "拉取失败"))
     } finally {

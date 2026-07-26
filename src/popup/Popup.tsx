@@ -1082,6 +1082,7 @@ export const Popup = () => {
                 list="popup-group-options"
                 value={groupName}
                 onChange={e => setGroupName(e.target.value)}
+                aria-label="群组名称"
                 placeholder="群组名称（可直接输入新群组）"
                 autoFocus
               />
@@ -1093,6 +1094,7 @@ export const Popup = () => {
               <Input
                 value={newLinkName}
                 onChange={e => setNewLinkName(e.target.value)}
+                aria-label="链接名称"
                 placeholder="链接名称"
               />
               <UrlDisplay>{currentTab.url}</UrlDisplay>
@@ -1116,6 +1118,7 @@ export const Popup = () => {
                 onChange={e =>
                   setEditingLink({ ...editingLink, label: e.target.value })
                 }
+                aria-label="链接名称"
                 placeholder="链接名称"
                 autoFocus
               />

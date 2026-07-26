@@ -10,6 +10,7 @@ import {
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
 import { AISettings as AISettingsType } from "../../../services/ai"
+import { emitSettingsApplied } from "../../../services/settingsEvents"
 import {
   getAnalyticsSummary,
   LinkAnalytics,
@@ -455,7 +456,7 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
                   type="button"
                   onClick={() => {
                     SearchHistory.clear()
-                    window.location.reload()
+                    emitSettingsApplied()
                   }}
                 >
                   <FontAwesomeIcon icon={faTrash} />
@@ -465,7 +466,7 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
                   type="button"
                   onClick={() => {
                     LinkAnalytics.clear()
-                    window.location.reload()
+                    emitSettingsApplied()
                   }}
                 >
                   <FontAwesomeIcon icon={faTrash} />
@@ -481,7 +482,7 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
                   SearchHistory.clear()
                   LinkAnalytics.clear()
                   localStorage.removeItem("ai-cache")
-                  window.location.reload()
+                  emitSettingsApplied()
                 }}
                 style={{ width: "100%" }}
               >
