@@ -132,7 +132,6 @@ export const STORAGE_KEYS = {
   LINK_DISPLAY: "link-display-settings",
   WALLPAPER: "wallpaper-settings",
   CARD_AREA: "card-area-settings",
-  TODOS: "todos",
   SEARCH_HISTORY: "search-history",
   LINK_ANALYTICS: "link-analytics",
   BING_WALLPAPER_CACHE: "bing-wallpaper-cache",

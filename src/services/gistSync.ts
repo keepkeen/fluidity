@@ -143,9 +143,6 @@ const SYNCED_LOCAL_STORAGE_KEYS = new Set<string>([
   // reports
   "report-state",
   "report-cache",
-  "todo-contributions",
-  // todos
-  "todos",
 ])
 
 const getOrCreateDeviceId = (): string => {

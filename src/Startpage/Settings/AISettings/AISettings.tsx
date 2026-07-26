@@ -496,7 +496,7 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
                 }
               />
               <HelpText>
-                包含常用链接、最近搜索、待办事项与点击/搜索统计
+                包含常用链接、最近搜索与点击/搜索统计
               </HelpText>
             </SettingElement>
 

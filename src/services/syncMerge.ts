@@ -3,7 +3,7 @@
  *
  * 多浏览器同步不再"整包覆盖、最后写入者赢"：
  * - 普通设置键：按每键修改时间取较新一方（LWW）
- * - 集合类数据（链接/待办/置顶/统计）：深度并集合并，
+ * - 集合类数据（链接/置顶/统计）：深度并集合并，
  *   两台设备各自的新增都保留，且合并函数幂等（反复合并不膨胀）
  */
 
@@ -15,9 +15,7 @@ export type KeyTimestamps = Record<string, number>
 /** 需要深度合并（而非 LWW）的键 */
 export const DEEP_MERGE_KEYS = new Set([
   "link-groups",
-  "todos",
   "fluidity.linkPins.v1",
-  "todo-contributions",
   "link-analytics",
   "search-history",
 ])
@@ -54,19 +52,6 @@ const mergeLinkGroups = (newer: unknown, older: unknown): linkGroup[] => {
   return result
 }
 
-interface TodoItem {
-  id: string
-  [key: string]: unknown
-}
-
-/** 待办：按 id 并集，同 id 取较新一侧的版本 */
-const mergeTodos = (newer: unknown, older: unknown): TodoItem[] => {
-  const a = Array.isArray(newer) ? (newer as TodoItem[]) : []
-  const b = Array.isArray(older) ? (older as TodoItem[]) : []
-  const ids = new Set(a.map(t => t?.id).filter(Boolean))
-  return [...a, ...b.filter(t => t?.id && !ids.has(t.id))]
-}
-
 /** 置顶：并集 */
 const mergePins = (newer: unknown, older: unknown): string[] => {
   const a = Array.isArray(newer) ? newer : []
@@ -76,22 +61,6 @@ const mergePins = (newer: unknown, older: unknown): string[] => {
       [...a, ...b].filter((v): v is string => typeof v === "string")
     ),
   ]
-}
-
-/** 贡献图：逐日取 max（幂等，反复合并不会把计数翻倍） */
-const mergeContributions = (
-  newer: unknown,
-  older: unknown
-): Record<string, number> => {
-  const a = (newer ?? {}) as Record<string, unknown>
-  const b = (older ?? {}) as Record<string, unknown>
-  const result: Record<string, number> = {}
-  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
-    const va = typeof a[key] === "number" ? (a[key] as number) : 0
-    const vb = typeof b[key] === "number" ? (b[key] as number) : 0
-    result[key] = Math.max(va, vb)
-  }
-  return result
 }
 
 /** 点击统计：逐 url 合并；clickHistory 并集去重，各字段取幂等的 max */
@@ -147,12 +116,8 @@ export const deepMergeKey = (
   switch (key) {
     case "link-groups":
       return mergeLinkGroups(newer, older)
-    case "todos":
-      return mergeTodos(newer, older)
     case "fluidity.linkPins.v1":
       return mergePins(newer, older)
-    case "todo-contributions":
-      return mergeContributions(newer, older)
     case "link-analytics":
       return mergeAnalytics(newer, older)
     case "search-history":

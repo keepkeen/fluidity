@@ -26,7 +26,7 @@ export interface AISettings {
   collectSearchHistory: boolean // 是否记录搜索历史
 
   // 发送给 AI 的数据控制
-  shareHabits: boolean // 发送使用习惯（常用链接/最近搜索/待办/点击与搜索统计）
+  shareHabits: boolean // 发送使用习惯（常用链接/最近搜索/点击与搜索统计）
   shareBrowserUsage: boolean // 发送浏览记录（域名/页面时长）
 }
 
@@ -283,7 +283,7 @@ const secondsToMinutes = (sec: number): number => Math.round(sec / 60)
 const generatePromptV2 = (context: Record<string, unknown>): string => {
   return `你是一个友好的个人助手，负责在用户打开浏览器新标签页时给出一句简短的问候/提醒。
 
-你会收到一份 JSON 格式的用户数据（包含最近一小时与今天的浏览器使用汇总、待办、点击/搜索习惯等）。
+你会收到一份 JSON 格式的用户数据（包含最近一小时与今天的浏览器使用汇总、点击/搜索习惯等）。
 
 请严格输出 JSON（不要输出代码块、不要输出多余解释），结构如下：
 {

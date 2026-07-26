@@ -347,8 +347,8 @@ const steps: Step[] = [
       },
       {
         icon: faCog,
-        title: "待办事项",
-        desc: "左侧轮播图可切换到待办事项面板，记录和管理你的任务",
+        title: "重逢卡片",
+        desc: "左侧部件会每天轮流展示你很久没打开的收藏，帮你想起它们",
       },
       {
         icon: faPalette,

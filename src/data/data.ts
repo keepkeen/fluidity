@@ -315,8 +315,8 @@ export type WallpaperDisplayMode =
 
 // 卡片显示模式
 export type CardDisplayMode =
-  | "full" // 完整轮播精：图片 + 待办 + 贡献图
-  | "tools-only" // 仅工具：待办 + 贡献图
+  | "full" // 显示部件网格
+  | "tools-only" // 历史值，等同 full
   | "hidden" // 完全隐藏
 
 // 布局模式

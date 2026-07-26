@@ -4,8 +4,6 @@ import styled from "@emotion/styled"
 
 import { CardDisplayMode } from "../../data/data"
 import { RediscoveryCard } from "../Rediscovery/RediscoveryCard"
-import { ContributionChart } from "../Todo/ContributionChart"
-import { TodoPanel } from "../Todo/TodoPanel"
 import { TodayScreenTime } from "../Usage/TodayScreenTime"
 
 const DashboardContainer = styled.div`
@@ -20,26 +18,14 @@ const DashboardContainer = styled.div`
   margin-bottom: clamp(12px, 2vh, 32px);
 `
 
-const LargeWidget = styled.div`
-  grid-column: 1 / -1;
-  /* 高度随视口高度收缩，矮屏不再溢出 */
-  height: clamp(140px, 18vh, 240px);
-`
-
 const StandardWidget = styled.div`
   height: clamp(210px, 28vh, 380px);
-`
-
-const AutoWidget = styled.div`
-  grid-column: 1 / -1;
 `
 
 /*
  * Dashboard Grid Layout
  *
- * [ Contribution Chart (Wide) ]
- * [ Todo Panel ] [ Screen Time ]
- * [ Rediscovery (Wide)        ]
+ * [ Screen Time ] [ Rediscovery ]
  */
 
 interface DashboardLayoutProps {
@@ -52,24 +38,13 @@ export const DashboardLayout = ({ cardDisplayMode }: DashboardLayoutProps) => {
 
   return (
     <DashboardContainer>
-      {/* Top Row: Contribution Chart (Wide) */}
-      <LargeWidget>
-        <ContributionChart />
-      </LargeWidget>
-
-      {/* Bottom Row: Todo & Screen Time */}
-      <StandardWidget>
-        <TodoPanel />
-      </StandardWidget>
-
       <StandardWidget>
         <TodayScreenTime />
       </StandardWidget>
 
-      {/* Bottom Row: Rediscovery (Wide) */}
-      <AutoWidget>
+      <StandardWidget>
         <RediscoveryCard />
-      </AutoWidget>
+      </StandardWidget>
     </DashboardContainer>
   )
 }

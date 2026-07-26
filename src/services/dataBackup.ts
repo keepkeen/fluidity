@@ -41,9 +41,7 @@ const BACKUP_KEYS = {
     "fluidity.ai.dailyReview.v1",
   ],
   // 报告相关
-  reports: ["report-state", "report-cache", "todo-contributions"],
-  // 待办
-  todos: ["todos"],
+  reports: ["report-state", "report-cache"],
 }
 
 // 需要从 chrome.storage.local 读取/写入的键（仅扩展环境存在）
@@ -100,7 +98,6 @@ export interface BackupData {
 export interface ExportOptions {
   includeApiKey?: boolean
   includeAnalytics?: boolean
-  includeTodos?: boolean
   includeReports?: boolean
 }
 
@@ -118,7 +115,6 @@ export interface ImportResult {
 const getAllBackupKeys = (options: ExportOptions = {}): string[] => {
   const {
     includeAnalytics = true,
-    includeTodos = true,
     includeReports = true,
   } = options
 
@@ -126,10 +122,6 @@ const getAllBackupKeys = (options: ExportOptions = {}): string[] => {
 
   if (includeAnalytics) {
     keys = [...keys, ...BACKUP_KEYS.analytics]
-  }
-
-  if (includeTodos) {
-    keys = [...keys, ...BACKUP_KEYS.todos]
   }
 
   if (includeReports) {
@@ -288,7 +280,6 @@ const getAllValidKeys = (): string[] => [
   ...BACKUP_KEYS.ai,
   ...BACKUP_KEYS.analytics,
   ...BACKUP_KEYS.reports,
-  ...BACKUP_KEYS.todos,
 ]
 
 /**
@@ -536,11 +527,6 @@ export const getDataStats = (): {
       keys: BACKUP_KEYS.reports.filter(k => localStorage.getItem(k)).length,
       size: formatSize(calculateSize(BACKUP_KEYS.reports)),
     },
-    {
-      category: "待办",
-      keys: BACKUP_KEYS.todos.filter(k => localStorage.getItem(k)).length,
-      size: formatSize(calculateSize(BACKUP_KEYS.todos)),
-    },
   ]
 
   const allKeys = [
@@ -548,7 +534,6 @@ export const getDataStats = (): {
     ...BACKUP_KEYS.ai,
     ...BACKUP_KEYS.analytics,
     ...BACKUP_KEYS.reports,
-    ...BACKUP_KEYS.todos,
   ]
 
   return {

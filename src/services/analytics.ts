@@ -269,7 +269,7 @@ export const getAnalyticsSummary = (): AnalyticsSummary => {
 }
 
 /**
- * 是否允许向 AI 发送使用习惯（常用链接/搜索/待办/统计）。
+ * 是否允许向 AI 发送使用习惯（常用链接/搜索/统计）。
  * 旧版是 5 个独立开关：任一被关闭视为不共享，避免迁移扩大共享范围。
  */
 const getShareHabits = (): boolean => {
@@ -308,29 +308,6 @@ const getTimeOfDay = (hour: number): string => {
 }
 
 /**
- * 获取待办事项
- */
-const getPendingTodos = (): string[] => {
-  try {
-    const todosRaw = localStorage.getItem("todos")
-    if (todosRaw) {
-      const todos = JSON.parse(todosRaw) as {
-        text: string
-        done: boolean
-        createdAt: number
-      }[]
-      return todos
-        .filter(t => !t.done)
-        .slice(0, 5)
-        .map(t => t.text)
-    }
-  } catch {
-    // ignore
-  }
-  return []
-}
-
-/**
  * 生成 AI 提示的上下文数据
  */
 export const generateAIContext = (): string => {
@@ -349,8 +326,6 @@ export const generateAIContext = (): string => {
         : ["暂无数据"]
     context.recentSearches =
       summary.recentSearches.length > 0 ? summary.recentSearches : ["暂无数据"]
-    const pendingTodos = getPendingTodos()
-    context.pendingTodos = pendingTodos.length > 0 ? pendingTodos : ["暂无待办"]
     context.totalClicks = summary.totalClicks
     context.totalSearches = summary.totalSearches
   }

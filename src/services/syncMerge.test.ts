@@ -29,30 +29,6 @@ describe("deepMergeKey", () => {
     expect(merged.find(g => g.title === "娱乐")).toBeDefined()
   })
 
-  it("unions todos by id, newer side wins per id", () => {
-    const newer = [{ id: "1", text: "改过", done: true }]
-    const older = [
-      { id: "1", text: "原始", done: false },
-      { id: "2", text: "只在旧侧", done: false },
-    ]
-    const merged = deepMergeKey("todos", newer, older) as {
-      id: string
-      text: string
-    }[]
-    expect(merged).toHaveLength(2)
-    expect(merged.find(t => t.id === "1")?.text).toBe("改过")
-    expect(merged.find(t => t.id === "2")?.text).toBe("只在旧侧")
-  })
-
-  it("takes per-day max for contributions (idempotent)", () => {
-    const a = { "2026-07-25": 3 }
-    const b = { "2026-07-25": 5, "2026-07-24": 2 }
-    const once = deepMergeKey("todo-contributions", a, b)
-    const twice = deepMergeKey("todo-contributions", once, b)
-    expect(once).toEqual({ "2026-07-25": 5, "2026-07-24": 2 })
-    expect(twice).toEqual(once)
-  })
-
   it("merges analytics with click-history union and is idempotent", () => {
     const rec = (history: number[]) => ({
       label: "L",
@@ -120,17 +96,14 @@ describe("planMerge", () => {
 
   it("deep-merge keys combine both sides and push when remote lacks data", () => {
     const plan = planMerge({
-      localData: { todos: [{ id: "a" }] },
-      localTimestamps: { todos: 100 },
-      remoteData: { todos: [{ id: "b" }] },
-      remoteTimestamps: { todos: 200 },
+      localData: { "fluidity.linkPins.v1": ["a"] },
+      localTimestamps: { "fluidity.linkPins.v1": 100 },
+      remoteData: { "fluidity.linkPins.v1": ["b"] },
+      remoteTimestamps: { "fluidity.linkPins.v1": 200 },
       remoteFallbackTs: 0,
     })
-    const entry = plan.find(p => p.key === "todos")
-    expect((entry?.value as { id: string }[]).map(t => t.id).sort()).toEqual([
-      "a",
-      "b",
-    ])
+    const entry = plan.find(p => p.key === "fluidity.linkPins.v1")
+    expect((entry?.value as string[]).sort()).toEqual(["a", "b"])
     expect(entry?.needsPush).toBe(true)
   })
 
