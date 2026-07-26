@@ -291,8 +291,12 @@ export const Themes = {
     try {
       const userThemes = Themes.get()
       if (userThemes) {
-        // 迁移旧版主题数据
-        return userThemes.map(migrateThemeColors)
+        // 迁移旧版主题数据；内置预设按名称补齐，老用户也能看到新预设
+        const migrated = userThemes.map(migrateThemeColors)
+        const presets = themes.filter(
+          preset => !migrated.some(t => t.name === preset.name)
+        )
+        return [...migrated, ...presets]
       }
       return themes
     } catch {

@@ -291,10 +291,10 @@ interface Step {
 
 const steps: Step[] = [
   {
-    title: "欢迎使用 Fluidity",
+    title: "欢迎使用拾光",
     icon: faRocket,
     description:
-      "Fluidity 是一款优雅的浏览器起始页，让你的新标签页更加高效和美观。",
+      "拾光是一款 iOS 风格的优雅起始页——把收藏铺成主屏，让被遗忘的重新被看见。",
     features: [
       {
         icon: faPalette,
@@ -321,7 +321,7 @@ const steps: Step[] = [
       {
         icon: faPalette,
         title: "外观设置",
-        desc: "选择 13+ 预设主题，或自定义 6 种颜色变量和背景图片",
+        desc: "六套清雅预设主题，也可用 13 色变量与壁纸完全自定义",
       },
       {
         icon: faCog,

@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Fluidity 起始页",
+  "name": "拾光",
   "version": "0.6.1",
-  "description": "优雅的手风琴式浏览器起始页，支持 AI 智能助手、主题生成、待办事项等功能",
+  "description": "iOS 风格的优雅起始页：收藏铺成应用网格，重逢被遗忘的链接，看见自己的屏幕时光。",
   "action": {
-    "default_title": "Fluidity",
+    "default_title": "拾光",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "logo192.png",
@@ -19,9 +19,19 @@
     "192": "logo192.png",
     "512": "logo512.png"
   },
-  "permissions": ["storage", "idle", "scripting", "activeTab"],
-  "optional_permissions": ["bookmarks"],
-  "host_permissions": ["https://www.bing.com/*", "https://cn.bing.com/*"],
+  "permissions": [
+    "storage",
+    "idle",
+    "scripting",
+    "activeTab"
+  ],
+  "optional_permissions": [
+    "bookmarks"
+  ],
+  "host_permissions": [
+    "https://www.bing.com/*",
+    "https://cn.bing.com/*"
+  ],
   "optional_host_permissions": [
     "http://*/*",
     "https://*/*",
@@ -45,7 +55,7 @@
         "default": "Ctrl+Shift+K",
         "mac": "Command+Shift+K"
       },
-      "description": "打开 Fluidity 链接搜索面板"
+      "description": "打开拾光链接搜索面板"
     }
   },
   "browser_specific_settings": {

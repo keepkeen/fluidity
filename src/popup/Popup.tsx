@@ -460,7 +460,7 @@ export const Popup = () => {
               onClick={() => openSettings("data")}
               label="打开云同步设置"
             />
-            <Title>Fluidity</Title>
+            <Title>拾光</Title>
           </TitleRow>
           <IconButton onClick={() => openSettings()} title="打开设置">
             <FontAwesomeIcon icon={faCog} />

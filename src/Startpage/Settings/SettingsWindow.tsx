@@ -11,6 +11,7 @@ import * as Settings from "./settingsHandler"
 import { applyColors } from "../../base/colorUtils"
 import { applyThemeMode } from "../../base/theme"
 import { IconButton } from "../../components/IconButton"
+import { Modal } from "../../components/Modal"
 import { emitSettingsApplied } from "../../services/settingsEvents"
 import {
   LinkDisplaySettings,
@@ -64,10 +65,13 @@ const StyledSettingsWindow = styled.div`
   -webkit-backdrop-filter: var(--surface-blur);
   position: fixed;
 
-  top: var(--settings-window-gap);
-  right: var(--settings-window-gap);
-  bottom: var(--settings-window-gap);
-  left: var(--settings-window-gap);
+  /* 居中定宽窗口：大屏上不再铺满全屏，宽 ≤1080px、高 ≤780px */
+  top: max(44px, calc(50vh - 390px));
+  bottom: max(44px, calc(50vh - 390px));
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  width: min(1080px, calc(100vw - 88px));
 
   border: 1px solid var(--surface-border);
   border-radius: var(--radius-main);
@@ -78,27 +82,24 @@ const StyledSettingsWindow = styled.div`
 
   /* 中等屏幕优化 */
   @media screen and (max-width: 1440px) {
-    top: 30px;
-    right: 30px;
-    bottom: 30px;
-    left: 30px;
+    top: max(30px, calc(50vh - 390px));
+    bottom: max(30px, calc(50vh - 390px));
+    width: min(1080px, calc(100vw - 60px));
     padding: 50px 20px 20px 20px;
   }
 
   /* 小屏幕优化 */
   @media screen and (max-width: 1024px) {
     top: 20px;
-    right: 20px;
     bottom: 20px;
-    left: 20px;
+    width: calc(100vw - 40px);
     padding: 45px 15px 15px 15px;
   }
 
   @media screen and (max-width: 600px) {
     top: 10px;
-    right: 10px;
     bottom: 10px;
-    left: 10px;
+    width: calc(100vw - 20px);
     padding: 50px 12px 12px 12px;
   }
 `
@@ -363,6 +364,67 @@ interface props {
   registerCloseGuard?: (guard: () => boolean) => void
 }
 
+const CloseConfirmCard = styled.div`
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1001;
+  width: min(340px, calc(100vw - 48px));
+  padding: 22px;
+  background: color-mix(in srgb, var(--bg-primary) 92%, transparent);
+  backdrop-filter: var(--surface-blur);
+  -webkit-backdrop-filter: var(--surface-blur);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-main);
+  box-shadow: var(--shadow-pop);
+  text-align: center;
+  animation: pop-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  > h3 {
+    margin: 0 0 8px;
+    font-size: 1rem;
+    color: var(--text-primary);
+  }
+
+  > p {
+    margin: 0 0 18px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+`
+
+const CloseConfirmButtons = styled.div`
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+`
+
+const CloseConfirmButton = styled.button<{ danger?: boolean }>`
+  padding: 8px 22px;
+  border-radius: 999px;
+  border: 1px solid
+    ${({ danger }) =>
+      danger ? "var(--accent-hover)" : "var(--surface-border-strong)"};
+  background: ${({ danger }) =>
+    danger
+      ? "color-mix(in srgb, var(--accent-hover) 18%, transparent)"
+      : "transparent"};
+  color: ${({ danger }) =>
+    danger ? "var(--accent-hover)" : "var(--text-primary)"};
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+
+  :hover {
+    background: ${({ danger }) =>
+      danger
+        ? "color-mix(in srgb, var(--accent-hover) 30%, transparent)"
+        : "color-mix(in srgb, var(--text-primary) 8%, transparent)"};
+  }
+`
+
 export const SettingsWindow = ({
   hidePopup,
   initialTab,
@@ -412,12 +474,24 @@ export const SettingsWindow = ({
   snapshotRef.current = snapshot()
   const isDirty = snapshotRef.current !== initialSnapshotRef.current
 
+  // 未应用更改时的关闭确认：用设计系统 Modal 代替原生 confirm（原生对话框阻塞且突兀）
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false)
+  const skipGuardRef = useRef(false)
+
   useEffect(() => {
     registerCloseGuard?.(() => {
+      if (skipGuardRef.current) return true
       if (snapshotRef.current === initialSnapshotRef.current) return true
-      return window.confirm("有未应用的更改，确定放弃并关闭吗？")
+      setShowCloseConfirm(true)
+      return false
     })
   }, [registerCloseGuard])
+
+  const discardAndClose = () => {
+    skipGuardRef.current = true
+    setShowCloseConfirm(false)
+    hidePopup()
+  }
 
   // 颜色/主题模式即时预览；未应用就关闭时回滚到已保存的设计
   const appliedRef = useRef(false)
@@ -549,6 +623,30 @@ export const SettingsWindow = ({
           icon={faFire}
         />
       </WindowFooter>
+
+      {showCloseConfirm && (
+        <Modal
+          onClose={() => setShowCloseConfirm(false)}
+          label="确认关闭设置"
+          overlay="dark"
+        >
+          <CloseConfirmCard>
+            <h3>有未应用的更改</h3>
+            <p>关闭后这些更改将被丢弃。</p>
+            <CloseConfirmButtons>
+              <CloseConfirmButton
+                type="button"
+                onClick={() => setShowCloseConfirm(false)}
+              >
+                继续编辑
+              </CloseConfirmButton>
+              <CloseConfirmButton type="button" danger onClick={discardAndClose}>
+                放弃并关闭
+              </CloseConfirmButton>
+            </CloseConfirmButtons>
+          </CloseConfirmCard>
+        </Modal>
+      )}
     </StyledSettingsWindow>
   )
 }
