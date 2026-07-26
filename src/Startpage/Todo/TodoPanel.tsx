@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import { css, keyframes } from "@emotion/react"
 import styled from "@emotion/styled"
@@ -259,7 +259,18 @@ const Confetti: React.FC<{ x: number; y: number }> = ({ x, y }) => {
 }
 
 export const TodoPanel = () => {
-  const [todos, setTodos] = useState<Todo[]>([])
+  // 解析失败时禁止回写，否则初始空数组会覆盖用户数据
+  const canPersist = useRef(true)
+  const [todos, setTodos] = useState<Todo[]>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      return raw ? (JSON.parse(raw) as Todo[]) : []
+    } catch (e) {
+      logger.error("Failed to parse todos", e)
+      canPersist.current = false
+      return []
+    }
+  })
   const [input, setInput] = useState("")
 
   const [removing, setRemoving] = useState<Record<string, boolean>>({})
@@ -270,21 +281,9 @@ export const TodoPanel = () => {
     y: number
   } | null>(null)
 
-  // load
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw) as Todo[]
-        setTodos(parsed)
-      }
-    } catch (e) {
-      logger.error("Failed to parse todos", e)
-    }
-  }, [])
-
   // save
   useEffect(() => {
+    if (!canPersist.current) return
     localStorage.setItem(STORAGE_KEY, JSON.stringify(todos))
   }, [todos])
 

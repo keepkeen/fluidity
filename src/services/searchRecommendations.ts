@@ -34,7 +34,11 @@ const getTodayStringLocal = (): string => {
 const isQuickSearch = (value: unknown): value is RecommendedQuickSearch => {
   if (!value || typeof value !== "object") return false
   const v = value as { label?: unknown; url?: unknown }
-  return typeof v.label === "string" && typeof v.url === "string"
+  return (
+    typeof v.label === "string" &&
+    typeof v.url === "string" &&
+    /^https?:\/\//i.test(v.url.trim())
+  )
 }
 
 const parseTags = (value: unknown): string[] => {
@@ -144,7 +148,8 @@ const tryAIRecommendations = async (
   summary: Awaited<ReturnType<typeof pickSummaryForRecommendations>>
 ): Promise<{ tags: string[]; quickSearches: RecommendedQuickSearch[] }> => {
   const settings = AISettingsManager.get()
-  if (!settings.enabled || !settings.apiKey) {
+  // 浏览域名/页面属于浏览时长统计数据，未开启对应共享开关时不得发给 AI
+  if (!settings.enabled || !settings.apiKey || !settings.shareBrowserUsage) {
     return { tags: [], quickSearches: [] }
   }
 

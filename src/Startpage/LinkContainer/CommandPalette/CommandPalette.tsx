@@ -343,7 +343,11 @@ const useGlobalKeyboard = (
 ): void => {
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      const isInputFocused = document.activeElement?.tagName === "INPUT"
+      const active = document.activeElement
+      const isInputFocused =
+        active instanceof HTMLElement &&
+        (["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName) ||
+          active.isContentEditable)
       if (e.key === "/" && !isOpen && !isInputFocused) {
         e.preventDefault()
         openPalette()

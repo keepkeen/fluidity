@@ -338,9 +338,12 @@ export const generateWeeklyReport = async (): Promise<{
     return { summary: getDefaultWeeklySummary(stats), fromAI: false }
   }
 
-  // 调用 AI
+  // 调用 AI（未开启"发送浏览时长统计"时，浏览数据不得进入 prompt）
   try {
-    const prompt = generateWeeklyPrompt(stats)
+    const promptStats = settings.shareBrowserUsage
+      ? stats
+      : { ...stats, browserMinutes: 0, browserTopDomains: [], browserTopPages: [] }
+    const prompt = generateWeeklyPrompt(promptStats)
     const summary = await callDeepSeekAPI(
       settings.apiKey,
       prompt,
@@ -417,9 +420,12 @@ export const generateMonthlyReport = async (): Promise<{
     }
   }
 
-  // 调用 AI
+  // 调用 AI（未开启"发送浏览时长统计"时，浏览数据不得进入 prompt）
   try {
-    const prompt = generateMonthlyPrompt(stats)
+    const promptStats = settings.shareBrowserUsage
+      ? stats
+      : { ...stats, browserMinutes: 0, browserTopDomains: [], browserTopPages: [] }
+    const prompt = generateMonthlyPrompt(promptStats)
     const summary = await callDeepSeekAPI(
       settings.apiKey,
       prompt,

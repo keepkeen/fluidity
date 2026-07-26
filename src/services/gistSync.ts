@@ -3,8 +3,12 @@ import { BROWSER_USAGE_SETTINGS_KEY } from "./browserUsageSettings"
 import { exportDataAsync, importDataAsync } from "./dataBackup"
 import {
   getChromeLocal,
+  getChromeSession,
+  hasChromeSessionStorage,
   hasChromeStorage,
+  removeChromeSession,
   setChromeLocal,
+  setChromeSession,
 } from "./extensionStore"
 import {
   createGist,
@@ -61,6 +65,10 @@ export interface GistSyncConfigV1 {
   lastKnownRevision?: string
   deviceId: string
   rememberPassword: boolean
+  /**
+   * @deprecated 明文密码不再持久化（密文与解密密码不能同盘存放）。
+   * 该字段仅用于读取历史数据并迁移到会话存储。
+   */
   rememberedPassword?: string
   filename: string
   description: string
@@ -68,6 +76,7 @@ export interface GistSyncConfigV1 {
 }
 
 const CONFIG_KEY = "fluidity.gistSync.config.v1"
+const PASSWORD_KEY = "fluidity.gistSync.password.v1"
 const DEFAULT_FILENAME = "fluidity.sync.v1.json"
 const DEFAULT_DESCRIPTION = "Fluidity Sync Store (encrypted)"
 const DEFAULT_ITERATIONS = 200_000
@@ -84,6 +93,8 @@ const SYNCED_LOCAL_STORAGE_KEYS = new Set<string>([
   "link-groups",
   "design",
   "link-display-settings",
+  "wallpaper-settings",
+  "card-area-settings",
   // AI (no apiKey in ciphertext export by default)
   "ai-settings",
   "ai-cache",
@@ -159,25 +170,65 @@ const normalizeConfig = (
     filename,
     description,
     iterations,
-    rememberedPassword: rememberPassword
-      ? stored?.rememberedPassword
-      : undefined,
+    rememberedPassword: undefined,
   }
 }
 
+// "记住密码"只写入会话级存储（chrome.storage.session / sessionStorage），
+// 浏览器关闭即清除，避免密码与密文同盘明文存放
+const storeRememberedPassword = async (
+  password: string | null
+): Promise<void> => {
+  if (hasChromeSessionStorage()) {
+    if (password === null) await removeChromeSession(PASSWORD_KEY)
+    else await setChromeSession(PASSWORD_KEY, password)
+    return
+  }
+  try {
+    if (password === null) sessionStorage.removeItem(PASSWORD_KEY)
+    else sessionStorage.setItem(PASSWORD_KEY, password)
+  } catch {
+    // ignore
+  }
+}
+
+const readRememberedPassword = async (): Promise<string | null> => {
+  if (hasChromeSessionStorage()) {
+    return (await getChromeSession<string>(PASSWORD_KEY)) ?? null
+  }
+  try {
+    return sessionStorage.getItem(PASSWORD_KEY)
+  } catch {
+    return null
+  }
+}
+
+export const hasRememberedSyncPassword = async (): Promise<boolean> =>
+  (await readRememberedPassword()) !== null
+
 const getConfig = async (): Promise<GistSyncConfigV1> => {
+  let stored: Partial<GistSyncConfigV1> | undefined
   if (hasChromeStorage()) {
-    const stored = await getChromeLocal<Partial<GistSyncConfigV1>>(CONFIG_KEY)
-    return normalizeConfig(stored)
+    stored = await getChromeLocal<Partial<GistSyncConfigV1>>(CONFIG_KEY)
+  } else {
+    const raw = localStorage.getItem(CONFIG_KEY)
+    if (!raw) return getFallbackConfig()
+    try {
+      stored = JSON.parse(raw) as Partial<GistSyncConfigV1>
+    } catch {
+      return getFallbackConfig()
+    }
   }
 
-  const raw = localStorage.getItem(CONFIG_KEY)
-  if (!raw) return getFallbackConfig()
-  try {
-    return normalizeConfig(JSON.parse(raw) as Partial<GistSyncConfigV1>)
-  } catch {
-    return getFallbackConfig()
+  const config = normalizeConfig(stored)
+
+  // 迁移：历史版本把明文密码写进了持久存储，搬到会话存储并从磁盘抹掉
+  if (stored?.rememberedPassword) {
+    await storeRememberedPassword(stored.rememberedPassword)
+    await setConfig(config)
   }
+
+  return config
 }
 
 const setConfig = async (config: GistSyncConfigV1): Promise<void> => {
@@ -208,11 +259,12 @@ export const clearSyncPasswordForSession = (): void => {
 }
 
 const getPassword = async (): Promise<string | null> => {
+  if (sessionPassword) return sessionPassword
   const config = await getConfig()
-  if (config.rememberPassword && config.rememberedPassword) {
-    return config.rememberedPassword
+  if (config.rememberPassword) {
+    return await readRememberedPassword()
   }
-  return sessionPassword
+  return null
 }
 
 const getCryptoKey = async (options: {
@@ -263,7 +315,12 @@ const parseEnvelope = (raw: string): FluiditySyncEnvelopeV1 => {
     kdf !== "PBKDF2" ||
     typeof salt !== "string" ||
     typeof iv !== "string" ||
-    typeof iterations !== "number"
+    typeof iterations !== "number" ||
+    // 迭代次数来自远端密文，必须限定范围：过小是 KDF 降级攻击，
+    // 过大会在本地造成拒绝服务
+    !Number.isInteger(iterations) ||
+    iterations < 100_000 ||
+    iterations > 1_000_000
   ) {
     throw new Error("Invalid sync envelope")
   }
@@ -280,6 +337,14 @@ const getGistFileContent = async (
   if (!file) return null
   if (file.content) return file.content
   if (!file.raw_url) return null
+
+  // raw_url 来自 API 响应，未校验就带 token 请求会把凭据发往任意主机
+  try {
+    const rawOrigin = new URL(file.raw_url).origin
+    if (rawOrigin !== "https://gist.githubusercontent.com") return null
+  } catch {
+    return null
+  }
 
   const response = await fetchWithTimeout(
     file.raw_url,
@@ -388,11 +453,12 @@ export const connectOrDiscover = async (options: {
       gistId: matched.id,
       lastKnownRevision: head,
       rememberPassword: Boolean(options.rememberPassword),
-      rememberedPassword: options.rememberPassword
-        ? options.password
-        : undefined,
+      rememberedPassword: undefined,
     }
     await setConfig(newConfig)
+    await storeRememberedPassword(
+      options.rememberPassword && options.password ? options.password : null
+    )
     if (options.password) setSyncPasswordForSession(options.password)
     setSyncRuntimeStatus({
       state: "ok",
@@ -445,9 +511,12 @@ export const connectOrDiscover = async (options: {
     gistId: created.id,
     lastKnownRevision: head,
     rememberPassword: Boolean(options.rememberPassword),
-    rememberedPassword: options.rememberPassword ? options.password : undefined,
+    rememberedPassword: undefined,
   }
   await setConfig(newConfig)
+  await storeRememberedPassword(
+    options.rememberPassword ? options.password : null
+  )
   setSyncPasswordForSession(options.password)
 
   setSyncRuntimeStatus({
@@ -471,6 +540,7 @@ export const disconnectGistSync = async (): Promise<void> => {
     rememberedPassword: undefined,
   }
   await setConfig(next)
+  await storeRememberedPassword(null)
   clearSyncPasswordForSession()
   setSyncRuntimeStatus({
     state: "error",

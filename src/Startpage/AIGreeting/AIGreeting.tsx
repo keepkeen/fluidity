@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 
 import styled from "@emotion/styled"
 import { faSync } from "@fortawesome/free-solid-svg-icons"
@@ -171,7 +171,11 @@ export const AIGreeting = () => {
     }
   }
 
+  // StrictMode 下挂载 effect 会执行两次，不加守卫会重复发起付费 AI 请求
+  const didFetchRef = useRef(false)
   useEffect(() => {
+    if (didFetchRef.current) return
+    didFetchRef.current = true
     void fetchGreeting()
   }, [])
 

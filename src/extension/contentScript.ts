@@ -257,8 +257,21 @@
       }
     }
 
-    const randomNonce = () =>
-      `${Date.now().toString(16)}_${Math.random().toString(16).slice(2)}`
+    const randomNonce = () => {
+      const bytes = new Uint8Array(16)
+      crypto.getRandomValues(bytes)
+      return Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("")
+    }
+
+    // 此文件必须自包含（MV3 content script 不能有共享 chunk），
+    // 故不 import utils/urlSafety，就地校验导航目标 scheme。
+    const isSafeNavigationUrl = (url: string) => {
+      try {
+        return ["http:", "https:"].includes(new URL(url).protocol)
+      } catch {
+        return false
+      }
+    }
 
     const removeOverlay = () => {
       const existing = document.getElementById(OVERLAY_ID)
@@ -284,7 +297,9 @@
       const shadow = host.attachShadow({ mode: "open" })
       const nonce = randomNonce()
       const src = chrome.runtime.getURL(
-        `palette.html?openPalette=1&embed=1&nonce=${encodeURIComponent(nonce)}`
+        `palette.html?openPalette=1&embed=1&nonce=${encodeURIComponent(
+          nonce
+        )}&parentOrigin=${encodeURIComponent(window.location.origin)}`
       )
 
       const style = document.createElement("style")
@@ -311,6 +326,7 @@
       const onMessage = (e: MessageEvent) => {
         try {
           if (!extensionOrigin || e.origin !== extensionOrigin) return
+          if (e.source !== iframe.contentWindow) return
           const data = e.data as {
             nonce?: unknown
             type?: unknown
@@ -325,7 +341,7 @@
           }
           if (data.type === "fluidity:paletteNavigate") {
             const url = typeof data.url === "string" ? data.url : null
-            if (!url) return
+            if (!url || !isSafeNavigationUrl(url)) return
             const openInNewTab = Boolean(data.openInNewTab)
             window.removeEventListener("message", onMessage)
             removeOverlay()

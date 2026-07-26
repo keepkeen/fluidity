@@ -7,18 +7,24 @@ import { ErrorBoundary } from "../components/ErrorBoundary"
 import { CommandPalette } from "../Startpage/LinkContainer/CommandPalette/CommandPalette"
 import * as Settings from "../Startpage/Settings/settingsHandler"
 
-const getNonce = (): string => {
+const getSearchParam = (name: string): string => {
   try {
     const params = new URLSearchParams(window.location.search)
-    return params.get("nonce") ?? ""
+    return params.get(name) ?? ""
   } catch {
     return ""
   }
 }
 
+const getNonce = (): string => getSearchParam("nonce")
+
+// 目标 origin 由 contentScript 注入时传入；palette.html 是 web_accessible
+// 资源，任何网站都能嵌入它，绝不能用 "*" 广播 nonce 和导航数据。
+const parentOrigin = getSearchParam("parentOrigin") || window.location.origin
+
 const postToParent = (payload: unknown): void => {
   try {
-    window.parent.postMessage(payload, "*")
+    window.parent.postMessage(payload, parentOrigin)
   } catch {
     // ignore
   }

@@ -16,6 +16,8 @@ import {
 
 // 常量
 const AI_SETTINGS_KEY = "ai-settings"
+const WALLPAPER_SETTINGS_KEY = "wallpaper-settings"
+const CARD_AREA_SETTINGS_KEY = "card-area-settings"
 
 // 所有需要备份的 localStorage 键
 const BACKUP_KEYS = {
@@ -26,6 +28,8 @@ const BACKUP_KEYS = {
     "link-groups",
     "design",
     "link-display-settings",
+    WALLPAPER_SETTINGS_KEY,
+    CARD_AREA_SETTINGS_KEY,
   ],
   // AI 相关（不包含 apiKey）
   ai: [AI_SETTINGS_KEY, "ai-cache"],
@@ -157,6 +161,42 @@ const sanitizeAISettings = (
 }
 
 /**
+ * 剥离体积巨大的 base64 图片数据。
+ * 备份/同步只携带壁纸与卡片区的配置项，本地图片需在新环境重新上传。
+ */
+const stripLargeImageData = (
+  data: Record<string, unknown>
+): Record<string, unknown> => {
+  const next = { ...data }
+
+  const wallpaper = next[WALLPAPER_SETTINGS_KEY]
+  if (wallpaper && typeof wallpaper === "object") {
+    const w = wallpaper as Record<string, unknown>
+    next[WALLPAPER_SETTINGS_KEY] = {
+      ...w,
+      localImageData: null,
+      // 本地图片不随备份走，来源退回预设避免恢复后黑屏
+      source: w.source === "local" ? "preset" : w.source,
+    }
+  }
+
+  const cardArea = next[CARD_AREA_SETTINGS_KEY]
+  if (cardArea && typeof cardArea === "object") {
+    const c = cardArea as Record<string, unknown>
+    const images = Array.isArray(c.customImages) ? c.customImages : []
+    next[CARD_AREA_SETTINGS_KEY] = {
+      ...c,
+      customImages: images.filter(img => {
+        const src = (img as { src?: unknown } | null)?.src
+        return !(typeof src === "string" && src.startsWith("data:"))
+      }),
+    }
+  }
+
+  return next
+}
+
+/**
  * 导出所有数据
  */
 export const exportData = (options: ExportOptions = {}): BackupData => {
@@ -176,8 +216,10 @@ export const exportData = (options: ExportOptions = {}): BackupData => {
     }
   })
 
-  // 处理敏感信息
-  const sanitizedData = sanitizeAISettings(data, includeApiKey)
+  // 处理敏感信息与大体积图片
+  const sanitizedData = stripLargeImageData(
+    sanitizeAISettings(data, includeApiKey)
+  )
 
   return {
     version: "1.0.0",
@@ -280,6 +322,60 @@ const preserveApiKey = (newValue: unknown): unknown => {
 }
 
 /**
+ * 备份不携带本地图片，覆盖导入时保留本设备已有的图片数据
+ */
+const preserveLocalImages = (key: string, newValue: unknown): unknown => {
+  const currentRaw = localStorage.getItem(key)
+  if (!currentRaw || !newValue || typeof newValue !== "object") return newValue
+
+  try {
+    const current = JSON.parse(currentRaw) as Record<string, unknown>
+    const incoming = newValue as Record<string, unknown>
+
+    if (key === WALLPAPER_SETTINGS_KEY) {
+      if (
+        !incoming.localImageData &&
+        typeof current.localImageData === "string" &&
+        current.localImageData
+      ) {
+        return {
+          ...incoming,
+          localImageData: current.localImageData,
+          // 导出时 local 来源被退回 preset，这里恢复本机的选择
+          source: incoming.source === "preset" ? current.source : incoming.source,
+        }
+      }
+      return incoming
+    }
+
+    if (key === CARD_AREA_SETTINGS_KEY) {
+      const currentImages = Array.isArray(current.customImages)
+        ? (current.customImages as { id?: unknown; src?: unknown }[])
+        : []
+      const localOnly = currentImages.filter(
+        img => typeof img?.src === "string" && img.src.startsWith("data:")
+      )
+      if (localOnly.length === 0) return incoming
+      const incomingImages = Array.isArray(incoming.customImages)
+        ? (incoming.customImages as { id?: unknown }[])
+        : []
+      const seen = new Set(incomingImages.map(img => img?.id))
+      return {
+        ...incoming,
+        customImages: [
+          ...incomingImages,
+          ...localOnly.filter(img => !seen.has(img.id)),
+        ],
+      }
+    }
+
+    return incoming
+  } catch {
+    return newValue
+  }
+}
+
+/**
  * 导入单个键值
  */
 const importSingleKey = (
@@ -296,10 +392,14 @@ const importSingleKey = (
   }
 
   // 处理 AI 设置中的 API Key
-  const finalValue =
+  let finalValue =
     key === AI_SETTINGS_KEY && options.skipApiKey
       ? preserveApiKey(value)
       : value
+
+  if (key === WALLPAPER_SETTINGS_KEY || key === CARD_AREA_SETTINGS_KEY) {
+    finalValue = preserveLocalImages(key, finalValue)
+  }
 
   // 检查是否覆盖
   if (!options.overwrite && localStorage.getItem(key) !== null) {

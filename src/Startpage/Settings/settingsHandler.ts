@@ -78,6 +78,14 @@ const isWallpaperSettings = (value: unknown): value is WallpaperSettings =>
 const isCardAreaSettings = (value: unknown): value is CardAreaSettings =>
   isRecord(value)
 
+const removeCorruptBackups = (key: string) => {
+  const prefix = `${key}.corrupt.`
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const existing = localStorage.key(i)
+    if (existing?.startsWith(prefix)) localStorage.removeItem(existing)
+  }
+}
+
 const readLocalJson = <T>(
   key: string,
   validator: (value: unknown) => value is T
@@ -92,6 +100,8 @@ const readLocalJson = <T>(
   } catch (error) {
     const corruptKey = `${key}.corrupt.${Date.now()}`
     try {
+      // 每个 key 只保留最新一份损坏备份，避免反复加载时备份无限累积占满配额
+      removeCorruptBackups(key)
       localStorage.setItem(corruptKey, raw)
       localStorage.removeItem(key)
     } catch {
@@ -99,6 +109,24 @@ const readLocalJson = <T>(
     }
     settingsLogger.error(`Stored ${key} is invalid; moved to ${corruptKey}.`, error)
     return undefined
+  }
+}
+
+const writeLocalJson = (key: string, value: unknown) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch (error) {
+    settingsLogger.error(`Failed to persist ${key}`, error)
+    window.dispatchEvent(
+      new CustomEvent("show-notification", {
+        detail: {
+          type: "error",
+          title: "保存失败",
+          message: "本地存储空间不足，设置未能保存。请清理自定义图片后重试。",
+        },
+      })
+    )
+    throw error
   }
 }
 
@@ -281,7 +309,7 @@ export const Search = {
   },
 
   set: (searchSettings: SearchType) =>
-    localStorage.setItem("search-settings", JSON.stringify(searchSettings)),
+    writeLocalJson("search-settings", searchSettings),
 
   parse: (searchSettings: string) => JSON.parse(searchSettings) as SearchType,
 }
@@ -306,8 +334,7 @@ export const Themes = {
     }
   },
 
-  set: (themes: Theme[]) =>
-    localStorage.setItem("themes", JSON.stringify(themes)),
+  set: (themes: Theme[]) => writeLocalJson("themes", themes),
 
   add: (theme: Theme) => {
     const lsThemes = Themes.get()
@@ -340,8 +367,7 @@ export const Links = {
     }
   },
 
-  set: (themes: linkGroup[]) =>
-    localStorage.setItem(linkGroupsKey, JSON.stringify(themes)),
+  set: (themes: linkGroup[]) => writeLocalJson(linkGroupsKey, themes),
 
   parse: (linkGroups: string) => JSON.parse(linkGroups) as linkGroup[],
 }
@@ -366,8 +392,7 @@ export const Design = {
     }
   },
 
-  set: (design: Theme) =>
-    localStorage.setItem("design", JSON.stringify(design)),
+  set: (design: Theme) => writeLocalJson("design", design),
 }
 
 const linkDisplayKey = "link-display-settings"
@@ -387,7 +412,7 @@ export const LinkDisplay = {
   },
 
   set: (settings: LinkDisplaySettings) =>
-    localStorage.setItem(linkDisplayKey, JSON.stringify(settings)),
+    writeLocalJson(linkDisplayKey, settings),
 }
 
 const wallpaperKey = "wallpaper-settings"
@@ -406,7 +431,7 @@ export const Wallpaper = {
     }
   },
   set: (settings: WallpaperSettings) => {
-    localStorage.setItem(wallpaperKey, JSON.stringify(settings))
+    writeLocalJson(wallpaperKey, settings)
   },
 }
 
@@ -426,6 +451,6 @@ export const CardArea = {
     }
   },
   set: (settings: CardAreaSettings) => {
-    localStorage.setItem(cardAreaKey, JSON.stringify(settings))
+    writeLocalJson(cardAreaKey, settings)
   },
 }

@@ -442,6 +442,10 @@ export const SettingsWindow = ({ hidePopup, initialTab }: props) => {
         <SettingsButton
           type="button"
           onClick={() => {
+            const confirmed = window.confirm(
+              "确定要清除全部设置吗？链接、主题、待办和统计数据都会被删除，且无法恢复。"
+            )
+            if (!confirmed) return
             localStorage.clear()
             window.location.reload()
           }}

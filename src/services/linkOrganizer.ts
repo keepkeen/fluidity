@@ -5,6 +5,7 @@
 import { AISettingsManager } from "./ai"
 import { fetchWithTimeout } from "./http"
 import { linkGroup } from "../data/data"
+import { isSafeLinkUrl } from "../utils/urlSafety"
 
 // localStorage key for links
 const LINKS_STORAGE_KEY = "link-groups"
@@ -192,6 +193,15 @@ export const organizeLinksWithAI = async (
     for (const group of result) {
       if (!group.title || !Array.isArray(group.links)) {
         throw new Error("AI 返回格式错误：群组结构不正确")
+      }
+      for (const link of group.links) {
+        if (
+          typeof link.label !== "string" ||
+          typeof link.value !== "string" ||
+          !isSafeLinkUrl(link.value)
+        ) {
+          throw new Error("AI 返回格式错误：链接不合法")
+        }
       }
     }
 

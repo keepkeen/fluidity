@@ -7,6 +7,7 @@
 import { LinkAnalytics } from "./analytics"
 import { linkGroup, dataElem } from "../data/data"
 import { searchLogger } from "../utils/logger"
+import { isSafeLinkUrl } from "../utils/urlSafety"
 
 /**
  * 搜索结果类型
@@ -306,6 +307,8 @@ export const navigateToLink = (
   groupTitle: string,
   openInNewTab?: boolean
 ): void => {
+  if (!isSafeLinkUrl(url)) return
+
   // 记录点击
   LinkAnalytics.trackClick(url, label, groupTitle)
 

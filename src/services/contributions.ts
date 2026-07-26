@@ -35,7 +35,10 @@ const getDateString = (daysAgo: number): string => {
  * 获取星期几的中文名称
  */
 const getWeekdayName = (dateStr: string): string => {
-  const date = new Date(dateStr)
+  // "YYYY-MM-DD" 直接传给 Date 会按 UTC 午夜解析，
+  // 在负时区 getDay() 会差一天，必须手工按本地时间构造
+  const [year, month, day] = dateStr.split("-").map(Number)
+  const date = new Date(year, month - 1, day)
   const weekdays = ["日", "一", "二", "三", "四", "五", "六"]
   return weekdays[date.getDay()]
 }
@@ -210,18 +213,10 @@ export const TodoContributions = {
    * 获取上上月总完成数
    */
   getMonthBeforeLastTotal(): number {
+    // 让 Date 自己处理跨年借位，手工分支在 1、2 月会算错年份
     const now = new Date()
-    let month = now.getMonth() - 1
-    let year = now.getFullYear()
-    if (month <= 0) {
-      month = month <= 0 ? 12 + month : month
-      year = month <= 0 ? year - 1 : year
-    }
-    if (month === 0) {
-      month = 12
-      year -= 1
-    }
-    return this.getMonthTotal(year, month)
+    const target = new Date(now.getFullYear(), now.getMonth() - 2, 1)
+    return this.getMonthTotal(target.getFullYear(), target.getMonth() + 1)
   },
 
   /**

@@ -29,6 +29,7 @@ import {
   disconnectGistSync,
   getGistSyncConfig,
   getTokenPrefillUrl,
+  hasRememberedSyncPassword,
   pullNow,
   pushNow,
   setSyncPasswordForSession,
@@ -452,7 +453,7 @@ export const DataSettings: React.FC = () => {
       setToken(config.token ?? "")
       setRememberPassword(Boolean(config.rememberPassword))
       setHasRememberedPassword(
-        Boolean(config.rememberPassword && config.rememberedPassword)
+        Boolean(config.rememberPassword && (await hasRememberedSyncPassword()))
       )
     }
     void load()
