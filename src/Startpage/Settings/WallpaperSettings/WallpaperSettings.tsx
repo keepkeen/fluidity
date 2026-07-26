@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 
 import { RangeSlider } from "../../../components/RangeSlider"
+import { Toggle } from "../../../components/Toggle"
 import {
   BingRegion,
   CardAreaSettings,
@@ -45,9 +46,6 @@ import {
   Section,
   SectionTitle,
   SmallButton,
-  Toggle,
-  ToggleLabel,
-  ToggleSwitch,
   UploadArea,
   UploadButton,
   UploadInfo,
@@ -450,10 +448,11 @@ export const WallpaperSettings: React.FC<Props> = ({
                 onChange={handleBrightnessChange}
                 formatValue={v => `${Math.round(v * 100)}%`}
               />
-              <Toggle onClick={handleOverlayChange}>
-                <ToggleSwitch checked={wallpaperSettings.overlay} />
-                <ToggleLabel>显示遮罩层</ToggleLabel>
-              </Toggle>
+              <Toggle
+                label="显示遮罩层"
+                checked={wallpaperSettings.overlay}
+                onChange={() => handleOverlayChange()}
+              />
               {wallpaperSettings.overlay && (
                 <RangeSlider
                   label="遮罩透明度"
@@ -522,10 +521,11 @@ export const WallpaperSettings: React.FC<Props> = ({
                   {/* Hide auto-rotate for dashboard mode */}
                   {cardAreaSettings.layoutMode !== "dashboard" && (
                     <>
-                      <Toggle onClick={handleAutoRotateChange}>
-                        <ToggleSwitch checked={cardAreaSettings.autoRotate} />
-                        <ToggleLabel>自动轮播</ToggleLabel>
-                      </Toggle>
+                      <Toggle
+                        label="自动轮播"
+                        checked={cardAreaSettings.autoRotate}
+                        onChange={() => handleAutoRotateChange()}
+                      />
                       {cardAreaSettings.autoRotate && (
                         <RangeSlider
                           label="轮播间隔"
@@ -547,10 +547,11 @@ export const WallpaperSettings: React.FC<Props> = ({
             {cardAreaSettings.displayMode === "full" && (
               <Section>
                 <SectionTitle>轮播图片</SectionTitle>
-                <Toggle onClick={handleUseCustomImagesChange}>
-                  <ToggleSwitch checked={cardAreaSettings.useCustomImages} />
-                  <ToggleLabel>使用自定义图片</ToggleLabel>
-                </Toggle>
+                <Toggle
+                  label="使用自定义图片"
+                  checked={cardAreaSettings.useCustomImages}
+                  onChange={() => handleUseCustomImagesChange()}
+                />
 
                 {cardAreaSettings.useCustomImages && (
                   <>

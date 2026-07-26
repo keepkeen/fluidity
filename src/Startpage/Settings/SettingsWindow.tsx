@@ -119,11 +119,6 @@ const WindowContent = styled.div`
 `
 
 const WindowHeader = styled.div`
-  ::before {
-    content: "设置";
-    margin: 5px 20px 0 10px;
-    white-space: nowrap;
-  }
   color: var(--bg-primary);
   background-color: var(--text-primary);
   width: 100%;
@@ -137,10 +132,13 @@ const WindowHeader = styled.div`
   gap: 8px;
   box-sizing: border-box;
   padding: 0 8px;
+`
 
-  ::before {
-    margin: 0 8px 0 0;
-  }
+const WindowTitle = styled.h2`
+  margin: 0 8px 0 0;
+  font-size: 1rem;
+  font-weight: 600;
+  white-space: nowrap;
 `
 
 const WindowFooter = styled.div`
@@ -425,6 +423,7 @@ export const SettingsWindow = ({
   return (
     <StyledSettingsWindow>
       <WindowHeader>
+        <WindowTitle>设置</WindowTitle>
         <Tabbar>
           {TAB_OPTIONS.map(option => (
             <TabOption

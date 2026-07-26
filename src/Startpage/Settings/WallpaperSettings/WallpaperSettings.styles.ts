@@ -313,40 +313,6 @@ export const RefreshButton = styled.button`
   }
 `
 
-export const Toggle = styled.label`
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  cursor: pointer;
-`
-
-export const ToggleSwitch = styled.div<{ checked: boolean }>`
-  width: 44px;
-  height: 24px;
-  border-radius: 12px;
-  background: ${({ checked }) =>
-    checked ? CSS_ACCENT_COLOR : CSS_BORDER_COLOR};
-  position: relative;
-  transition: background 0.2s;
-
-  &::after {
-    content: "";
-    position: absolute;
-    top: 2px;
-    left: ${({ checked }) => (checked ? "22px" : "2px")};
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: var(--text-primary);
-    transition: left 0.2s;
-  }
-`
-
-export const ToggleLabel = styled.span`
-  font-size: 14px;
-  color: var(--text-primary);
-`
-
 export const HiddenInput = styled.input`
   display: none;
 `
