@@ -30,6 +30,7 @@ import {
   getGistSyncConfig,
   getTokenPrefillUrl,
   hasRememberedSyncPassword,
+  hasSessionSyncPassword,
   listConflictCopies,
   pullNow,
   pushNow,
@@ -45,6 +46,7 @@ import {
   SyncRuntimeStatus,
 } from "../../../services/syncRuntime"
 import {
+  Advanced,
   Button,
   Container,
   Description,
@@ -186,6 +188,9 @@ export const DataSettings: React.FC = () => {
   const [syncEnabled, setSyncEnabled] = useState(false)
   const [hasGist, setHasGist] = useState(false)
   const [hasRememberedPassword, setHasRememberedPassword] = useState(false)
+  const [unlockedThisSession, setUnlockedThisSession] = useState(() =>
+    hasSessionSyncPassword()
+  )
   const [conflictCopies, setConflictCopies] = useState<ConflictCopy[] | null>(
     null
   )
@@ -241,6 +246,13 @@ export const DataSettings: React.FC = () => {
       token,
     ]
   )
+
+  const syncStage: "setup" | "locked" | "ready" =
+    !syncEnabled || !hasGist
+      ? "setup"
+      : hasRememberedPassword || unlockedThisSession
+        ? "ready"
+        : "locked"
 
   const handleExport = () => {
     setIsExporting(true)
@@ -371,6 +383,7 @@ export const DataSettings: React.FC = () => {
 
       if (pwd) {
         setSyncPasswordForSession(pwd)
+        setUnlockedThisSession(true)
         await pullNow()
         emitSettingsApplied()
       }
@@ -392,6 +405,20 @@ export const DataSettings: React.FC = () => {
       setHasRememberedPassword(false)
     } catch (error) {
       setSyncError(formatSyncError(error, "断开失败"))
+    } finally {
+      setIsSyncBusy(false)
+    }
+  }
+
+  const handlePullNow = async () => {
+    setIsSyncBusy(true)
+    setSyncError(null)
+    setSyncSuccess(null)
+    try {
+      await pullNow()
+      emitSettingsApplied()
+    } catch (error) {
+      setSyncError(formatSyncError(error, "拉取失败"))
     } finally {
       setIsSyncBusy(false)
     }
@@ -444,6 +471,7 @@ export const DataSettings: React.FC = () => {
         return
       }
       setSyncPasswordForSession(pwd)
+      setUnlockedThisSession(true)
       setHasRememberedPassword(Boolean(rememberPassword))
       await pullNow()
       emitSettingsApplied()
@@ -678,132 +706,187 @@ export const DataSettings: React.FC = () => {
               </StatusValue>
             </StatusRow>
 
-            <Description>
-              第一步：生成 Token（勾选 gist 权限）{" "}
-              <Link href={tokenPrefillUrl} target="_blank" rel="noreferrer">
-                Generate GitHub Token
-              </Link>
-            </Description>
-
-            <TextInput
-              value={token}
-              onChange={e => setToken(e.target.value)}
-              placeholder="粘贴 GitHub Personal Access Token (classic)"
-              type="password"
-              autoComplete="off"
-            />
-
-            <WarningBox>
-              <WarningIcon>
-                <FontAwesomeIcon icon={faExclamationTriangle} />
-              </WarningIcon>
-              <span>
-                Token 会保存在浏览器本地扩展存储中，用于自动同步；云端备份内容会加密，但
-                Token 本身不会写入云端备份文件。
-              </span>
-            </WarningBox>
-
-            <Button
-              variant="secondary"
-              type="button"
-              onClick={() => void handleValidateToken()}
-              disabled={isSyncBusy || !token.trim()}
-            >
-              验证 Token
-            </Button>
-
-            <Description>
-              第二步：设置同步密码（PBKDF2 派生 AES-256 密钥；云端只保存 salt/iv
-              和密文）
-            </Description>
-
-            <TextInput
-              value={syncPassword}
-              onChange={e => setSyncPassword(e.target.value)}
-              placeholder="同步密码（建议强密码）"
-              type="password"
-              autoComplete="off"
-            />
-
-            <Toggle
-              label="记住同步密码（不推荐）"
-              checked={rememberPassword}
-              onChange={setRememberPassword}
-            />
-
-            {rememberPassword && (
-              <WarningBox>
-                <WarningIcon>
-                  <FontAwesomeIcon icon={faExclamationTriangle} />
-                </WarningIcon>
-                <span>
-                  同步密码只保存在会话存储中，浏览器完全关闭后需重新输入。
-                </span>
-              </WarningBox>
-            )}
-
-            <Button
-              variant="primary"
-              type="button"
-              onClick={() => void handleConnect()}
-              disabled={isSyncBusy || !token.trim()}
-            >
-              {syncEnabled ? "重新发现/连接" : "连接并自动发现"}
-            </Button>
-
-            <Button
-              variant="secondary"
-              type="button"
-              onClick={() => void handleUnlockAndPull()}
-              disabled={isSyncBusy || !hasGist}
-            >
-              解锁并拉取
-            </Button>
-
-            <Button
-              variant="secondary"
-              type="button"
-              onClick={() => void handleForcePush()}
-              disabled={isSyncBusy || !hasGist}
-            >
-              强制覆盖云端（推送）
-            </Button>
-
-            <Button
-              variant="secondary"
-              type="button"
-              onClick={() => void handleDisconnect()}
-              disabled={isSyncBusy}
-            >
-              断开云同步
-            </Button>
-
-            <Button
-              variant="secondary"
-              type="button"
-              onClick={() => void handleListConflicts()}
-              disabled={isSyncBusy || !hasGist}
-            >
-              查看云端冲突副本
-            </Button>
-
-            {conflictCopies && conflictCopies.length > 0 && (
+            {syncStage === "setup" && (
               <>
                 <Description>
-                  推送冲突时另存的加密快照（最多保留 3 份），可用其覆盖本地数据：
+                  第一步：生成 Token（勾选 gist 权限）{" "}
+                  <Link href={tokenPrefillUrl} target="_blank" rel="noreferrer">
+                    Generate GitHub Token
+                  </Link>
                 </Description>
-                {conflictCopies.map(copy => (
+
+                <TextInput
+                  value={token}
+                  onChange={e => setToken(e.target.value)}
+                  placeholder="粘贴 GitHub Personal Access Token (classic)"
+                  type="password"
+                  autoComplete="off"
+                />
+
+                <WarningBox>
+                  <WarningIcon>
+                    <FontAwesomeIcon icon={faExclamationTriangle} />
+                  </WarningIcon>
+                  <span>
+                    Token 会保存在浏览器本地扩展存储中，用于自动同步；云端备份内容会加密，但
+                    Token 本身不会写入云端备份文件。
+                  </span>
+                </WarningBox>
+
+                <Button
+                  variant="secondary"
+                  type="button"
+                  onClick={() => void handleValidateToken()}
+                  disabled={isSyncBusy || !token.trim()}
+                >
+                  验证 Token
+                </Button>
+
+                <Description>
+                  第二步：设置同步密码（PBKDF2 派生 AES-256 密钥；云端只保存
+                  salt/iv 和密文）
+                </Description>
+
+                <TextInput
+                  value={syncPassword}
+                  onChange={e => setSyncPassword(e.target.value)}
+                  placeholder="同步密码（建议强密码）"
+                  type="password"
+                  autoComplete="off"
+                />
+
+                <Toggle
+                  label="记住同步密码（不推荐）"
+                  checked={rememberPassword}
+                  onChange={setRememberPassword}
+                />
+
+                <Button
+                  variant="primary"
+                  type="button"
+                  onClick={() => void handleConnect()}
+                  disabled={isSyncBusy || !token.trim()}
+                >
+                  连接并自动发现
+                </Button>
+              </>
+            )}
+
+            {syncStage === "locked" && (
+              <>
+                <TextInput
+                  value={syncPassword}
+                  onChange={e => setSyncPassword(e.target.value)}
+                  placeholder="输入创建备份时的同步密码"
+                  type="password"
+                  autoComplete="off"
+                />
+
+                <Toggle
+                  label="记住同步密码（不推荐）"
+                  checked={rememberPassword}
+                  onChange={setRememberPassword}
+                />
+
+                <Button
+                  variant="primary"
+                  type="button"
+                  onClick={() => void handleUnlockAndPull()}
+                  disabled={isSyncBusy || !syncPassword.trim()}
+                >
+                  解锁并拉取
+                </Button>
+
+                <Advanced>
+                  <summary>高级操作</summary>
                   <Button
-                    key={copy.filename}
                     variant="secondary"
                     type="button"
-                    onClick={() => void handleRestoreConflict(copy.filename)}
+                    onClick={() => void handleConnect()}
+                    disabled={isSyncBusy || !token.trim()}
+                  >
+                    重新发现/连接
+                  </Button>
+                  <Button
+                    variant="danger"
+                    type="button"
+                    onClick={() => void handleDisconnect()}
                     disabled={isSyncBusy}
                   >
-                    恢复 {new Date(copy.timestamp).toLocaleString()}（设备{" "}
-                    {copy.deviceId.slice(0, 8)}）
+                    断开云同步
                   </Button>
-                ))}
+                </Advanced>
+              </>
+            )}
+
+            {syncStage === "ready" && (
+              <>
+                <Button
+                  variant="primary"
+                  type="button"
+                  onClick={() => void handlePullNow()}
+                  disabled={isSyncBusy}
+                >
+                  立即拉取云端数据
+                </Button>
+
+                <Advanced>
+                  <summary>高级操作</summary>
+                  <Button
+                    variant="secondary"
+                    type="button"
+                    onClick={() => void handleForcePush()}
+                    disabled={isSyncBusy}
+                  >
+                    强制覆盖云端（推送）
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    type="button"
+                    onClick={() => void handleListConflicts()}
+                    disabled={isSyncBusy}
+                  >
+                    查看云端冲突副本
+                  </Button>
+                  {conflictCopies && conflictCopies.length > 0 && (
+                    <>
+                      <Description>
+                        推送冲突时另存的加密快照（最多保留 3
+                        份），可用其覆盖本地数据：
+                      </Description>
+                      {conflictCopies.map(copy => (
+                        <Button
+                          key={copy.filename}
+                          variant="secondary"
+                          type="button"
+                          onClick={() =>
+                            void handleRestoreConflict(copy.filename)
+                          }
+                          disabled={isSyncBusy}
+                        >
+                          恢复 {new Date(copy.timestamp).toLocaleString()}
+                          （设备 {copy.deviceId.slice(0, 8)}）
+                        </Button>
+                      ))}
+                    </>
+                  )}
+                  <Button
+                    variant="secondary"
+                    type="button"
+                    onClick={() => void handleConnect()}
+                    disabled={isSyncBusy || !token.trim()}
+                  >
+                    重新发现/连接
+                  </Button>
+                  <Button
+                    variant="danger"
+                    type="button"
+                    onClick={() => void handleDisconnect()}
+                    disabled={isSyncBusy}
+                  >
+                    断开云同步
+                  </Button>
+                </Advanced>
               </>
             )}
 

@@ -45,6 +45,21 @@ export const Section = styled.div`
   gap: 12px;
 `
 
+export const Advanced = styled.details`
+  border: 1px dashed var(--border-default);
+  padding: 10px 12px;
+
+  > summary {
+    cursor: pointer;
+    font-size: 0.9rem;
+    opacity: 0.8;
+  }
+
+  > *:not(summary) {
+    margin-top: 10px;
+  }
+`
+
 export const SectionTitle = styled.h3`
   font-size: 1.1rem;
   font-weight: 600;

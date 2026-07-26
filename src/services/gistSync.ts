@@ -259,6 +259,9 @@ export const clearSyncPasswordForSession = (): void => {
   cachedKey = null
 }
 
+/** 本页会话中是否已有可用的同步密码（用于 UI 判断解锁态） */
+export const hasSessionSyncPassword = (): boolean => sessionPassword !== null
+
 const getPassword = async (): Promise<string | null> => {
   if (sessionPassword) return sessionPassword
   const config = await getConfig()
