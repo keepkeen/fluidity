@@ -13,7 +13,6 @@ import { applyThemeMode } from "../../base/theme"
 import { IconButton } from "../../components/IconButton"
 import { emitSettingsApplied } from "../../services/settingsEvents"
 import {
-  CardAreaSettings,
   LinkDisplaySettings,
   WallpaperSettings as WallpaperSettingsType,
 } from "../../data/data"
@@ -74,6 +73,7 @@ const StyledSettingsWindow = styled.div`
   border-radius: var(--radius-main);
   padding: 64px 30px 30px 30px;
   box-shadow: var(--shadow-pop);
+  overflow: hidden;
   z-index: 101;
 
   /* 中等屏幕优化 */
@@ -123,6 +123,11 @@ const WindowContent = styled.div`
 
 const WindowHeader = styled.div`
   color: var(--text-primary);
+  /* 透明头部必须建立自己的层级，否则内容区的 positioned 元素会盖住 tab */
+  z-index: 5;
+  background: color-mix(in srgb, var(--bg-primary) 65%, transparent);
+  backdrop-filter: var(--surface-blur);
+  -webkit-backdrop-filter: var(--surface-blur);
   border-bottom: 1px solid var(--surface-border);
   width: 100%;
   height: 44px;
@@ -379,9 +384,6 @@ export const SettingsWindow = ({
     useState<LinkDisplaySettings>(Settings.LinkDisplay.getWithFallback())
   const [wallpaperSettings, setWallpaperSettings] =
     useState<WallpaperSettingsType>(Settings.Wallpaper.getWithFallback())
-  const [cardAreaSettings, setCardAreaSettings] = useState<CardAreaSettings>(
-    Settings.CardArea.getWithFallback()
-  )
 
   useEffect(() => {
     if (isTabId(initialTab)) {
@@ -398,7 +400,6 @@ export const SettingsWindow = ({
       aiSettings,
       linkDisplaySettings,
       wallpaperSettings,
-      cardAreaSettings,
     })
 
   // 挂载时的快照，用于关闭时检测未应用的更改
@@ -422,7 +423,7 @@ export const SettingsWindow = ({
   const appliedRef = useRef(false)
   useEffect(() => {
     applyColors(design.colors)
-    applyThemeMode(design.mode || "modern")
+    applyThemeMode()
   }, [design])
 
   useEffect(
@@ -430,7 +431,7 @@ export const SettingsWindow = ({
       if (appliedRef.current) return
       const persisted = Settings.Design.getWithFallback()
       applyColors(persisted.colors)
-      applyThemeMode(persisted.mode || "modern")
+      applyThemeMode()
     },
     []
   )
@@ -443,7 +444,6 @@ export const SettingsWindow = ({
     Settings.Links.set(linkGroups)
     Settings.LinkDisplay.set(linkDisplaySettings)
     Settings.Wallpaper.set(wallpaperSettings)
-    Settings.CardArea.set(cardAreaSettings)
     AISettingsManager.set(aiSettings)
     emitSettingsApplied()
   }
@@ -509,9 +509,7 @@ export const SettingsWindow = ({
           {currentTab === "wallpaper" && (
             <WallpaperSettings
               wallpaperSettings={wallpaperSettings}
-              cardAreaSettings={cardAreaSettings}
               onWallpaperChange={setWallpaperSettings}
-              onCardAreaChange={setCardAreaSettings}
             />
           )}
 

@@ -31,6 +31,7 @@ const BACKUP_KEYS = {
     WALLPAPER_SETTINGS_KEY,
     CARD_AREA_SETTINGS_KEY,
     "fluidity.linkPins.v1",
+    "fluidity.homeLayout.v1",
   ],
   // AI 相关（不包含 apiKey）
   ai: [AI_SETTINGS_KEY, "ai-cache"],

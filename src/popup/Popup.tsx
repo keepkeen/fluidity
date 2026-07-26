@@ -218,7 +218,7 @@ export const Popup = () => {
   // 应用颜色与设计风格
   useEffect(() => {
     applyColors(colors)
-    applyThemeMode(Settings.Design.getWithFallback().mode || "modern")
+    applyThemeMode()
   }, [colors])
 
   // 与主页共用同一套通知组件

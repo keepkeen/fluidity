@@ -4,8 +4,6 @@ import { RangeSlider } from "../../../components/RangeSlider"
 import { Toggle } from "../../../components/Toggle"
 import {
   BingRegion,
-  CardAreaSettings,
-  CardDisplayMode,
   images,
   WallpaperSettings as WallpaperSettingsType,
   WallpaperSource,
@@ -18,7 +16,6 @@ import {
   BingConfig,
   BingInfo,
   Container,
-  CSS_DEFAULT_COLOR,
   HiddenInput,
   ImageGrid,
   ImageOption,
@@ -52,9 +49,7 @@ const WALLPAPER_DISPLAY_FULLSCREEN = "fullscreen"
 
 interface Props {
   wallpaperSettings: WallpaperSettingsType
-  cardAreaSettings: CardAreaSettings
   onWallpaperChange: (settings: WallpaperSettingsType) => void
-  onCardAreaChange: (settings: CardAreaSettings) => void
 }
 
 const sourceOptions: { value: WallpaperSource; label: string }[] = [
@@ -62,11 +57,6 @@ const sourceOptions: { value: WallpaperSource; label: string }[] = [
   { value: WALLPAPER_SOURCE_CUSTOM_URL, label: "自定义 URL" },
   { value: WALLPAPER_SOURCE_LOCAL, label: "本地上传" },
   { value: WALLPAPER_SOURCE_BING_DAILY, label: "Bing 每日" },
-]
-
-const cardModeOptions: { value: CardDisplayMode; label: string }[] = [
-  { value: "full", label: "显示" },
-  { value: "hidden", label: "隐藏" },
 ]
 
 const bingRegionOptions: { value: BingRegion; label: string }[] = [
@@ -78,9 +68,7 @@ const bingRegionOptions: { value: BingRegion; label: string }[] = [
 
 export const WallpaperSettings: React.FC<Props> = ({
   wallpaperSettings,
-  cardAreaSettings,
   onWallpaperChange,
-  onCardAreaChange,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -148,10 +136,6 @@ export const WallpaperSettings: React.FC<Props> = ({
       .finally(() => {
         setRefreshing(false)
       })
-  }
-
-  const handleCardModeChange = (displayMode: CardDisplayMode) => {
-    onCardAreaChange({ ...cardAreaSettings, displayMode })
   }
 
 
@@ -368,32 +352,6 @@ export const WallpaperSettings: React.FC<Props> = ({
               )}
             </Section>
 
-            {/* 卡片区域设置 */}
-            <Section>
-              <SectionTitle>部件网格</SectionTitle>
-
-              <div
-                style={{
-                  marginBottom: 8,
-                  fontSize: "0.9rem",
-                  color: CSS_DEFAULT_COLOR,
-                }}
-              >
-                显示内容
-              </div>
-              <OptionGroup>
-                {cardModeOptions.map(option => (
-                  <OptionButton
-                    key={option.value}
-                    active={cardAreaSettings.displayMode === option.value}
-                    onClick={() => handleCardModeChange(option.value)}
-                  >
-                    {option.label}
-                  </OptionButton>
-                ))}
-              </OptionGroup>
-
-            </Section>
 
           </Container>
         </StyledSettingsContent>
@@ -417,7 +375,7 @@ export const WallpaperSettings: React.FC<Props> = ({
         />
 
         <PreviewContent>
-          <PreviewLeftCard hidden={cardAreaSettings.displayMode === "hidden"}>
+          <PreviewLeftCard hidden={false}>
             <PreviewSearch />
             <PreviewCard
               imageUrl={previewImageUrl}

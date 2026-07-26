@@ -2,14 +2,13 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react"
 
 import styled from "@emotion/styled"
 
-import { LinkContainer } from "./LinkContainer/LinkContainer"
+import { HomeGrid } from "./Home/HomeGrid"
 import { Onboarding } from "./Onboarding/Onboarding"
 import { Searchbar } from "./Searchbar/Searchbar"
 import { Settings } from "./Settings/Settings"
 import {
   Design as DesignSettings,
   Wallpaper as WallpaperSettings,
-  CardArea as CardAreaSettings,
 } from "./Settings/settingsHandler"
 import { AILoadingIndicator } from "../components/AILoadingIndicator"
 import { GlobalNotification } from "../components/GlobalNotification"
@@ -19,12 +18,6 @@ import { settingsLogger } from "../utils/logger"
 const AIGreeting = lazy(() =>
   import("./AIGreeting/AIGreeting").then(module => ({
     default: module.AIGreeting,
-  }))
-)
-
-const DashboardLayout = lazy(() =>
-  import("./Layouts/DashboardLayout").then(module => ({
-    default: module.DashboardLayout,
   }))
 )
 
@@ -81,7 +74,7 @@ const Wrapper = styled.div`
   box-sizing: border-box;
 `
 
-const StyledStartpage = styled.div<{ cardHidden: boolean }>`
+const StyledStartpage = styled.div`
   padding: 0px var(--page-margin);
   display: flex;
   flex-direction: row;
@@ -110,7 +103,6 @@ export const Startpage = () => {
     () => WallpaperSettings.getWithFallback(),
     []
   )
-  const cardAreaSettings = useMemo(() => CardAreaSettings.getWithFallback(), [])
   const designSettings = useMemo(() => DesignSettings.getWithFallback(), [])
 
   // 壁纸 URL 状态
@@ -157,8 +149,6 @@ export const Startpage = () => {
 
   // 是否显示全屏背景
   const showFullscreenBg = wallpaperSettings.displayMode === "fullscreen"
-  // 是否隐藏卡片区域
-  const cardHidden = cardAreaSettings.displayMode === "hidden"
 
   return (
     <>
@@ -186,17 +176,8 @@ export const Startpage = () => {
         <Suspense fallback={null}>
           <ReportBanner />
         </Suspense>
-        <StyledStartpage cardHidden={cardHidden}>
-          {/* 部件网格 */}
-          {!cardHidden && (
-            <Suspense fallback={null}>
-              <DashboardLayout
-                cardDisplayMode={cardAreaSettings.displayMode}
-              />
-            </Suspense>
-          )}
-
-          <LinkContainer />
+        <StyledStartpage>
+          <HomeGrid />
         </StyledStartpage>
         <Searchbar />
         <Settings />

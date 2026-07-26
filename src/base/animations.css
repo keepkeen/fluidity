@@ -112,3 +112,44 @@
 		transition-duration: 0.01ms !important;
 	}
 }
+
+@keyframes jiggle {
+	0% {
+		transform: rotate(-1.4deg);
+	}
+	50% {
+		transform: rotate(1.4deg);
+	}
+	100% {
+		transform: rotate(-1.4deg);
+	}
+}
+
+@keyframes banner-in {
+	from {
+		transform: translate(-50%, calc(-100% - 20px));
+	}
+	to {
+		transform: translate(-50%, 0);
+	}
+}
+
+@keyframes banner-out {
+	from {
+		transform: translate(-50%, 0);
+		opacity: 1;
+	}
+	to {
+		transform: translate(-50%, calc(-100% - 20px));
+		opacity: 0;
+	}
+}
+
+@keyframes sheet-down {
+	from {
+		transform: translate(-50%, -100%);
+	}
+	to {
+		transform: translate(-50%, 0);
+	}
+}

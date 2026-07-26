@@ -298,8 +298,8 @@ const steps: Step[] = [
     features: [
       {
         icon: faPalette,
-        title: "手风琴式链接",
-        desc: "经典的水平展开设计，鼠标悬停即可展开链接分组，支持音效反馈",
+        title: "主屏网格",
+        desc: "收藏以应用图标呈现，长按进入编辑模式即可拖拽排序或删除",
       },
       {
         icon: faKeyboard,

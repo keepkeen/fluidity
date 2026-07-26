@@ -182,14 +182,19 @@ const main = async () => {
       "settings button"
     )
     await startpage.getByRole("button", { name: "打开设置" }).click()
-    await startpage.getByRole("button", { name: "数据" }).click()
+    const settingsDialog = startpage.getByRole("dialog", { name: "设置" })
+    await settingsDialog
+      .getByRole("button", { name: "数据", exact: true })
+      .click()
     await expectTextVisible(
       startpage,
       "云同步（GitHub Gist）",
       "Gist sync settings"
     )
     await expectTextVisible(startpage, "未配置 Token", "Gist empty state copy")
-    await startpage.getByRole("button", { name: "AI 助手" }).click()
+    await settingsDialog
+      .getByRole("button", { name: "AI 助手", exact: true })
+      .click()
     await expectTextVisible(startpage, "API Key", "AI settings panel")
 
     const popup = await context.newPage()

@@ -5,6 +5,7 @@ import { faPlus, faMinus, faSave } from "@fortawesome/free-solid-svg-icons"
 
 import { AIThemeGenerator } from "./AIThemeGenerator"
 import { ColorPicker } from "../../../components/ColorPicker"
+import { Button } from "../../../components/Button"
 import { Toggle } from "../../../components/Toggle"
 import { Dropdown } from "../../../components/Dropdown"
 import { OptionSlider } from "../../../components/OptionSlider"
@@ -14,7 +15,6 @@ import {
   colorsType,
   images,
   LinkDisplaySettings,
-  LinkDisplayMode,
 } from "../../../data/data"
 import {
   StyledSettingsContent,
@@ -234,50 +234,6 @@ const AccordionPreview = ({
 
 // CSS 变量常量
 
-// 链接展示模式选择按钮
-const ModeSelector = styled.div`
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-`
-
-const ModeButton = styled.button<{ active: boolean }>`
-  flex: 1;
-  min-width: 100px;
-  padding: 10px 8px;
-  border: 1px solid
-    ${({ active }) =>
-      active
-        ? "color-mix(in srgb, var(--accent) 55%, transparent)"
-        : "var(--surface-border)"};
-  border-radius: var(--radius-sm);
-  background: ${({ active }) =>
-    active
-      ? "color-mix(in srgb, var(--accent) 18%, transparent)"
-      : "transparent"};
-  color: ${({ active }) => (active ? "var(--accent)" : "var(--text-secondary)")};
-  cursor: pointer;
-  transition:
-    background var(--transition-fast),
-    border-color var(--transition-fast),
-    color var(--transition-fast);
-  font-size: 0.85rem;
-  font-weight: 500;
-
-  &:hover {
-    color: ${({ active }) =>
-      active ? "var(--accent)" : "var(--text-primary)"};
-    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-  }
-`
-
-const ModeDescription = styled.p`
-  font-size: 0.8rem;
-  opacity: 0.6;
-  margin-top: 8px;
-  line-height: 1.4;
-`
-
 interface props {
   design: Theme
   setDesign: (design: Theme) => void
@@ -297,16 +253,6 @@ const themeEquals = (theme1: Theme, theme2: Theme) => {
   return isEqual
 }
 
-const modeOptions: { value: LinkDisplayMode; label: string; desc: string }[] = [
-  { value: "accordion", label: "手风琴", desc: "经典水平展开模式" },
-  {
-    value: "grid",
-    label: "智能网格",
-    desc: "常用链接自动放大，其余按分组收纳",
-  },
-  { value: "command-palette", label: "命令面板", desc: "按 / 键快速搜索" },
-]
-
 export const DesignSettings = ({
   design,
   setDesign,
@@ -316,10 +262,6 @@ export const DesignSettings = ({
   setLinkDisplaySettings,
 }: props) => {
   const [isNewDesign, setIsNewDesign] = useState(false)
-
-  const handleModeChange = (mode: LinkDisplayMode) => {
-    setLinkDisplaySettings({ ...linkDisplaySettings, mode })
-  }
 
   const setName = (name: string) => setDesign({ ...design, name: name })
   const setColors = (colors: colorsType) =>
@@ -358,25 +300,26 @@ export const DesignSettings = ({
     <>
       <div>
         <StyledSettingsContent>
-          <SettingsLabel>链接展示模式</SettingsLabel>
+          <SettingsLabel>主屏</SettingsLabel>
           <SettingElement>
-            <ModeSelector>
-              {modeOptions.map(option => (
-                <ModeButton
-                  key={option.value}
-                  active={linkDisplaySettings.mode === option.value}
-                  onClick={() => handleModeChange(option.value)}
-                >
-                  {option.label}
-                </ModeButton>
-              ))}
-            </ModeSelector>
-            <ModeDescription>
-              {
-                modeOptions.find(o => o.value === linkDisplaySettings.mode)
-                  ?.desc
-              }
-            </ModeDescription>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                localStorage.removeItem("fluidity.homeLayout.v1")
+                window.dispatchEvent(
+                  new CustomEvent("show-notification", {
+                    detail: {
+                      type: "success",
+                      title: "主屏布局已重置",
+                      message: "小组件已恢复，应用将按使用频率重新排列",
+                    },
+                  })
+                )
+              }}
+            >
+              重置主屏布局（恢复隐藏的小组件）
+            </Button>
           </SettingElement>
 
           <SettingElement>
