@@ -11,8 +11,11 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
 /**
  * iOS 风格通知系统：
- * - 新通知从顶部以横幅形式下落，数秒后收回
- * - 顶部下拉（滚轮上拉/点击顶部指示条）展开通知中心查看历史
+ * - 新通知从顶部以横幅形式下落，数秒后收回；同一条 30 秒内不重复弹
+ * - 点击顶部拉环展开通知中心查看历史（有未读时拉环常显）
+ *
+ * 不做滚轮/下拉自动展开：主屏通常不满一屏，scrollTop 恒为 0，
+ * 触控板回弹会不断误触发，通知中心会"自己弹出来"。
  */
 
 interface NotificationData {
@@ -27,8 +30,11 @@ interface StoredNotification extends NotificationData {
 }
 
 const HISTORY_KEY = "fluidity.notifications.v1"
+const SEEN_KEY = "fluidity.notifications.seenAt"
 const HISTORY_LIMIT = 50
 const BANNER_MS = 4500
+/** 同一条通知在该窗口内到达时只记历史、不再弹横幅 */
+const DUPLICATE_SUPPRESS_MS = 30_000
 
 const readHistory = (): StoredNotification[] => {
   try {
@@ -128,7 +134,7 @@ const BannerMessage = styled.div`
   margin-top: 2px;
 `
 
-const PullTab = styled.button`
+const PullTab = styled.button<{ hasUnread: boolean }>`
   position: fixed;
   top: 0;
   left: 50%;
@@ -139,19 +145,29 @@ const PullTab = styled.button`
   border: none;
   border-radius: 0 0 10px 10px;
   background: color-mix(in srgb, var(--text-primary) 10%, transparent);
-  color: var(--text-muted);
+  color: ${({ hasUnread }) =>
+    hasUnread ? "var(--accent)" : "var(--text-muted)"};
   font-size: 0.6rem;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 5px;
   cursor: pointer;
-  opacity: 0;
+  /* 平时隐形；有未读时常显，作为安静的入口提示 */
+  opacity: ${({ hasUnread }) => (hasUnread ? 0.9 : 0)};
   transition: opacity var(--transition-fast);
 
   :hover,
   :focus-visible {
     opacity: 1;
   }
+`
+
+const UnreadDot = styled.span`
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--accent);
 `
 
 const CenterOverlay = styled.div`
@@ -288,9 +304,12 @@ export const GlobalNotification: React.FC = () => {
   const [history, setHistory] = useState<StoredNotification[]>(() =>
     readHistory()
   )
+  const [seenAt, setSeenAt] = useState<number>(() =>
+    Number(localStorage.getItem(SEEN_KEY)) || 0
+  )
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pullAccumRef = useRef(0)
+  const lastBannerRef = useRef<{ key: string; at: number } | null>(null)
 
   const dismissBanner = useCallback(() => {
     setLeaving(true)
@@ -328,6 +347,15 @@ export const GlobalNotification: React.FC = () => {
         return next
       })
 
+      // 同一条通知短时间内重复到达：只记历史，不再弹横幅
+      const key = `${item.type}|${item.title}|${item.message}`
+      const last = lastBannerRef.current
+      if (last && last.key === key && item.at - last.at < DUPLICATE_SUPPRESS_MS) {
+        lastBannerRef.current = { key, at: item.at }
+        return
+      }
+      lastBannerRef.current = { key, at: item.at }
+
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
       if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current)
       setLeaving(false)
@@ -343,25 +371,17 @@ export const GlobalNotification: React.FC = () => {
     }
   }, [dismissBanner])
 
-  // 顶部下拉手势：页面在顶端继续向上滚（滚轮上拉）→ 打开通知中心
-  useEffect(() => {
-    const onWheel = (e: WheelEvent) => {
-      if (centerOpen) return
-      const scroller = document.getElementById("root")
-      const atTop = (scroller?.scrollTop ?? 0) <= 0
-      if (!atTop || e.deltaY >= 0) {
-        pullAccumRef.current = 0
-        return
-      }
-      pullAccumRef.current += -e.deltaY
-      if (pullAccumRef.current > 140) {
-        pullAccumRef.current = 0
-        setCenterOpen(true)
-      }
+  // 打开通知中心即视为已读
+  const openCenter = useCallback(() => {
+    setCenterOpen(true)
+    const now = Date.now()
+    setSeenAt(now)
+    try {
+      localStorage.setItem(SEEN_KEY, String(now))
+    } catch {
+      // ignore
     }
-    window.addEventListener("wheel", onWheel, { passive: true })
-    return () => window.removeEventListener("wheel", onWheel)
-  }, [centerOpen])
+  }, [])
 
   // Escape 关闭通知中心
   useEffect(() => {
@@ -378,15 +398,19 @@ export const GlobalNotification: React.FC = () => {
     writeHistory([])
   }
 
+  const hasUnread = history.length > 0 && history[0].at > seenAt
+
   return (
     <>
       <PullTab
         type="button"
-        aria-label="打开通知中心"
+        aria-label={hasUnread ? "打开通知中心（有未读）" : "打开通知中心"}
         title="通知中心"
-        onClick={() => setCenterOpen(true)}
+        hasUnread={hasUnread}
+        onClick={openCenter}
       >
         <FontAwesomeIcon icon={faChevronDown} />
+        {hasUnread && <UnreadDot aria-hidden />}
       </PullTab>
 
       {banner && (
