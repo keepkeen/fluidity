@@ -160,7 +160,7 @@ const sanitizeAISettings = (
 
 /**
  * 剥离体积巨大的 base64 图片数据。
- * 备份/同步只携带壁纸与卡片区的配置项，本地图片需在新环境重新上传。
+ * 备份/同步只携带壁纸配置项，本地图片需在新环境重新上传。
  */
 const stripLargeImageData = (
   data: Record<string, unknown>
@@ -175,19 +175,6 @@ const stripLargeImageData = (
       localImageData: null,
       // 本地图片不随备份走，来源退回预设避免恢复后黑屏
       source: w.source === "local" ? "preset" : w.source,
-    }
-  }
-
-  const cardArea = next[CARD_AREA_SETTINGS_KEY]
-  if (cardArea && typeof cardArea === "object") {
-    const c = cardArea as Record<string, unknown>
-    const images = Array.isArray(c.customImages) ? c.customImages : []
-    next[CARD_AREA_SETTINGS_KEY] = {
-      ...c,
-      customImages: images.filter(img => {
-        const src = (img as { src?: unknown } | null)?.src
-        return !(typeof src === "string" && src.startsWith("data:"))
-      }),
     }
   }
 
@@ -346,27 +333,6 @@ const preserveLocalImages = (key: string, newValue: unknown): unknown => {
       return incoming
     }
 
-    if (key === CARD_AREA_SETTINGS_KEY) {
-      const currentImages = Array.isArray(current.customImages)
-        ? (current.customImages as { id?: unknown; src?: unknown }[])
-        : []
-      const localOnly = currentImages.filter(
-        img => typeof img?.src === "string" && img.src.startsWith("data:")
-      )
-      if (localOnly.length === 0) return incoming
-      const incomingImages = Array.isArray(incoming.customImages)
-        ? (incoming.customImages as { id?: unknown }[])
-        : []
-      const seen = new Set(incomingImages.map(img => img?.id))
-      return {
-        ...incoming,
-        customImages: [
-          ...incomingImages,
-          ...localOnly.filter(img => !seen.has(img.id)),
-        ],
-      }
-    }
-
     return incoming
   } catch {
     return newValue
@@ -395,7 +361,7 @@ const importSingleKey = (
       ? preserveApiKey(value)
       : value
 
-  if (key === WALLPAPER_SETTINGS_KEY || key === CARD_AREA_SETTINGS_KEY) {
+  if (key === WALLPAPER_SETTINGS_KEY) {
     finalValue = preserveLocalImages(key, finalValue)
   }
 

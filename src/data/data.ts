@@ -342,21 +342,9 @@ export interface WallpaperSettings {
   overlayOpacity: number // 0-0.8
 }
 
-// 轮播图片项
-export interface CarouselImage {
-  id: string
-  src: string // 图片 URL 或 base64
-  name: string // 图片名称
-}
-
-// 卡片区域设置
+// 卡片区域设置（部件网格）
 export interface CardAreaSettings {
   displayMode: CardDisplayMode
-  layoutMode: LayoutMode // 新增布局模式
-  autoRotate: boolean
-  rotateInterval: number
-  useCustomImages: boolean // 是否使用自定义图片
-  customImages: CarouselImage[] // 自定义图片列表
 }
 
 // 壁纸设置默认值
@@ -376,11 +364,6 @@ export const defaultWallpaperSettings: WallpaperSettings = {
 // 卡片区域设置默认值
 export const defaultCardAreaSettings: CardAreaSettings = {
   displayMode: "full",
-  layoutMode: "carousel", // 默认保持轮播模式
-  autoRotate: true,
-  rotateInterval: 5000,
-  useCustomImages: false,
-  customImages: [],
 }
 
 /**

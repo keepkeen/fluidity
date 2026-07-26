@@ -20,14 +20,6 @@ const localWallpaper = {
 
 const cardArea = {
   displayMode: "full",
-  layoutMode: "carousel",
-  autoRotate: false,
-  rotateInterval: 8000,
-  useCustomImages: true,
-  customImages: [
-    { id: "a", src: "data:image/png;base64,QUJD", name: "本地图" },
-    { id: "b", src: "https://example.com/pic.png", name: "网络图" },
-  ],
 }
 
 beforeEach(() => {
@@ -46,19 +38,12 @@ describe("exportData", () => {
 
   it("strips base64 image data but keeps other preferences", () => {
     localStorage.setItem(WALLPAPER_KEY, JSON.stringify(localWallpaper))
-    localStorage.setItem(CARD_AREA_KEY, JSON.stringify(cardArea))
 
     const backup = exportData()
     const wallpaper = backup.data[WALLPAPER_KEY] as typeof localWallpaper
     expect(wallpaper.localImageData).toBeNull()
     expect(wallpaper.source).toBe("preset")
     expect(wallpaper.blur).toBe(4)
-
-    const card = backup.data[CARD_AREA_KEY] as typeof cardArea
-    expect(card.customImages).toEqual([
-      { id: "b", src: "https://example.com/pic.png", name: "网络图" },
-    ])
-    expect(card.rotateInterval).toBe(8000)
   })
 })
 
@@ -92,22 +77,17 @@ describe("importData", () => {
     expect(stored.blur).toBe(10)
   })
 
-  it("merges back this device's base64 carousel images", () => {
+  it("round-trips card area settings", () => {
     localStorage.setItem(CARD_AREA_KEY, JSON.stringify(cardArea))
 
-    const incoming = {
-      ...cardArea,
-      customImages: [{ id: "b", src: "https://example.com/pic.png", name: "网络图" }],
-    }
-    const result = importData(makeBackup({ [CARD_AREA_KEY]: incoming }), {
+    const result = importData(makeBackup({ [CARD_AREA_KEY]: cardArea }), {
       overwrite: true,
     })
     expect(result.success).toBe(true)
-
-    const stored = JSON.parse(
-      localStorage.getItem(CARD_AREA_KEY) ?? "{}"
-    ) as typeof cardArea
-    expect(stored.customImages.map(img => img.id).sort()).toEqual(["a", "b"])
+    expect(
+      (JSON.parse(localStorage.getItem(CARD_AREA_KEY) ?? "{}") as typeof cardArea)
+        .displayMode
+    ).toBe("full")
   })
 
   it("round-trips regular settings keys", () => {

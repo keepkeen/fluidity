@@ -6,9 +6,7 @@ import {
   BingRegion,
   CardAreaSettings,
   CardDisplayMode,
-  CarouselImage,
   images,
-  LayoutMode,
   WallpaperSettings as WallpaperSettingsType,
   WallpaperSource,
 } from "../../../data/data"
@@ -17,16 +15,10 @@ import { LocalImageService } from "../../../services/localImage"
 import { settingsLogger } from "../../../utils/logger"
 import { StyledSettingsContent } from "../SettingsWindow"
 import {
-  AddImageButtons,
   BingConfig,
   BingInfo,
-  CarouselImageActions,
-  CarouselImageInfo,
-  CarouselImageItem,
-  CarouselImageList,
   Container,
   CSS_DEFAULT_COLOR,
-  EmptyState,
   HiddenInput,
   ImageGrid,
   ImageOption,
@@ -45,7 +37,6 @@ import {
   RemoveButton,
   Section,
   SectionTitle,
-  SmallButton,
   UploadArea,
   UploadButton,
   UploadInfo,
@@ -74,14 +65,8 @@ const sourceOptions: { value: WallpaperSource; label: string }[] = [
 ]
 
 const cardModeOptions: { value: CardDisplayMode; label: string }[] = [
-  { value: "full", label: "完整轮播" },
-  { value: "tools-only", label: "仅工具" },
+  { value: "full", label: "显示" },
   { value: "hidden", label: "隐藏" },
-]
-
-const layoutModeOptions: { value: LayoutMode; label: string }[] = [
-  { value: "carousel", label: "轮播图" },
-  { value: "dashboard", label: "仪表盘" },
 ]
 
 const bingRegionOptions: { value: BingRegion; label: string }[] = [
@@ -98,10 +83,8 @@ export const WallpaperSettings: React.FC<Props> = ({
   onCardAreaChange,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const carouselFileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
-  const [carouselUploading, setCarouselUploading] = useState(false)
 
   const [previewUrl, setPreviewUrl] = useState("")
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -171,20 +154,6 @@ export const WallpaperSettings: React.FC<Props> = ({
     onCardAreaChange({ ...cardAreaSettings, displayMode })
   }
 
-  const handleLayoutModeChange = (layoutMode: LayoutMode) => {
-    onCardAreaChange({ ...cardAreaSettings, layoutMode })
-  }
-
-  const handleAutoRotateChange = () => {
-    onCardAreaChange({
-      ...cardAreaSettings,
-      autoRotate: !cardAreaSettings.autoRotate,
-    })
-  }
-
-  const handleRotateIntervalChange = (rotateInterval: number) => {
-    onCardAreaChange({ ...cardAreaSettings, rotateInterval })
-  }
 
   const handleBlurChange = (blur: number) => {
     onWallpaperChange({ ...wallpaperSettings, blur })
@@ -203,73 +172,6 @@ export const WallpaperSettings: React.FC<Props> = ({
 
   const handleOverlayOpacityChange = (overlayOpacity: number) => {
     onWallpaperChange({ ...wallpaperSettings, overlayOpacity })
-  }
-
-  // 轮播图片管理
-  const handleUseCustomImagesChange = () => {
-    onCardAreaChange({
-      ...cardAreaSettings,
-      useCustomImages: !cardAreaSettings.useCustomImages,
-    })
-  }
-
-  const handleCarouselFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    setCarouselUploading(true)
-    LocalImageService.processImage(file)
-      .then(result => {
-        const newImage: CarouselImage = {
-          id: Date.now().toString(),
-          src: result.dataUrl,
-          name: file.name,
-        }
-        onCardAreaChange({
-          ...cardAreaSettings,
-          customImages: [...cardAreaSettings.customImages, newImage],
-        })
-      })
-      .catch((error: unknown) => {
-        settingsLogger.error("图片处理失败:", error)
-        alert(error instanceof Error ? error.message : "图片处理失败")
-      })
-      .finally(() => {
-        setCarouselUploading(false)
-        if (carouselFileInputRef.current) {
-          carouselFileInputRef.current.value = ""
-        }
-      })
-  }
-
-  const handleAddPresetToCarousel = (presetSrc: string, name: string) => {
-    const newImage: CarouselImage = {
-      id: Date.now().toString(),
-      src: presetSrc,
-      name,
-    }
-    onCardAreaChange({
-      ...cardAreaSettings,
-      customImages: [...cardAreaSettings.customImages, newImage],
-    })
-  }
-
-  const handleRemoveCarouselImage = (id: string) => {
-    onCardAreaChange({
-      ...cardAreaSettings,
-      customImages: cardAreaSettings.customImages.filter(img => img.id !== id),
-    })
-  }
-
-  const handleMoveCarouselImage = (id: string, direction: "up" | "down") => {
-    const imgs = [...cardAreaSettings.customImages]
-    const index = imgs.findIndex(img => img.id === id)
-    if (index === -1) return
-
-    const newIndex = direction === "up" ? index - 1 : index + 1
-    if (newIndex < 0 || newIndex >= imgs.length) return
-    ;[imgs[index], imgs[newIndex]] = [imgs[newIndex], imgs[index]]
-    onCardAreaChange({ ...cardAreaSettings, customImages: imgs })
   }
 
   const previewImageUrl = useMemo(() => {
@@ -468,7 +370,7 @@ export const WallpaperSettings: React.FC<Props> = ({
 
             {/* 卡片区域设置 */}
             <Section>
-              <SectionTitle>左侧卡片</SectionTitle>
+              <SectionTitle>部件网格</SectionTitle>
 
               <div
                 style={{
@@ -491,153 +393,8 @@ export const WallpaperSettings: React.FC<Props> = ({
                 ))}
               </OptionGroup>
 
-              {cardAreaSettings.displayMode !== "hidden" && (
-                <>
-                  <div
-                    style={{
-                      marginTop: 12,
-                      marginBottom: 8,
-                      fontSize: "0.9rem",
-                      color: CSS_DEFAULT_COLOR,
-                    }}
-                  >
-                    布局模式
-                  </div>
-                  <OptionGroup>
-                    {layoutModeOptions.map(option => (
-                      <OptionButton
-                        key={option.value}
-                        active={
-                          (cardAreaSettings.layoutMode || "carousel") ===
-                          option.value
-                        }
-                        onClick={() => handleLayoutModeChange(option.value)}
-                      >
-                        {option.label}
-                      </OptionButton>
-                    ))}
-                  </OptionGroup>
-
-                  {/* Hide auto-rotate for dashboard mode */}
-                  {cardAreaSettings.layoutMode !== "dashboard" && (
-                    <>
-                      <Toggle
-                        label="自动轮播"
-                        checked={cardAreaSettings.autoRotate}
-                        onChange={() => handleAutoRotateChange()}
-                      />
-                      {cardAreaSettings.autoRotate && (
-                        <RangeSlider
-                          label="轮播间隔"
-                          value={cardAreaSettings.rotateInterval}
-                          min={2000}
-                          max={15000}
-                          step={1000}
-                          onChange={handleRotateIntervalChange}
-                          formatValue={v => `${v / 1000}秒`}
-                        />
-                      )}
-                    </>
-                  )}
-                </>
-              )}
             </Section>
 
-            {/* 轮播图片管理 */}
-            {cardAreaSettings.displayMode === "full" && (
-              <Section>
-                <SectionTitle>轮播图片</SectionTitle>
-                <Toggle
-                  label="使用自定义图片"
-                  checked={cardAreaSettings.useCustomImages}
-                  onChange={() => handleUseCustomImagesChange()}
-                />
-
-                {cardAreaSettings.useCustomImages && (
-                  <>
-                    <HiddenInput
-                      ref={carouselFileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleCarouselFileSelect}
-                    />
-
-                    <AddImageButtons>
-                      <UploadButton
-                        onClick={() => carouselFileInputRef.current?.click()}
-                        disabled={carouselUploading}
-                      >
-                        {carouselUploading ? "上传中..." : "上传本地图片"}
-                      </UploadButton>
-                    </AddImageButtons>
-
-                    {/* 预设图片快速添加 */}
-                    <BingInfo>从预设图片添加：</BingInfo>
-                    <ImageGrid>
-                      {images.map(img => (
-                        <ImageOption
-                          key={img.label}
-                          active={false}
-                          onClick={() =>
-                            handleAddPresetToCarousel(img.value, img.label)
-                          }
-                          title={`添加 ${img.label}`}
-                        >
-                          <img src={img.value} alt={img.label} />
-                        </ImageOption>
-                      ))}
-                    </ImageGrid>
-
-                    {/* 已添加的图片列表 */}
-                    {cardAreaSettings.customImages.length > 0 ? (
-                      <CarouselImageList>
-                        {cardAreaSettings.customImages.map((img, index) => (
-                          <CarouselImageItem key={img.id}>
-                            <img src={img.src} alt={img.name} />
-                            <CarouselImageInfo>{img.name}</CarouselImageInfo>
-                            <CarouselImageActions>
-                              <SmallButton
-                                onClick={() =>
-                                  handleMoveCarouselImage(img.id, "up")
-                                }
-                                disabled={index === 0}
-                              >
-                                ↑
-                              </SmallButton>
-                              <SmallButton
-                                onClick={() =>
-                                  handleMoveCarouselImage(img.id, "down")
-                                }
-                                disabled={
-                                  index ===
-                                  cardAreaSettings.customImages.length - 1
-                                }
-                              >
-                                ↓
-                              </SmallButton>
-                              <SmallButton
-                                className="danger"
-                                onClick={() =>
-                                  handleRemoveCarouselImage(img.id)
-                                }
-                              >
-                                删除
-                              </SmallButton>
-                            </CarouselImageActions>
-                          </CarouselImageItem>
-                        ))}
-                      </CarouselImageList>
-                    ) : (
-                      <EmptyState>
-                        暂无自定义图片
-                        <br />
-                        点击上方按钮添加图片
-                      </EmptyState>
-                    )}
-                  </>
-                )}
-              </Section>
-            )}
           </Container>
         </StyledSettingsContent>
       </div>
