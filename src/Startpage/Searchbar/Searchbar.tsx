@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react"
 
 import styled from "@emotion/styled"
+import { faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons"
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
 import {
   Search as SearchType,
@@ -94,15 +96,24 @@ const StyledSearchbar = styled.input`
   }
 `
 
-const SearchIcon = styled.div<{ src: string }>`
+/* mask 的 URL 经 CSS 变量注入：emotion 无法序列化 url() 内的函数插值，
+   直接插值会导致整条 mask-image 声明被丢弃（图标从不显示的根因） */
+const SearchIcon = styled.div`
   height: 2.9rem;
   width: 3.1rem;
+  flex-shrink: 0;
   margin: auto 10px auto 0;
 
   background: var(--text-primary);
 
-  mask-size: cover;
-  mask-image: url(${({ src }) => src});
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-image: var(--engine-icon);
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-image: var(--engine-icon);
 
   @media screen and (max-width: 900px) {
     height: 2.4rem;
@@ -113,6 +124,32 @@ const SearchIcon = styled.div<{ src: string }>`
     height: 1.8rem;
     width: 2rem;
     margin-right: 8px;
+  }
+`
+
+/* 无专属 logo 的引擎（百度/Bing/知乎/自定义等）回退到通用放大镜 */
+const FallbackSearchIcon = styled.div`
+  height: 2.9rem;
+  width: 3.1rem;
+  flex-shrink: 0;
+  margin: auto 10px auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+  font-size: 2rem;
+
+  @media screen and (max-width: 900px) {
+    height: 2.4rem;
+    width: 2.6rem;
+    font-size: 1.7rem;
+  }
+
+  @media screen and (max-width: 600px) {
+    height: 1.8rem;
+    width: 2rem;
+    margin-right: 8px;
+    font-size: 1.3rem;
   }
 `
 
@@ -678,7 +715,21 @@ export const Searchbar = () => {
         </SuggestionsList>
       </SuggestionsContainer>
       <SearchInputWrapper>
-        {searchSymbol && <SearchIcon src={searchSymbol} />}
+        {searchSymbol ? (
+          <SearchIcon
+            aria-hidden
+            style={
+              // data: URI 含空格/引号，url() 必须加引号才是合法 CSS 值
+              {
+                "--engine-icon": `url("${searchSymbol}")`,
+              } as React.CSSProperties
+            }
+          />
+        ) : (
+          <FallbackSearchIcon aria-hidden>
+            <FontAwesomeIcon icon={faMagnifyingGlass} />
+          </FallbackSearchIcon>
+        )}
         {tempEngine && (
           <EngineTag
             onClick={() => setTempEngine(null)}
