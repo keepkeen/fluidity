@@ -26,7 +26,12 @@ interface props {
 
 export const GeneralSettingsContent = styled.div`
   width: 100%;
+  height: 100%;
   position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 8px;
+  box-sizing: border-box;
 `
 
 const HeaderRow = styled.div`
