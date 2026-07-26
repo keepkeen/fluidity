@@ -3,6 +3,7 @@ import React from "react"
 import styled from "@emotion/styled"
 
 import { CardDisplayMode } from "../../data/data"
+import { RediscoveryCard } from "../Rediscovery/RediscoveryCard"
 import { ContributionChart } from "../Todo/ContributionChart"
 import { TodoPanel } from "../Todo/TodoPanel"
 import { TodayScreenTime } from "../Usage/TodayScreenTime"
@@ -40,12 +41,20 @@ const StandardWidget = styled.div`
   }
 `
 
+const AutoWidget = styled.div`
+  grid-column: span 2;
+
+  @media (max-width: 768px) {
+    grid-column: span 1;
+  }
+`
+
 /*
  * Dashboard Grid Layout
  *
  * [ Contribution Chart (Wide) ]
  * [ Todo Panel ] [ Screen Time ]
- *
+ * [ Rediscovery (Wide)        ]
  */
 
 interface DashboardLayoutProps {
@@ -71,6 +80,11 @@ export const DashboardLayout = ({ cardDisplayMode }: DashboardLayoutProps) => {
       <StandardWidget>
         <TodayScreenTime />
       </StandardWidget>
+
+      {/* Bottom Row: Rediscovery (Wide) */}
+      <AutoWidget>
+        <RediscoveryCard />
+      </AutoWidget>
     </DashboardContainer>
   )
 }
