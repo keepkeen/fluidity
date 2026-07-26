@@ -5,6 +5,7 @@ import { faSlidersH } from "@fortawesome/free-solid-svg-icons"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
 import { setSettingsWindowOpen } from "../../components/AILoadingIndicator"
+import { Modal } from "../../components/Modal"
 import { SyncStatusDot } from "../../components/SyncStatusDot"
 
 const SettingsWindow = React.lazy(() =>
@@ -42,17 +43,11 @@ const SettingsPopupToggle = styled.button`
   :focus {
     outline: none;
   }
-`
-
-const PopupCover = styled.div`
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  background-color: var(--bg-color);
-  opacity: 0.7;
-  z-index: 100;
+  :focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+    opacity: 0.8;
+  }
 `
 
 export const Settings = () => {
@@ -100,12 +95,11 @@ export const Settings = () => {
         </SettingsPopupToggle>
       </TopRightControls>
       {showSettings && (
-        <>
-          <PopupCover />
+        <Modal onClose={hidePopup} label="设置">
           <Suspense fallback={null}>
             <SettingsWindow hidePopup={hidePopup} initialTab={initialTab} />
           </Suspense>
-        </>
+        </Modal>
       )}
     </>
   )

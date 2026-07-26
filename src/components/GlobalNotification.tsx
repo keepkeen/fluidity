@@ -112,7 +112,11 @@ export const GlobalNotification: React.FC = () => {
       clearTimers()
 
       setNotification(event.detail)
-      setVisible(true)
+      // 先以隐藏态挂载，下一帧再显示，入场动画才会播放
+      setVisible(false)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setVisible(true))
+      })
 
       // 5秒后自动隐藏
       autoHideTimerRef.current = setTimeout(() => {
@@ -140,13 +144,22 @@ export const GlobalNotification: React.FC = () => {
     notification.type === "success" ? faCheckCircle : faExclamationCircle
 
   return (
-    <NotificationContainer visible={visible} type={notification.type}>
+    <NotificationContainer
+      visible={visible}
+      type={notification.type}
+      role="status"
+      aria-live="polite"
+    >
       <NotificationHeader>
         <NotificationTitle type={notification.type}>
           <FontAwesomeIcon icon={icon} />
           {notification.title}
         </NotificationTitle>
-        <CloseButton onClick={hideNotification}>
+        <CloseButton
+          type="button"
+          aria-label="关闭通知"
+          onClick={hideNotification}
+        >
           <FontAwesomeIcon icon={faTimes} />
         </CloseButton>
       </NotificationHeader>

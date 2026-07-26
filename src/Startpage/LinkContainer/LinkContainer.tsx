@@ -21,6 +21,7 @@ import {
   generateLinkId,
 } from "../../components/DragDropProvider"
 import { Favicon } from "../../components/Favicon"
+import { Modal } from "../../components/Modal"
 import { SortableLink } from "../../components/SortableLink"
 import { linkGroup } from "../../data/data"
 import { AccordionSoundService } from "../../services/accordionSound"
@@ -354,30 +355,36 @@ export const LinkContainer = () => {
 
   // 删除确认弹窗
   const DeleteConfirmDialog = deleteConfirm && (
-    <ConfirmOverlay onClick={() => setDeleteConfirm(null)}>
-      <ConfirmDialog onClick={e => e.stopPropagation()}>
-        <ConfirmTitle>确认删除</ConfirmTitle>
-        <ConfirmText>
-          确定要删除链接 &quot;{deleteConfirm.label}&quot; 吗？
-        </ConfirmText>
-        <ConfirmButtons>
-          <ConfirmButton onClick={() => setDeleteConfirm(null)}>
-            取消
-          </ConfirmButton>
-          <ConfirmButton
-            danger
-            onClick={() =>
-              handleDeleteLink(
-                deleteConfirm.groupIndex,
-                deleteConfirm.linkIndex
-              )
-            }
-          >
-            删除
-          </ConfirmButton>
-        </ConfirmButtons>
-      </ConfirmDialog>
-    </ConfirmOverlay>
+    <Modal
+      onClose={() => setDeleteConfirm(null)}
+      label="确认删除链接"
+      overlay="none"
+    >
+      <ConfirmOverlay onClick={() => setDeleteConfirm(null)}>
+        <ConfirmDialog onClick={e => e.stopPropagation()}>
+          <ConfirmTitle>确认删除</ConfirmTitle>
+          <ConfirmText>
+            确定要删除链接 &quot;{deleteConfirm.label}&quot; 吗？
+          </ConfirmText>
+          <ConfirmButtons>
+            <ConfirmButton onClick={() => setDeleteConfirm(null)}>
+              取消
+            </ConfirmButton>
+            <ConfirmButton
+              danger
+              onClick={() =>
+                handleDeleteLink(
+                  deleteConfirm.groupIndex,
+                  deleteConfirm.linkIndex
+                )
+              }
+            >
+              删除
+            </ConfirmButton>
+          </ConfirmButtons>
+        </ConfirmDialog>
+      </ConfirmOverlay>
+    </Modal>
   )
 
   // 命令面板模式 - 显示占位提示和触发按钮
