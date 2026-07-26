@@ -37,7 +37,7 @@ const DesignPreview = styled.div<{ name: string; colors: colorsType }>`
   display: flex;
   justify-content: space-evenly;
   align-items: center;
-  border: 2px solid var(--accent);
+  border: 1px solid var(--accent);
   width: calc(100% - 400px);
   height: 100%;
   position: relative;
@@ -98,7 +98,6 @@ const ImagePreviewWrapper = styled.div`
   border: 1px solid var(--text-primary);
   padding: 5px;
   position: relative;
-  animation: circling-shadow-small 4s ease 0s infinite normal;
 `
 
 const ImagePreview = styled.img`
@@ -234,9 +233,6 @@ const AccordionPreview = ({
 }
 
 // CSS 变量常量
-const CSS_BG_COLOR = "var(--bg-primary)"
-const CSS_ACCENT_COLOR = "var(--accent)"
-const CSS_DEFAULT_COLOR = "var(--text-primary)"
 
 // 链接展示模式选择按钮
 const ModeSelector = styled.div`
@@ -248,19 +244,30 @@ const ModeSelector = styled.div`
 const ModeButton = styled.button<{ active: boolean }>`
   flex: 1;
   min-width: 100px;
-  padding: 12px 8px;
-  border: 2px solid ${CSS_DEFAULT_COLOR};
-  background: ${({ active }) => (active ? CSS_ACCENT_COLOR : "transparent")};
-  color: ${({ active }) => (active ? CSS_BG_COLOR : CSS_DEFAULT_COLOR)};
+  padding: 10px 8px;
+  border: 1px solid
+    ${({ active }) =>
+      active
+        ? "color-mix(in srgb, var(--accent) 55%, transparent)"
+        : "var(--surface-border)"};
+  border-radius: var(--radius-sm);
+  background: ${({ active }) =>
+    active
+      ? "color-mix(in srgb, var(--accent) 18%, transparent)"
+      : "transparent"};
+  color: ${({ active }) => (active ? "var(--accent)" : "var(--text-secondary)")};
   cursor: pointer;
-  transition: 0.2s;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
   font-size: 0.85rem;
   font-weight: 500;
 
   &:hover {
-    background: ${({ active }) =>
-      active ? CSS_ACCENT_COLOR : CSS_DEFAULT_COLOR};
-    color: ${CSS_BG_COLOR};
+    color: ${({ active }) =>
+      active ? "var(--accent)" : "var(--text-primary)"};
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
   }
 `
 

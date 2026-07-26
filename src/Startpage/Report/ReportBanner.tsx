@@ -107,10 +107,11 @@ const ModalContainer = styled.div<{ closing: boolean }>`
 const ModalContent = styled.div`
   position: relative;
   padding: 20px;
-  border: 2px solid var(--text-primary);
+  border: 1px solid var(--surface-border-strong);
   background: var(--bg-primary);
   color: var(--text-primary);
-  box-shadow: 10px 10px 0px var(--accent);
+  box-shadow: var(--shadow-pop);
+  border-radius: var(--radius-main);
   max-height: calc(100vh - 60px);
   display: flex;
   flex-direction: column;
@@ -118,7 +119,6 @@ const ModalContent = styled.div`
   @media screen and (max-width: 600px) {
     padding: 12px;
     max-height: calc(100vh - 20px);
-    box-shadow: 5px 5px 0px var(--accent);
   }
 `
 
@@ -128,7 +128,7 @@ const Header = styled.div`
   justify-content: space-between;
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 2px solid var(--text-primary);
+  border-bottom: 1px solid var(--text-primary);
   flex-shrink: 0;
 `
 
@@ -158,7 +158,7 @@ const TitleText = styled.span`
 
 const CloseButton = styled.button`
   background: transparent;
-  border: 2px solid var(--text-primary);
+  border: 1px solid var(--surface-border-strong);
   color: var(--text-primary);
   width: 36px;
   height: 36px;

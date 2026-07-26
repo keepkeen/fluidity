@@ -23,7 +23,7 @@ const App = () => {
     const design = Settings.Design.getWithFallback()
     applyColors(design.colors)
     // Apply theme mode (modern vs retro)
-    applyThemeMode(design.mode || "retro")
+    applyThemeMode(design.mode || "modern")
   }, [settingsVersion])
 
   return (

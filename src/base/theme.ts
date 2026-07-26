@@ -63,13 +63,13 @@ export const applyThemeMode = (mode: ThemeMode["id"]) => {
   const root = document.documentElement
 
   if (mode === "modern") {
-    root.style.setProperty("--radius-main", TOKENS.radius.lg)
-    root.style.setProperty("--radius-sm", TOKENS.radius.sm)
+    root.style.setProperty("--radius-main", "16px")
+    root.style.setProperty("--radius-sm", "10px")
     root.style.setProperty("--font-main", TOKENS.font.ui)
-    root.style.setProperty("--shadow-card", TOKENS.shadow.lg)
+    root.style.setProperty("--shadow-card", "var(--shadow-soft)")
     root.style.setProperty("--border-width", TOKENS.border.width.thin)
     root.style.setProperty("--glass-opacity", "0.7")
-    root.style.setProperty("--hover-transform", "translateY(-2px)")
+    root.style.setProperty("--hover-transform", "translateY(-1px)")
     root.classList.add("theme-modern")
     root.classList.remove("theme-retro")
   } else {

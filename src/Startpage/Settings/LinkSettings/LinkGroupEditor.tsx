@@ -22,7 +22,7 @@ const EditorContainer = styled.div`
 `
 
 const GroupCard = styled.div`
-  border: 2px solid var(--border-default);
+  border: 1px solid var(--surface-border);
   padding: 12px;
   display: flex;
   flex-direction: column;

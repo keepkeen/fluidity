@@ -16,19 +16,20 @@ const StyledIconButton = styled.button<{ inverted?: boolean }>`
   display: flex;
   justify-content: center;
   align-items: center;
+  border-radius: var(--radius-sm);
+  transition: opacity var(--transition-fast), color var(--transition-fast);
 
   :enabled:hover {
-    ${({ inverted }) =>
-      inverted
-        ? `filter: 
-            drop-shadow(2px 2px 0 var(--accent))
-            drop-shadow(-2px -2px 0 var(--accent))
-            drop-shadow(-2px 2px 0 var(--accent))
-            drop-shadow(2px -2px 0 var(--accent))`
-        : "animation: box-flicker 0.01s ease 0s infinite alternate"};
+    opacity: 1;
+    color: ${({ inverted }) =>
+      inverted ? "var(--bg-primary)" : "var(--accent)"};
   }
   :focus {
     outline: none;
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
   :disabled {
     opacity: 0.2;

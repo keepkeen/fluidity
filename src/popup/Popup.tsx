@@ -18,6 +18,7 @@ import { GlobalNotification } from "../components/GlobalNotification"
 import { SyncStatusDot } from "../components/SyncStatusDot"
 import { linkGroup, links as defaultLinks } from "../data/data"
 import { FALLBACK_COLORS, applyColors } from "../base/colorUtils"
+import { applyThemeMode } from "../base/theme"
 import * as Settings from "../Startpage/Settings/settingsHandler"
 import {
   ActionBtn,
@@ -214,9 +215,10 @@ export const Popup = () => {
     return () => window.removeEventListener("storage", onStorage)
   }, [])
 
-  // 应用颜色
+  // 应用颜色与设计风格
   useEffect(() => {
     applyColors(colors)
+    applyThemeMode(Settings.Design.getWithFallback().mode || "modern")
   }, [colors])
 
   // 与主页共用同一套通知组件

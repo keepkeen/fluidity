@@ -8,6 +8,7 @@ import styled from "@emotion/styled"
  */
 
 const Overlay = styled.div<{ dim: "light" | "dark" }>`
+  animation: overlay-in 0.25s ease both;
   position: fixed;
   top: 0;
   right: 0;
@@ -15,8 +16,11 @@ const Overlay = styled.div<{ dim: "light" | "dark" }>`
   left: 0;
   z-index: 100;
   background-color: ${({ dim }) =>
-    dim === "dark" ? "rgba(0, 0, 0, 0.6)" : "var(--bg-primary)"};
-  opacity: ${({ dim }) => (dim === "light" ? 0.7 : 1)};
+    dim === "dark"
+      ? "rgba(0, 0, 0, 0.45)"
+      : "color-mix(in srgb, var(--bg-primary) 55%, transparent)"};
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 `
 
 const FOCUSABLE_SELECTOR = [

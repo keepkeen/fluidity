@@ -11,7 +11,7 @@ const StyledCard = styled.div`
     transparent calc(100% * (1 - var(--glass-opacity, 0.9)))
   );
 
-  border: var(--border-width) solid var(--text-primary);
+  border: 1px solid var(--surface-border);
   border-radius: var(--radius-main);
   box-shadow: var(--shadow-card);
   backdrop-filter: blur(12px);
@@ -31,7 +31,7 @@ const CardHeader = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: var(--border-width) solid var(--text-primary);
+  border-bottom: 1px solid var(--surface-border);
   background: rgba(var(--bg-secondary-rgb), 0.5);
   /* Fallback */
   background: color-mix(in srgb, var(--bg-secondary), transparent 0.5);

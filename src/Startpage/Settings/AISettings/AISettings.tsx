@@ -70,7 +70,7 @@ const Input = styled.input`
   flex: 1;
   padding: 10px 12px;
   background: transparent;
-  border: 2px solid var(--border-default);
+  border: 1px solid var(--surface-border);
   color: var(--text-primary);
   font-size: 0.9rem;
   transition: 0.2s;
@@ -89,7 +89,7 @@ const Input = styled.input`
 const IconBtn = styled.button`
   padding: 10px;
   background: transparent;
-  border: 2px solid var(--text-primary);
+  border: 1px solid var(--surface-border-strong);
   color: var(--text-primary);
   cursor: pointer;
   transition: 0.2s;
@@ -110,7 +110,7 @@ const HelpText = styled.p`
 
 const StatsCard = styled.div`
   padding: 16px;
-  border: 2px solid var(--border-default);
+  border: 1px solid var(--surface-border);
   margin-top: 12px;
 `
 
@@ -144,7 +144,7 @@ const ButtonRow = styled.div`
 const TestResult = styled.div<{ error?: boolean }>`
   margin-top: 12px;
   padding: 12px;
-  border: 2px solid
+  border: 1px solid
     ${({ error }) => (error ? "var(--accent-hover)" : "var(--accent)")};
   font-size: 0.9rem;
   line-height: 1.5;

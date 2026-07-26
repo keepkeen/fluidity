@@ -42,6 +42,7 @@ interface Suggestion {
 }
 
 const StyledSearchbarContainer = styled.div`
+  animation: fade-up 0.55s cubic-bezier(0.22, 1, 0.36, 1) 160ms both;
   position: relative;
   margin: 0 var(--page-margin) clamp(12px, 2.5vh, 40px)
     calc(var(--page-margin) - 2.9rem - 10px);
@@ -65,12 +66,18 @@ const SearchInputWrapper = styled.div`
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 12px 16px;
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  padding: 12px 18px;
+  background: var(--surface-bg);
+  backdrop-filter: var(--surface-blur);
+  -webkit-backdrop-filter: var(--surface-blur);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-main);
+  box-shadow: var(--shadow-soft);
+  transition: border-color var(--transition-fast);
+
+  :focus-within {
+    border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  }
   min-width: 0;
   box-sizing: border-box;
 `
@@ -157,12 +164,14 @@ const FallbackSearchIcon = styled.div`
 const EngineTag = styled.span`
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
-  margin-right: 8px;
-  background: var(--accent);
-  color: var(--bg-primary);
-  border-radius: 4px;
-  font-size: 14px;
+  align-self: center;
+  padding: 4px 12px;
+  margin-right: 10px;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 999px;
+  font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
   flex-shrink: 0;
@@ -194,29 +203,32 @@ const SuggestionsList = styled.ul`
   list-style: none;
   margin: 0;
   padding: 0;
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-primary) 82%, transparent);
+  backdrop-filter: var(--surface-blur);
+  -webkit-backdrop-filter: var(--surface-blur);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-pop);
   overflow: hidden;
 `
 
 const SuggestionItem = styled.li<{ selected: boolean }>`
-  padding: 12px 16px;
+  padding: 11px 16px;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 12px;
-  transition: 0.15s;
+  transition: background var(--transition-fast), color var(--transition-fast);
   background: ${({ selected }) =>
-    selected ? "var(--accent)" : "transparent"};
+    selected
+      ? "color-mix(in srgb, var(--accent) 20%, transparent)"
+      : "transparent"};
   color: ${({ selected }) =>
-    selected ? "var(--bg-primary)" : "var(--text-primary)"};
+    selected ? "var(--accent)" : "var(--text-primary)"};
 
   &:hover {
-    background: var(--accent);
-    color: var(--bg-primary);
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+    color: var(--accent);
   }
 `
 
@@ -229,11 +241,15 @@ const SuggestionText = styled.span`
 `
 
 const SuggestionType = styled.span<{ selected: boolean }>`
-  font-size: 0.75rem;
-  padding: 2px 8px;
+  font-size: 0.72rem;
+  padding: 2px 9px;
+  border-radius: 999px;
   border: 1px solid
-    ${({ selected }) => (selected ? "var(--bg-primary)" : "var(--text-primary)")};
-  opacity: 0.7;
+    ${({ selected }) =>
+      selected
+        ? "color-mix(in srgb, var(--accent) 55%, transparent)"
+        : "var(--surface-border)"};
+  color: ${({ selected }) => (selected ? "var(--accent)" : "var(--text-muted)")};
 `
 
 const typeLabels: Record<Suggestion["type"], string> = {

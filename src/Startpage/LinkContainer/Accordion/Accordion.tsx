@@ -104,7 +104,7 @@ const SoundToggleButton = styled.button<{ enabled: boolean }>`
   top: -40px;
   right: 0;
   background: transparent;
-  border: 2px solid var(--text-primary);
+  border: 1px solid var(--surface-border-strong);
   color: ${({ enabled }) =>
     enabled ? "var(--accent)" : "var(--text-primary)"};
   width: 32px;
@@ -185,7 +185,7 @@ const StyledAccordionGroup = styled.div<{
   display: flex;
   padding: 0 10px;
   flex-direction: row;
-  border: var(--border-width) solid var(--text-primary);
+  border: 1px solid var(--surface-border);
   border-right: none;
   border-left: none;
   position: relative;
@@ -200,11 +200,11 @@ const StyledAccordionGroup = styled.div<{
 
   /* Remove adjacent border hacks */
   &:first-of-type {
-    border-left: var(--border-width) solid var(--text-primary);
+    border-left: 1px solid var(--surface-border);
   }
 
   &:last-of-type {
-    border-right: var(--border-width) solid var(--text-primary);
+    border-right: 1px solid var(--surface-border);
   }
 
   @media screen and (max-height: 700px) {

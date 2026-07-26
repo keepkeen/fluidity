@@ -38,7 +38,6 @@ const SettingsPopupToggle = styled.button`
   :hover {
     opacity: 0.5;
     color: var(--accent-hover);
-    animation: box-flicker 0.01s ease 0s infinite alternate;
   }
   :focus {
     outline: none;

@@ -43,22 +43,25 @@ const SwitchTrack = styled.span<{ checked: boolean }>`
   width: 44px;
   height: 24px;
   background: ${({ checked }) =>
-    checked ? "var(--accent)" : "var(--border-default)"};
-  border: 2px solid var(--text-primary);
-  border-radius: 12px;
+    checked
+      ? "var(--accent)"
+      : "color-mix(in srgb, var(--text-primary) 18%, transparent)"};
+  border: 1px solid var(--surface-border);
+  border-radius: 999px;
   position: relative;
-  transition: 0.2s;
+  transition: background var(--transition-fast);
 
   &::after {
     content: "";
     position: absolute;
-    top: 2px;
-    left: ${({ checked }) => (checked ? "20px" : "2px")};
+    top: 3px;
+    left: ${({ checked }) => (checked ? "21px" : "3px")};
     width: 16px;
     height: 16px;
-    background: var(--text-primary);
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
     border-radius: 50%;
-    transition: 0.2s;
+    transition: left var(--transition-fast);
   }
 `
 

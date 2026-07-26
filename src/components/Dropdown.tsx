@@ -22,7 +22,7 @@ const DropdownButton = styled(IconButton)`
   align-items: space-between;
   justify-content: space-between;
   padding: 10px 20px;
-  border: 2px solid var(--border-default);
+  border: 1px solid var(--surface-border);
   background-color: var(--bg-primary);
 
   :enabled:hover,
@@ -44,7 +44,6 @@ const DropdownPopup = styled.div<{ height: number; items: number }>`
   background-color: var(--bg-primary);
   overflow: hidden;
   z-index: 9;
-  animation: box-flicker 0.01s ease 0s infinite alternate;
   transition: ${({ items }) => `${items * 0.1}s`};
   > div {
     padding-top: 5px;

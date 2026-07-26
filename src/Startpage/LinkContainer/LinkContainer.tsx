@@ -65,7 +65,6 @@ const LinkItem = styled.a`
   :hover,
   :focus {
     color: var(--accent-hover);
-    animation: text-flicker 0.01s ease 0s infinite alternate;
     outline: none;
   }
 `
@@ -106,7 +105,7 @@ const ConfirmOverlay = styled.div`
 
 const ConfirmDialog = styled.div`
   background: var(--bg-primary);
-  border: 2px solid var(--text-primary);
+  border: 1px solid var(--surface-border-strong);
   padding: 24px;
   max-width: 320px;
   text-align: center;
@@ -133,9 +132,9 @@ const ConfirmButtons = styled.div`
 
 const ConfirmButton = styled.button<{ danger?: boolean }>`
   padding: 8px 20px;
-  border: 2px solid
+  border: 1px solid
     ${({ danger }) =>
-      danger ? "var(--accent-hover)" : "var(--text-primary)"};
+      danger ? "var(--accent-hover)" : "var(--surface-border-strong)"};
   background: ${({ danger }) =>
     danger ? "var(--accent-hover)" : "transparent"};
   color: ${({ danger }) =>
@@ -166,7 +165,7 @@ const CommandPalettePlaceholder = styled.div`
   justify-content: center;
   gap: 16px;
   padding: 40px;
-  border: 2px dashed var(--text-primary);
+  border: 1px dashed var(--surface-border-strong);
   opacity: 0.5;
   text-align: center;
 

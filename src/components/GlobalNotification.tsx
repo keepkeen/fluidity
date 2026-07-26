@@ -30,9 +30,12 @@ const NotificationContainer = styled.div<{ visible: boolean; type: string }>`
   right: 20px;
   min-width: 300px;
   max-width: 400px;
-  background: var(--bg-primary);
-  border: 2px solid ${({ type }) => getColorByType(type)};
-  box-shadow: 8px 8px 0px ${({ type }) => getColorByType(type)};
+  background: color-mix(in srgb, var(--bg-primary) 85%, transparent);
+  backdrop-filter: var(--surface-blur);
+  -webkit-backdrop-filter: var(--surface-blur);
+  border: 1px solid ${({ type }) => getColorByType(type)};
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-pop);
   padding: 16px;
   z-index: 10000;
   opacity: ${({ visible }) => (visible ? 1 : 0)};

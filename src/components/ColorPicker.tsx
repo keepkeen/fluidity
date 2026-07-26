@@ -57,7 +57,7 @@ const ColorLabel = styled.span`
 const ColorSwatch = styled.button<{ color: string; active: boolean }>`
   width: 32px;
   height: 32px;
-  border: 2px solid
+  border: 1px solid
     ${({ active }) =>
       active ? "var(--accent)" : "var(--border-default)"};
   background: ${({ color }) => color};

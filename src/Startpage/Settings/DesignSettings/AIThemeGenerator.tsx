@@ -13,7 +13,7 @@ import {
 const Container = styled.div`
   margin-top: 24px;
   padding: 16px;
-  border: 2px solid var(--border-default);
+  border: 1px solid var(--surface-border);
 `
 
 const Title = styled.h3`
@@ -45,7 +45,7 @@ const TextArea = styled.textarea`
   min-height: 80px;
   padding: 10px 12px;
   background: transparent;
-  border: 2px solid var(--border-default);
+  border: 1px solid var(--surface-border);
   color: var(--text-primary);
   font-size: 0.9rem;
   font-family: inherit;
@@ -73,7 +73,7 @@ const GenerateButton = styled.button`
   width: 100%;
   padding: 12px;
   background: var(--accent);
-  border: 2px solid var(--text-primary);
+  border: 1px solid var(--surface-border-strong);
   color: var(--accent-text);
   font-size: 0.95rem;
   font-weight: 600;
@@ -97,7 +97,7 @@ const GenerateButton = styled.button`
 const PreviewContainer = styled.div`
   margin-top: 16px;
   padding: 16px;
-  border: 2px dashed var(--border-default);
+  border: 1px dashed var(--surface-border);
 `
 
 const PreviewTitle = styled.div`
@@ -144,7 +144,7 @@ const ColorSwatch = styled.div<{ color: string }>`
   width: 28px;
   height: 28px;
   background: ${({ color }) => color};
-  border: 2px solid var(--text-primary);
+  border: 1px solid var(--surface-border-strong);
   flex-shrink: 0;
 `
 
@@ -173,7 +173,7 @@ const ButtonRow = styled.div`
 const ActionButton = styled.button<{ variant?: "primary" | "secondary" }>`
   flex: 1;
   padding: 10px 16px;
-  border: 2px solid var(--text-primary);
+  border: 1px solid var(--surface-border-strong);
   background: ${({ variant }) =>
     variant === "primary" ? "var(--accent)" : "transparent"};
   color: ${({ variant }) =>
@@ -193,7 +193,7 @@ const ActionButton = styled.button<{ variant?: "primary" | "secondary" }>`
 const ErrorMessage = styled.div`
   margin-top: 12px;
   padding: 10px 12px;
-  border: 2px solid var(--accent-hover);
+  border: 1px solid var(--accent-hover);
   background: rgba(255, 100, 100, 0.1);
   font-size: 0.85rem;
   color: var(--accent-hover);

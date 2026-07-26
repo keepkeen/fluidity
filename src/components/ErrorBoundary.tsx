@@ -40,7 +40,7 @@ const ErrorMessage = styled.p`
 
 const RetryButton = styled.button`
   padding: 10px 24px;
-  border: 2px solid var(--accent);
+  border: 1px solid var(--accent);
   border-radius: 6px;
   background: transparent;
   color: var(--accent);

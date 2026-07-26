@@ -1,7 +1,7 @@
 import styled from "@emotion/styled"
 
 const StyledInput = styled.input`
-  border: 2px solid var(--border-default);
+  border: 1px solid var(--surface-border);
   width: calc(100% - 40px);
   height: 36px;
   padding: 0 20px;

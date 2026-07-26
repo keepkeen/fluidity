@@ -21,6 +21,7 @@ import { navigateToLink } from "../../../services/linkSearch"
  */
 
 const Container = styled.div`
+  animation: fade-up 0.55s cubic-bezier(0.22, 1, 0.36, 1) 80ms both;
   flex: 1 1 420px;
   min-width: 0;
   max-width: 900px;
@@ -48,18 +49,28 @@ const CardBase = styled.button`
   display: flex;
   align-items: center;
   gap: 10px;
-  border: var(--border-width, 1px) solid var(--border-default);
-  background: rgba(var(--bg-secondary-rgb), 0.35);
+  border: 1px solid var(--surface-border);
+  background: var(--surface-bg);
+  backdrop-filter: var(--surface-blur);
+  -webkit-backdrop-filter: var(--surface-blur);
   color: var(--text-primary);
   cursor: pointer;
-  transition: 0.2s;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    transform var(--transition-fast);
   text-align: left;
   min-width: 0;
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-sm);
 
   :hover {
-    border-color: var(--accent);
-    background: rgba(var(--bg-secondary-rgb), 0.6);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    background: var(--surface-bg-hover);
+    transform: var(--hover-transform);
+  }
+
+  :active {
+    transform: scale(0.985);
   }
 
   :focus-visible {
@@ -78,6 +89,9 @@ const CompactCell = styled(CardBase)`
   padding: 7px 10px;
   font-size: 0.82rem;
   background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
 `
 
 const CardName = styled.span`

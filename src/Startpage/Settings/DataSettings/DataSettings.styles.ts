@@ -78,7 +78,7 @@ export const Description = styled.p`
 
 export const StatsCard = styled.div`
   padding: 16px;
-  border: 2px solid var(--border-default);
+  border: 1px solid var(--surface-border);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -126,7 +126,7 @@ export const TextInput = styled.input`
   min-width: 0;
   box-sizing: border-box;
   padding: 10px 12px;
-  border: 2px solid var(--text-primary);
+  border: 1px solid var(--surface-border-strong);
   background: transparent;
   color: var(--text-primary);
   font-size: 0.9rem;
@@ -153,7 +153,7 @@ export const StatusRow = styled.div`
   justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
-  border: 2px solid var(--border-default);
+  border: 1px solid var(--surface-border);
   min-width: 0;
 
   @media screen and (max-width: 600px) {
@@ -204,7 +204,7 @@ export const CheckboxRow = styled.label`
 
 export const ResultMessage = styled.div<{ success: boolean }>`
   padding: 12px 16px;
-  border: 2px solid ${({ success }) => (success ? "#39d353" : ACCENT_COLOR2)};
+  border: 1px solid ${({ success }) => (success ? "#39d353" : ACCENT_COLOR2)};
   background: ${({ success }) =>
     success ? "rgba(57, 211, 83, 0.1)" : "rgba(255, 100, 100, 0.1)"};
   display: flex;
@@ -226,7 +226,7 @@ export const ResultDetails = styled.div`
 
 export const WarningBox = styled.div`
   padding: 12px 16px;
-  border: 2px solid ${ACCENT_COLOR2};
+  border: 1px solid ${ACCENT_COLOR2};
   background: rgba(255, 100, 100, 0.1);
   font-size: 0.85rem;
   line-height: 1.5;

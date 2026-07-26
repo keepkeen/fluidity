@@ -44,7 +44,7 @@ const DragOverlayContent = styled.div`
   padding: 8px 16px;
   background: var(--accent);
   color: var(--bg-primary);
-  border: 2px solid var(--text-primary);
+  border: 1px solid var(--surface-border-strong);
   font-size: 0.9rem;
   opacity: 0.9;
   box-shadow: 4px 4px 0 var(--text-primary);

@@ -64,7 +64,7 @@ const Item = styled.div`
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border: var(--border-width) solid var(--text-primary);
+  border: 1px solid var(--surface-border);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   background: rgba(var(--bg-secondary-rgb), 0.2);

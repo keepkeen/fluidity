@@ -69,7 +69,7 @@ const AIButton = styled.button<{ $loading?: boolean }>`
   gap: 8px;
   padding: 8px 16px;
   background: transparent;
-  border: 2px solid var(--accent);
+  border: 1px solid var(--accent);
   color: var(--accent);
   cursor: ${({ $loading }) => ($loading ? "wait" : "pointer")};
   font-size: 0.85rem;
@@ -115,7 +115,7 @@ const CustomPromptOverlay = styled.div`
 
 const CustomPromptDialog = styled.div`
   background: var(--bg-primary);
-  border: 2px solid var(--text-primary);
+  border: 1px solid var(--surface-border-strong);
   padding: 24px;
   max-width: 500px;
   width: 90%;
@@ -140,7 +140,7 @@ const CustomPromptInput = styled.textarea`
   min-height: 100px;
   padding: 12px;
   background: transparent;
-  border: 2px solid var(--text-primary);
+  border: 1px solid var(--surface-border-strong);
   color: var(--text-primary);
   font-size: 0.9rem;
   resize: vertical;
@@ -168,7 +168,7 @@ const DEFAULT_COLOR = "var(--text-primary)"
 
 const DialogButton = styled.button<{ primary?: boolean }>`
   padding: 8px 20px;
-  border: 2px solid ${({ primary }) => (primary ? ACCENT_COLOR : DEFAULT_COLOR)};
+  border: 1px solid ${({ primary }) => (primary ? ACCENT_COLOR : DEFAULT_COLOR)};
   background: ${({ primary }) => (primary ? ACCENT_COLOR : "transparent")};
   color: ${({ primary }) => (primary ? "var(--bg-primary)" : DEFAULT_COLOR)};
   cursor: pointer;

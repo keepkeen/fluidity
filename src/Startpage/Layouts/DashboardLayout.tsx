@@ -7,6 +7,7 @@ import { RediscoveryCard } from "../Rediscovery/RediscoveryCard"
 import { TodayScreenTime } from "../Usage/TodayScreenTime"
 
 const DashboardContainer = styled.div`
+  animation: fade-up 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
   display: grid;
   /* 列数随分到的宽度自适应：装得下两列就两列，否则单列 */
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));

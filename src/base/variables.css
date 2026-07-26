@@ -1,6 +1,20 @@
 :root {
 	/* 页面左右留白：小屏 16px ↔ 大屏 100px 之间流式过渡 */
 	--page-margin: clamp(16px, 5vw, 100px);
+
+	/* ===== 清雅表面配方（随任意配色主题自动适配） ===== */
+	--surface-border: color-mix(in srgb, var(--text-primary) 14%, transparent);
+	--surface-border-strong: color-mix(in srgb, var(--text-primary) 28%, transparent);
+	--surface-bg: color-mix(in srgb, var(--bg-secondary) 62%, transparent);
+	--surface-bg-hover: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+	--surface-blur: blur(18px) saturate(1.15);
+	--shadow-soft: 0 8px 30px rgba(0, 0, 0, 0.14);
+	--shadow-pop: 0 18px 50px rgba(0, 0, 0, 0.32);
+	--transition-fast: 160ms cubic-bezier(0.4, 0, 0.2, 1);
+	/* 兜底：未运行 applyThemeMode 的页面也拿到清雅默认 */
+	--radius-main: 16px;
+	--radius-sm: 10px;
+	--border-width: 1px;
 	/* ===== 新版 13 色系统 ===== */
 
 	/* 背景层 */

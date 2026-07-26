@@ -43,8 +43,9 @@ const IndicatorContainer = styled.div<{ visible: boolean }>`
   gap: 10px;
   padding: 12px 20px;
   background: var(--bg-primary);
-  border: 2px solid var(--accent);
-  box-shadow: 6px 6px 0px var(--accent);
+  border: 1px solid var(--accent);
+  box-shadow: var(--shadow-soft);
+  border-radius: var(--radius-sm);
   z-index: 50;
   opacity: ${({ visible }) => (visible ? 1 : 0)};
   transform: ${({ visible }) =>

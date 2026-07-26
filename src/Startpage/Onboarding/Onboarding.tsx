@@ -84,15 +84,15 @@ const ModalContainer = styled.div<{ closing: boolean }>`
 
 const ModalContent = styled.div`
   background: var(--bg-primary);
-  border: 2px solid var(--text-primary);
-  box-shadow: 10px 10px 0px var(--accent);
+  border: 1px solid var(--surface-border-strong);
+  box-shadow: var(--shadow-pop);
+  border-radius: var(--radius-main);
   padding: 32px;
   max-height: calc(100vh - 40px);
   overflow-y: auto;
 
   @media screen and (max-width: 600px) {
     padding: 20px;
-    box-shadow: 5px 5px 0px var(--accent);
   }
 `
 
@@ -122,7 +122,7 @@ const TitleIcon = styled.span`
 
 const CloseButton = styled.button`
   background: transparent;
-  border: 2px solid var(--border-default);
+  border: 1px solid var(--surface-border);
   color: var(--text-primary);
   width: 36px;
   height: 36px;
@@ -153,7 +153,7 @@ const StepDot = styled.button<{ active: boolean; completed: boolean }>`
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 2px solid var(--text-primary);
+  border: 1px solid var(--surface-border-strong);
   background: ${({ active, completed }) =>
     active
       ? ACCENT_COLOR_VAR
@@ -232,7 +232,7 @@ const ButtonRow = styled.div`
 
 const Button = styled.button<{ variant?: "primary" | "secondary" }>`
   padding: 12px 24px;
-  border: 2px solid var(--text-primary);
+  border: 1px solid var(--surface-border-strong);
   background: ${({ variant }) =>
     variant === "primary" ? "var(--accent)" : "transparent"};
   color: ${({ variant }) =>

@@ -17,7 +17,7 @@ export const WallpaperPreview = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
-  border: 2px solid var(--accent);
+  border: 1px solid var(--accent);
   width: calc(100% - 400px);
   height: 100%;
   position: relative;
@@ -157,7 +157,7 @@ export const OptionGroup = styled.div`
 
 export const OptionButton = styled.button<{ active: boolean }>`
   padding: 8px 16px;
-  border: 2px solid
+  border: 1px solid
     ${({ active }) => (active ? CSS_ACCENT_COLOR : CSS_BORDER_COLOR)};
   border-radius: 8px;
   background: ${({ active }) => (active ? CSS_ACCENT_COLOR : "transparent")};
@@ -182,7 +182,7 @@ export const ImageGrid = styled.div`
 export const ImageOption = styled.button<{ active: boolean }>`
   width: 100%;
   aspect-ratio: 1;
-  border: 3px solid
+  border: 1px solid
     ${({ active }) => (active ? CSS_ACCENT_COLOR : CSS_BORDER_COLOR)};
   border-radius: 8px;
   padding: 0;
@@ -205,7 +205,7 @@ export const ImageOption = styled.button<{ active: boolean }>`
 export const Input = styled.input`
   width: 100%;
   padding: 10px 12px;
-  border: 2px solid ${CSS_BORDER_COLOR};
+  border: 1px solid ${CSS_BORDER_COLOR};
   border-radius: 8px;
   background: transparent;
   color: var(--text-primary);
@@ -230,7 +230,7 @@ export const UploadArea = styled.div`
 
 export const UploadButton = styled.button`
   padding: 12px 20px;
-  border: 2px dashed ${CSS_BORDER_COLOR};
+  border: 1px dashed ${CSS_BORDER_COLOR};
   border-radius: 8px;
   background: transparent;
   color: var(--text-primary);
@@ -294,7 +294,7 @@ export const BingInfo = styled.div`
 
 export const RefreshButton = styled.button`
   padding: 8px 16px;
-  border: 2px solid ${CSS_ACCENT_COLOR};
+  border: 1px solid ${CSS_ACCENT_COLOR};
   border-radius: 8px;
   background: transparent;
   color: ${CSS_ACCENT_COLOR};

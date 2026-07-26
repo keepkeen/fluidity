@@ -7,7 +7,9 @@ import styled from "@emotion/styled"
  */
 
 const variantColor = (variant?: string): string =>
-  variant === "danger" ? "var(--accent-hover)" : "var(--text-primary)"
+  variant === "danger"
+    ? "var(--accent-hover)"
+    : "var(--surface-border-strong)"
 
 export const Button = styled.button<{
   variant?: "primary" | "secondary" | "danger"
@@ -17,26 +19,40 @@ export const Button = styled.button<{
   min-width: ${({ size }) => (size === "sm" ? "0" : "140px")};
   box-sizing: border-box;
   padding: ${({ size }) => (size === "sm" ? "6px 12px" : "12px 16px")};
-  border: 2px solid ${({ variant }) => variantColor(variant)};
+  border: 1px solid ${({ variant }) => variantColor(variant)};
   background: ${({ variant }) =>
     variant === "primary" ? "var(--accent)" : "transparent"};
   color: ${({ variant }) =>
-    variant === "primary" ? "var(--bg-primary)" : variantColor(variant)};
+    variant === "primary"
+      ? "var(--accent-text)"
+      : variant === "danger"
+        ? "var(--accent-hover)"
+        : "var(--text-primary)"};
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
-  transition: 0.2s;
+  border-radius: var(--radius-sm);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
 
   &:hover:not(:disabled) {
+    border-color: var(--accent);
     background: ${({ variant }) =>
-      variant === "primary" ? "var(--accent-hover)" : "var(--accent)"};
-    border-color: ${({ variant }) =>
-      variant === "danger" ? "var(--accent)" : undefined};
-    color: var(--bg-primary);
+      variant === "primary"
+        ? "var(--accent-hover)"
+        : "color-mix(in srgb, var(--accent) 12%, transparent)"};
+    transform: var(--hover-transform);
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.98);
   }
 
   &:disabled {

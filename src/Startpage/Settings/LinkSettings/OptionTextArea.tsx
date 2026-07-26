@@ -7,7 +7,7 @@ import * as Settings from "../settingsHandler"
 
 const StyledOptionTextArea = styled.div<{ error?: string }>`
   position: relative;
-  border: 2px solid var(--border-default);
+  border: 1px solid var(--surface-border);
   display: flex;
   padding: 10px 0 10px 20px;
   height: calc(100% - 40px);

@@ -35,7 +35,7 @@ const Item = styled.div`
   flex-direction: column;
   gap: 6px;
   padding: 7px 12px;
-  border: var(--border-width) solid var(--text-primary);
+  border: 1px solid var(--surface-border);
   border-radius: var(--radius-sm);
   background: rgba(var(--bg-secondary-rgb), 0.25);
   transition: 0.2s;
@@ -92,11 +92,16 @@ const ItemBottom = styled.div`
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
 `
 
 const AgeHint = styled.span`
   font-size: 0.78rem;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 `
 
 const Actions = styled.div`
@@ -106,7 +111,9 @@ const Actions = styled.div`
 
 const ActionBtn = styled.button`
   background: transparent;
-  border: 1px solid var(--border-default);
+  white-space: nowrap;
+  border-radius: 999px;
+  border: 1px solid var(--surface-border);
   color: var(--text-secondary);
   font-size: 0.75rem;
   padding: 3px 8px;

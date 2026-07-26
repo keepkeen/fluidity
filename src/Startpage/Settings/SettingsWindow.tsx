@@ -59,7 +59,10 @@ const WallpaperSettings = React.lazy(() =>
 )
 
 const StyledSettingsWindow = styled.div`
-  background-color: var(--bg-primary);
+  animation: pop-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+  backdrop-filter: var(--surface-blur);
+  -webkit-backdrop-filter: var(--surface-blur);
   position: fixed;
 
   top: var(--settings-window-gap);
@@ -67,9 +70,10 @@ const StyledSettingsWindow = styled.div`
   bottom: var(--settings-window-gap);
   left: var(--settings-window-gap);
 
-  border: 2px solid var(--text-primary);
-  padding: 60px 30px 30px 30px;
-  box-shadow: 10px 10px 0px var(--accent);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-main);
+  padding: 64px 30px 30px 30px;
+  box-shadow: var(--shadow-pop);
   z-index: 101;
 
   /* 中等屏幕优化 */
@@ -95,8 +99,7 @@ const StyledSettingsWindow = styled.div`
     right: 10px;
     bottom: 10px;
     left: 10px;
-    padding: 46px 12px 12px 12px;
-    box-shadow: 5px 5px 0px var(--accent);
+    padding: 50px 12px 12px 12px;
   }
 `
 const WindowContent = styled.div`
@@ -119,10 +122,10 @@ const WindowContent = styled.div`
 `
 
 const WindowHeader = styled.div`
-  color: var(--bg-primary);
-  background-color: var(--text-primary);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--surface-border);
   width: 100%;
-  height: 32px;
+  height: 44px;
   position: absolute;
   left: 0;
   top: 0;
@@ -131,13 +134,15 @@ const WindowHeader = styled.div`
   align-items: center;
   gap: 8px;
   box-sizing: border-box;
-  padding: 0 8px;
+  padding: 0 16px;
 `
 
 const WindowTitle = styled.h2`
-  margin: 0 8px 0 0;
-  font-size: 1rem;
+  margin: 0 12px 0 0;
+  font-size: 0.95rem;
   font-weight: 600;
+  letter-spacing: 1px;
+  opacity: 0.85;
   white-space: nowrap;
 `
 
@@ -217,15 +222,21 @@ const CloseButton = styled(IconButton)`
 `
 
 export const SettingsButton = styled(IconButton)`
-  background-color: var(--text-primary);
-  color: var(--bg-primary);
-  font-size: 1rem;
-  padding: 10px 20px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--text-primary);
+  border: 1px solid var(--surface-border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 0.92rem;
+  padding: 9px 20px;
+  opacity: 1;
+
   :enabled:hover {
-    animation: circling-shadow-small 2s ease 0s infinite normal;
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 28%, transparent);
+    color: var(--text-primary);
   }
   :disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
   }
 `
@@ -249,28 +260,45 @@ const Tabbar = styled.div`
 `
 
 const TabOption = styled.button<{ active: boolean }>`
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 500;
-  transition: 0.3s;
-  height: 100%;
-  min-width: 150px;
+  height: 30px;
+  margin: 0 2px;
+  padding: 0 18px;
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: transparent;
+  background: ${({ active }) =>
+    active
+      ? "color-mix(in srgb, var(--accent) 18%, transparent)"
+      : "transparent"};
+  color: ${({ active }) =>
+    active ? "var(--accent)" : "var(--text-secondary)"};
   outline: none;
   border: none;
+  border-radius: 999px;
   cursor: ${({ active }) => (active ? "default" : "pointer")};
-  ${({ active }) => active && "text-shadow: var(--text-shadow-downwards)"};
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+  white-space: nowrap;
+
   :hover {
-    text-shadow: var(--text-shadow-downwards);
+    color: ${({ active }) => (active ? "var(--accent)" : "var(--text-primary)")};
+    background: ${({ active }) =>
+      active
+        ? "color-mix(in srgb, var(--accent) 18%, transparent)"
+        : "color-mix(in srgb, var(--text-primary) 8%, transparent)"};
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   @media screen and (max-width: 1200px) {
-    min-width: auto;
     flex: 0 0 auto;
-    padding: 0 16px;
-    white-space: nowrap;
+    padding: 0 14px;
   }
 `
 
@@ -281,12 +309,12 @@ const MobileTabSelect = styled.select`
     display: block;
     flex: 1;
     min-width: 0;
-    height: 24px;
-    border: 1px solid var(--bg-primary);
-    background: var(--text-primary);
-    color: var(--bg-primary);
-    font-size: 0.95rem;
-    font-weight: 600;
+    height: 30px;
+    border: 1px solid var(--surface-border-strong);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 0.9rem;
   }
 `
 
@@ -394,7 +422,7 @@ export const SettingsWindow = ({
   const appliedRef = useRef(false)
   useEffect(() => {
     applyColors(design.colors)
-    applyThemeMode(design.mode || "retro")
+    applyThemeMode(design.mode || "modern")
   }, [design])
 
   useEffect(
@@ -402,7 +430,7 @@ export const SettingsWindow = ({
       if (appliedRef.current) return
       const persisted = Settings.Design.getWithFallback()
       applyColors(persisted.colors)
-      applyThemeMode(persisted.mode || "retro")
+      applyThemeMode(persisted.mode || "modern")
     },
     []
   )
@@ -451,7 +479,6 @@ export const SettingsWindow = ({
           ))}
         </MobileTabSelect>
         <CloseButton
-          inverted
           aria-label="关闭设置"
           title="关闭设置"
           onClick={() => hidePopup()}
