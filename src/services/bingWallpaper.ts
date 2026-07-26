@@ -38,7 +38,6 @@ const CACHE_KEY = "bing-wallpaper-cache"
 const CACHE_DURATION = 6 * 60 * 60 * 1000 // 6小时缓存
 
 const FETCH_TIMEOUT_MS = 10_000
-const CORS_PROXY_ALLORIGINS = "https://api.allorigins.win/raw?url="
 const BING_WALLPAPER_POOL_SIZE = 8
 
 const toAbsoluteUrl = (base: string, raw: string): string => {
@@ -90,21 +89,10 @@ const fetchFirstBingResponse = async (
 ): Promise<{ data: BingImageResponse; usedBase: string }> => {
   let lastError: unknown = null
 
-  // 1) 扩展环境（newtab / popup 等）通常可直接跨域请求（已有 host_permissions），优先直连 Bing。
+  // 扩展环境（newtab / popup 等）可直接跨域请求（已有 host_permissions）。
   for (const apiUrl of apiUrls) {
     try {
       const data = await tryFetchJsonWithTimeout<BingImageResponse>(apiUrl)
-      return { data, usedBase: new URL(apiUrl).origin }
-    } catch (error) {
-      lastError = error
-    }
-  }
-
-  // 2) 兜底：普通网页会受 CORS 限制，尝试通过公共 CORS 代理获取。
-  for (const apiUrl of apiUrls) {
-    try {
-      const proxiedUrl = CORS_PROXY_ALLORIGINS + encodeURIComponent(apiUrl)
-      const data = await tryFetchJsonWithTimeout<BingImageResponse>(proxiedUrl)
       return { data, usedBase: new URL(apiUrl).origin }
     } catch (error) {
       lastError = error

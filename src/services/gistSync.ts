@@ -104,8 +104,6 @@ const SYNCED_LOCAL_STORAGE_KEYS = new Set<string>([
   // analytics
   "link-analytics",
   "search-history",
-  "fluidity.ai.recommendedSearchTags.v1",
-  "fluidity.ai.recommendedQuickSearches.v1",
   "fluidity.ai.dailyReview.v1",
   // reports
   "report-state",

@@ -459,43 +459,8 @@ const updateUsageContentScriptRegistration = async (): Promise<void> => {
   await registerUsageContentScript()
 }
 
-const executeContentScript = async (tabId: number): Promise<void> => {
-  const scripting = getScriptingApi()
-  if (!scripting?.executeScript) throw new Error("scripting unavailable")
-
-  await new Promise<void>((resolve, reject) => {
-    scripting.executeScript(
-      { target: { tabId }, files: [CONTENT_SCRIPT_FILE] },
-      () => {
-        const err = runtimeError()
-        if (err?.message) {
-          reject(new Error(err.message))
-          return
-        }
-        resolve()
-      }
-    )
-  })
-}
-
-const sendTogglePalette = async (tabId: number): Promise<void> => {
-  await new Promise<void>((resolve, reject) => {
-    chrome.tabs.sendMessage(
-      tabId,
-      { type: "fluidity:togglePaletteOverlay" },
-      () => {
-        const err = runtimeError()
-        if (err?.message) {
-          reject(new Error(err.message))
-          return
-        }
-        resolve()
-      }
-    )
-  })
-}
-
-const fallbackOpenPalette = () => {
+// 快捷键在新标签页打开命令面板；不再向任意网页注入覆盖层
+const openPalettePage = () => {
   try {
     chrome.tabs.create({
       url: chrome.runtime.getURL("index.html?openPalette=1"),
@@ -503,18 +468,6 @@ const fallbackOpenPalette = () => {
   } catch {
     // ignore
   }
-}
-
-const openPaletteForTab = async (tabId: number): Promise<void> => {
-  try {
-    await sendTogglePalette(tabId)
-    return
-  } catch {
-    // inject below
-  }
-
-  await executeContentScript(tabId)
-  await sendTogglePalette(tabId)
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -538,23 +491,9 @@ chrome.idle.onStateChanged.addListener(async next => {
   await enqueueWrite(st)
 })
 
-chrome.commands?.onCommand?.addListener((command, tab) => {
+chrome.commands?.onCommand?.addListener(command => {
   if (command !== "fluidity-open-command-palette") return
-
-  const run = async () => {
-    const targetTabId = tab?.id
-    if (targetTabId) {
-      await openPaletteForTab(targetTabId)
-      return
-    }
-
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
-    const tabId = tabs?.[0]?.id
-    if (!tabId) throw new Error("missing active tab")
-    await openPaletteForTab(tabId)
-  }
-
-  void run().catch(() => fallbackOpenPalette())
+  openPalettePage()
 })
 
 chrome.runtime.onMessage.addListener((msg: UsageMessage, _sender, sendResponse) => {

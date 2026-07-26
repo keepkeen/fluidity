@@ -9,10 +9,6 @@ import {
   guessAppNameFromDomain,
   normalizeDomainKey,
 } from "./browserUsage"
-import {
-  getRecommendedTagsForToday,
-  setRecommendedTagsForToday,
-} from "./recommendedTags"
 import { fetchWithTimeout } from "./http"
 import { aiLogger } from "../utils/logger"
 
@@ -42,8 +38,6 @@ export interface AISettings {
 interface CachedResponse {
   message: string
   timestamp: number
-  day?: string
-  tags?: string[]
 }
 
 // DeepSeek API 响应类型
@@ -173,16 +167,6 @@ const AICache = {
     localStorage.setItem(STORAGE_KEYS.AI_CACHE, JSON.stringify(cache))
   },
 
-  setWithTags(message: string, tags: string[], day: string): void {
-    const cache: CachedResponse = {
-      message,
-      timestamp: Date.now(),
-      day,
-      tags,
-    }
-    localStorage.setItem(STORAGE_KEYS.AI_CACHE, JSON.stringify(cache))
-  },
-
   isValid(): boolean {
     const cache = this.get()
     if (!cache) return false
@@ -288,31 +272,21 @@ export const callDeepSeekAPI = async (
   return content
 }
 
-const pad2 = (n: number): string => String(n).padStart(2, "0")
-
-const getTodayStringLocal = (): string => {
-  const d = new Date()
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
-}
-
 const secondsToMinutes = (sec: number): number => Math.round(sec / 60)
 
 const generatePromptV2 = (context: Record<string, unknown>): string => {
-  return `你是一个友好的个人助手，负责在用户打开浏览器新标签页时给出一句简短的问候/提醒，并生成一些“推荐搜索标签”帮助用户高效导航。
+  return `你是一个友好的个人助手，负责在用户打开浏览器新标签页时给出一句简短的问候/提醒。
 
 你会收到一份 JSON 格式的用户数据（包含最近一小时与今天的浏览器使用汇总、待办、点击/搜索习惯等）。
 
 请严格输出 JSON（不要输出代码块、不要输出多余解释），结构如下：
 {
-  "greeting": "一句话（<=50字）",
-  "tags": ["推荐搜索标签1", "标签2", "..."]
+  "greeting": "一句话（<=50字）"
 }
 
 规则：
-1) greeting 语气轻松友好，像朋友一样；不要说“根据数据”等措辞；最多 2 个 emoji
+1) 语气轻松友好，像朋友一样；不要说“根据数据”等措辞；最多 2 个 emoji
 2) 如果最近一小时连续使用时间较长（例如 >=45分钟），可以温柔提醒喝水/休息/活动一下；不要吓人/不要医学化
-3) tags 用于搜索栏默认建议：给 6-10 个短语（每个尽量 <=8 个字/<=4 个词），贴合今天的访问/任务/兴趣；不要包含 URL，不要包含敏感个人信息
-4) tags 尽量多样：学习/工作/资讯/娱乐/效率/健康提醒 等方向可以混合
 
 用户数据：
 ${JSON.stringify(context, null, 2)}
@@ -340,19 +314,13 @@ const tryParseJsonObject = (raw: string): Record<string, unknown> | null => {
   }
 }
 
-const getGreetingCache = (
-  today: string
-): { message: string; fromCache: boolean } | null => {
+const getGreetingCache = (): {
+  message: string
+  fromCache: boolean
+} | null => {
   if (!AICache.isValid()) return null
   const cache = AICache.get()
   if (!cache) return null
-
-  // 若今天还没有推荐标签，优先触发一次 AI（即使问候语缓存仍有效）
-  if (getRecommendedTagsForToday().length === 0) return null
-
-  if (cache.day === today && Array.isArray(cache.tags)) {
-    setRecommendedTagsForToday(cache.tags)
-  }
 
   return { message: cache.message, fromCache: true }
 }
@@ -404,23 +372,11 @@ const buildGreetingContext = async (
   return context
 }
 
-const parseGreetingPayload = (
-  raw: string
-): { message: string; tags: string[] } => {
+const parseGreetingPayload = (raw: string): { message: string } => {
   const parsed = tryParseJsonObject(raw)
   const message =
     typeof parsed?.greeting === "string" ? parsed.greeting.trim() : ""
-
-  const tagsValue =
-    parsed && typeof parsed === "object" ? parsed.tags : undefined
-  const tagsRaw = Array.isArray(tagsValue) ? tagsValue : []
-  const tags = tagsRaw
-    .filter((t): t is string => typeof t === "string")
-    .map(t => t.trim())
-    .filter(t => t.length > 0)
-    .slice(0, 12)
-
-  return { message, tags }
+  return { message }
 }
 
 const generateDomainAppNamePrompt = (domain: string): string => {
@@ -492,7 +448,6 @@ export const getAIGreeting = async (): Promise<{
   error?: string
 }> => {
   const settings = AISettingsManager.get()
-  const today = getTodayStringLocal()
 
   // 检查是否启用
   if (!settings.enabled || !settings.apiKey) {
@@ -502,7 +457,7 @@ export const getAIGreeting = async (): Promise<{
     }
   }
 
-  const cached = getGreetingCache(today)
+  const cached = getGreetingCache()
   if (cached) return cached
 
   // 调用 API
@@ -515,16 +470,11 @@ export const getAIGreeting = async (): Promise<{
       temperature: 0.7,
     })
 
-    const { message, tags } = parseGreetingPayload(raw)
+    const { message } = parseGreetingPayload(raw)
 
     if (!message) throw new Error("AI 响应内容为空，请重试")
 
-    if (tags.length > 0) {
-      setRecommendedTagsForToday(tags)
-      AICache.setWithTags(message, tags, today)
-    } else {
-      AICache.set(message)
-    }
+    AICache.set(message)
 
     return {
       message,

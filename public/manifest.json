@@ -39,13 +39,6 @@
   "content_security_policy": {
     "extension_pages": "default-src 'self'; script-src 'self'; object-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*;frame-src 'self'; base-uri 'none'; form-action 'none'"
   },
-  "web_accessible_resources": [
-    {
-      "resources": ["palette.html"],
-      "matches": ["http://*/*", "https://*/*"],
-      "use_dynamic_url": true
-    }
-  ],
   "commands": {
     "fluidity-open-command-palette": {
       "suggested_key": {

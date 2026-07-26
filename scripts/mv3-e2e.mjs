@@ -198,12 +198,6 @@ const main = async () => {
     await popup.waitForLoadState("domcontentloaded")
     await expectVisible(popup, "input", "popup search input")
 
-    const palette = await context.newPage()
-    watchPageErrors(palette, "palette", errors)
-    await palette.goto(`chrome-extension://${extensionId}/palette.html`)
-    await palette.waitForLoadState("domcontentloaded")
-    await expectVisible(palette, "input", "palette search input")
-
     assert(errors.length === 0, errors.join("\n"))
 
     console.log(
@@ -218,7 +212,6 @@ const main = async () => {
             "settings_data",
             "settings_ai",
             "popup",
-            "palette",
           ],
         },
         null,

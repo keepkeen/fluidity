@@ -15,11 +15,6 @@ import google from "../../data/pictures/google.svg"
 import qwant from "../../data/pictures/qwant.svg"
 import { SearchHistory, LinkAnalytics } from "../../services/analytics"
 import { searchLinksOnly, navigateToLink } from "../../services/linkSearch"
-import { getRecommendedTagsForToday } from "../../services/recommendedTags"
-import {
-  ensureSearchRecommendationsForToday,
-  getRecommendedQuickSearchesForToday,
-} from "../../services/searchRecommendations"
 import * as Settings from "../Settings/settingsHandler"
 
 export const queryToken = "{{query}}"
@@ -31,10 +26,8 @@ export type SearchSettings = SearchType
 type SuggestionType =
   | "history"
   | "link"
-  | "todo"
   | "fastforward"
   | "quicklink"
-  | "tag"
   | "engine" // 新增：搜索引擎建议
 
 interface Suggestion {
@@ -225,10 +218,8 @@ const SuggestionType = styled.span<{ selected: boolean }>`
 const typeLabels: Record<Suggestion["type"], string> = {
   history: "历史",
   link: "链接",
-  todo: "待办",
   fastforward: "快捷",
   quicklink: "快链",
-  tag: "推荐",
   engine: "引擎",
 }
 
@@ -302,30 +293,6 @@ const getSuggestions = (
     }
   })
 
-  // 4. 待办事项匹配
-  try {
-    const todosRaw = localStorage.getItem("todos")
-    if (todosRaw) {
-      const todos = JSON.parse(todosRaw) as {
-        text: string
-        done: boolean
-      }[]
-      todos
-        .filter(t => !t.done && t.text.toLowerCase().includes(lowerQuery))
-        .slice(0, 3)
-        .forEach(todo => {
-          if (!suggestions.some(s => s.text === todo.text)) {
-            suggestions.push({
-              text: todo.text,
-              type: "todo",
-            })
-          }
-        })
-    }
-  } catch {
-    // ignore
-  }
-
   // 限制建议数量为5个
   return suggestions.slice(0, 5)
 }
@@ -358,36 +325,12 @@ class SuggestionCollector {
   }
 }
 
-// 获取未完成的待办建议
-const getTodoSuggestions = (): Suggestion[] => {
-  try {
-    const todosRaw = localStorage.getItem("todos")
-    if (!todosRaw) return []
-    const todos = JSON.parse(todosRaw) as { text: string; done: boolean }[]
-    return todos
-      .filter(t => !t.done)
-      .map(todo => ({ text: todo.text, type: "todo" as const }))
-  } catch {
-    return []
-  }
-}
-
 /**
  * 获取默认建议（无输入时）
  * 历史和推荐去重，总数限制5个
  */
 const getDefaultSuggestions = (searchSettings: SearchType): Suggestion[] => {
   const collector = new SuggestionCollector(8)
-
-  // 0. AI 推荐标签（优先展示）
-  getRecommendedTagsForToday().forEach(tag => {
-    collector.add({ text: tag, type: "tag", icon: "🏷️" })
-  })
-
-  // 0.1 推荐快捷搜索
-  getRecommendedQuickSearchesForToday().forEach(item => {
-    collector.add({ text: item.label, type: "fastforward", url: item.url })
-  })
 
   // 1. 最近搜索（优先级最高）
   SearchHistory.getRecent(5).forEach(search => {
@@ -400,9 +343,6 @@ const getDefaultSuggestions = (searchSettings: SearchType): Suggestion[] => {
     const linkData = Object.values(analytics).find(l => l.label === link.label)
     collector.add({ text: link.label, type: "link", url: linkData?.url })
   })
-
-  // 3. 未完成的待办
-  getTodoSuggestions().forEach(todo => collector.add(todo))
 
   // 4. 快捷词
   Object.entries(searchSettings.fastForward).forEach(([key, url]) => {
@@ -430,7 +370,6 @@ export const Searchbar = () => {
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [isLinkMode, setIsLinkMode] = useState(false) // 是否处于链接搜索模式
   const [tempEngine, setTempEngine] = useState<SearchEngine | null>(null) // 临时选择的引擎
-  const [recommendationTick, setRecommendationTick] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -535,21 +474,7 @@ export const Searchbar = () => {
     searchSettings,
     linkGroups,
     handleEngineModeInput,
-    recommendationTick,
   ])
-
-  useEffect(() => {
-    let mounted = true
-    void ensureSearchRecommendationsForToday().then(updated => {
-      if (!mounted) return
-      if (updated) {
-        setRecommendationTick(t => t + 1)
-      }
-    })
-    return () => {
-      mounted = false
-    }
-  }, [])
 
   // 根据设置决定跳转方式
   const navigateTo = useCallback(

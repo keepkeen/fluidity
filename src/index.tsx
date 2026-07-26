@@ -7,11 +7,8 @@ import "./base/index.css"
 import { hasChromeStorage } from "./services/extensionStore"
 import { startGistAutoSync } from "./services/gistSync"
 
-const supportsServiceWorker =
-  "serviceWorker" in navigator &&
-  ["http:", "https:"].includes(window.location.protocol)
-
-if (supportsServiceWorker && import.meta.env.DEV) {
+// 清理历史版本注册的开发用 service worker（扩展形态不再使用 SW）
+if ("serviceWorker" in navigator && import.meta.env.DEV) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
       .getRegistrations()
@@ -19,28 +16,6 @@ if (supportsServiceWorker && import.meta.env.DEV) {
         Promise.all(registrations.map(registration => registration.unregister()))
       )
       .catch(err => console.error("Service worker cleanup failed:", err))
-
-    if ("caches" in window) {
-      window.caches
-        .keys()
-        .then(keys =>
-          Promise.all(
-            keys
-              .filter(key => key.startsWith("fluidity-"))
-              .map(key => window.caches.delete(key))
-          )
-        )
-        .catch(err => console.error("Cache cleanup failed:", err))
-    }
-  })
-}
-
-// Register a lightweight service worker for production web hosting only.
-if (supportsServiceWorker && import.meta.env.PROD) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker
-      .register(`${import.meta.env.BASE_URL}sw.js`)
-      .catch(err => console.error("Service worker registration failed:", err))
   })
 }
 

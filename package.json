@@ -6,8 +6,6 @@
   "homepage": "./",
   "scripts": {
     "dev": "vite",
-    "predeploy": "npm run build:extension",
-    "deploy": "gh-pages -d build",
     "start": "npm run dev",
     "build": "vite build",
     "build:extension": "npm run verify && npm run build",
@@ -46,7 +44,6 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-sonarjs": "^0.25.1",
-    "gh-pages": "^6.3.0",
     "jsdom": "^29.1.1",
     "playwright": "^1.60.0",
     "typescript": "^5.7.3",

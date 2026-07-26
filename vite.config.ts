@@ -51,7 +51,6 @@ export default defineConfig(async ({ command }) => {
         input: {
           main: resolve(__dirname, "index.html"),
           popup: resolve(__dirname, "popup.html"),
-          palette: resolve(__dirname, "palette.html"),
           background: resolve(__dirname, "src/extension/background.ts"),
           contentScript: resolve(__dirname, "src/extension/contentScript.ts"),
         },
