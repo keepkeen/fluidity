@@ -119,9 +119,9 @@ const AppIconBox = styled.span`
   width: 58px;
   height: 58px;
   border-radius: 15px;
-  background: var(--surface-bg);
-  backdrop-filter: var(--surface-blur);
-  -webkit-backdrop-filter: var(--surface-blur);
+  /* 不用 backdrop-filter：27 个磨砂区域随抖动/拖拽逐帧重采样是主要卡顿源；
+     小图标上模糊几乎不可辨，用稍高不透明度补偿可读性 */
+  background: color-mix(in srgb, var(--bg-secondary) 78%, transparent);
   border: 1px solid var(--surface-border);
   box-shadow: var(--shadow-soft);
   display: flex;
@@ -393,9 +393,12 @@ export const HomeGrid = () => {
     [linkGroups, layout]
   )
 
+  /* 编辑模式内即拖即走（iOS 手感）；平时按住 220ms 才触发，避免误拖 */
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: { delay: 220, tolerance: 8 },
+      activationConstraint: editMode
+        ? { distance: 4 }
+        : { delay: 220, tolerance: 8 },
     })
   )
 
