@@ -76,6 +76,12 @@ npm run dev
 # 运行类型检查和 lint
 npm run verify
 
+# 运行单元测试
+npm test
+
+# 运行 MV3 扩展端到端冒烟测试（需 npx playwright install chromium）
+MV3_E2E_HEADLESS=1 npm run test:e2e:mv3
+
 # 构建生产版本
 npm run build:extension
 
