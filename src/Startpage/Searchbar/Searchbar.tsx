@@ -41,23 +41,14 @@ interface Suggestion {
 
 const StyledSearchbarContainer = styled.div`
   position: relative;
-  margin: 0 100px 40px calc(100px - 2.9rem - 10px);
+  margin: 0 var(--page-margin) clamp(12px, 2.5vh, 40px)
+    calc(var(--page-margin) - 2.9rem - 10px);
   height: min-content;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-end;
   flex-shrink: 0;
-
-  @media screen and (max-width: 1200px) {
-    margin-left: calc(60px - 2.9rem - 10px);
-    margin-right: 60px;
-  }
-
-  @media screen and (max-width: 900px) {
-    margin-left: calc(40px - 2.9rem - 10px);
-    margin-right: 40px;
-  }
 
   @media screen and (max-width: 600px) {
     width: calc(100% - 24px);
@@ -85,7 +76,8 @@ const SearchInputWrapper = styled.div`
 const StyledSearchbar = styled.input`
   width: 100%;
   min-width: 0;
-  font-size: 30pt;
+  /* 字号随视口流式缩放：~15pt @600px → 26pt 封顶，低分辨率不再需要手动缩放 */
+  font-size: clamp(15pt, 1.2vw + 7pt, 26pt);
 
   background-color: transparent;
   color: var(--text-primary);
@@ -99,14 +91,6 @@ const StyledSearchbar = styled.input`
 
   :focus {
     outline: none;
-  }
-
-  @media screen and (max-width: 900px) {
-    font-size: 24pt;
-  }
-
-  @media screen and (max-width: 600px) {
-    font-size: 18pt;
   }
 `
 

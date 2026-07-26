@@ -10,43 +10,28 @@ import { TodayScreenTime } from "../Usage/TodayScreenTime"
 
 const DashboardContainer = styled.div`
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: repeat(2, minmax(200px, 1fr));
-  gap: 16px;
-  width: 100%;
+  /* 列数随分到的宽度自适应：装得下两列就两列，否则单列 */
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: clamp(10px, 1.2vw, 16px);
+  /* 作为 flex 子项参与排布：不够宽时整体换行到下一行 */
+  flex: 1 1 480px;
+  min-width: 0;
   max-width: 800px;
-  margin-bottom: 32px;
-
-  /* Mobile: Stack vertically */
-  @media (max-width: 768px) {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto;
-  }
+  margin-bottom: clamp(12px, 2vh, 32px);
 `
 
 const LargeWidget = styled.div`
-  grid-column: span 2;
-  height: 240px;
-
-  @media (max-width: 768px) {
-    grid-column: span 1;
-  }
+  grid-column: 1 / -1;
+  /* 高度随视口高度收缩，矮屏不再溢出 */
+  height: clamp(140px, 18vh, 240px);
 `
 
 const StandardWidget = styled.div`
-  height: 380px;
-
-  @media (max-width: 768px) {
-    height: 340px;
-  }
+  height: clamp(210px, 28vh, 380px);
 `
 
 const AutoWidget = styled.div`
-  grid-column: span 2;
-
-  @media (max-width: 768px) {
-    grid-column: span 1;
-  }
+  grid-column: 1 / -1;
 `
 
 /*

@@ -17,20 +17,11 @@ const GreetingContainer = styled.div`
   align-items: center;
   justify-content: center;
   gap: 12px;
-  padding: 20px 100px 0;
+  padding: clamp(8px, 1.5vh, 20px) var(--page-margin) 0;
   flex-shrink: 0;
 
-  @media screen and (max-width: 1200px) {
-    padding: 20px 60px 0;
-  }
-
   @media screen and (max-width: 900px) {
-    padding: 15px 40px 0;
     gap: 8px;
-  }
-
-  @media screen and (max-width: 600px) {
-    padding: 10px 20px 0;
   }
 `
 

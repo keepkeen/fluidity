@@ -27,14 +27,14 @@ const StyledWidgetCard = styled(WidgetCard)`
 const List = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 `
 
 const Item = styled.div`
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 12px;
+  padding: 7px 12px;
   border: var(--border-width) solid var(--text-primary);
   border-radius: var(--radius-sm);
   background: rgba(var(--bg-secondary-rgb), 0.25);

@@ -21,7 +21,7 @@ import { navigateToLink } from "../../../services/linkSearch"
  */
 
 const Container = styled.div`
-  flex: 1;
+  flex: 1 1 420px;
   min-width: 0;
   max-width: 900px;
   display: flex;

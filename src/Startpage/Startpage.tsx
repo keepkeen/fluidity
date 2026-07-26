@@ -82,37 +82,25 @@ const Wrapper = styled.div`
 `
 
 const StyledStartpage = styled.div<{ cardHidden: boolean }>`
-  padding: 0px 100px;
+  padding: 0px var(--page-margin);
   display: flex;
   flex-direction: row;
+  /* 空间不足时自动换行堆叠，不依赖固定断点 */
+  flex-wrap: wrap;
   justify-content: center;
   align-items: flex-start;
   flex: 1;
   min-height: 0;
-  gap: 32px;
+  gap: clamp(16px, 2vw, 32px);
   width: 100%; /* Ensure full width for dashboard */
   max-width: 100%;
   box-sizing: border-box;
   overflow-x: clip;
 
-  @media screen and (max-width: 1200px) {
-    flex-wrap: wrap;
-    justify-content: center;
-    padding: 0px 60px;
-  }
-
-  @media screen and (max-width: 900px) {
-    padding: 0px 40px;
-    gap: 24px;
-  }
-
   @media screen and (max-width: 600px) {
-    padding: 0px 12px;
-    gap: 16px;
     min-height: auto;
     padding-top: 60px;
     padding-bottom: 20px;
-    overflow-x: clip;
   }
 `
 

@@ -46,6 +46,12 @@ html, body {
 	width:100%;
 	margin: 0;
 }
+
+/* 分辨率自适应：根字号随视口宽度流式缩放（~14px @1366 → 16px @1920，上限 17px）。
+   rem 尺寸的文字与图标随之整体缩放，低分辨率外接屏无需手动缩放页面。 */
+html {
+	font-size: clamp(13px, 0.365vw + 9px, 17px);
+}
 body {
 	background-color: var(--bg-primary);
 	color: var(--text-primary);
