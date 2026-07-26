@@ -341,6 +341,26 @@ const preserveLocalImages = (key: string, newValue: unknown): unknown => {
 }
 
 /**
+ * 同步合并路径使用：写入单个键值，套用与导入相同的保留策略
+ * （apiKey 不落远端值、本地壁纸图不被抹掉），chrome 键写入扩展存储。
+ */
+export const applyBackupValue = async (
+  key: string,
+  value: unknown
+): Promise<void> => {
+  if (CHROME_BACKUP_KEYS.includes(key)) {
+    await setChromeLocal(key, value)
+    return
+  }
+
+  let finalValue = key === AI_SETTINGS_KEY ? preserveApiKey(value) : value
+  if (key === WALLPAPER_SETTINGS_KEY) {
+    finalValue = preserveLocalImages(key, finalValue)
+  }
+  localStorage.setItem(key, JSON.stringify(finalValue))
+}
+
+/**
  * 导入单个键值
  */
 const importSingleKey = (

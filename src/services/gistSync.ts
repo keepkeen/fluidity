@@ -1,6 +1,11 @@
 import { BROWSER_USAGE_STORAGE_KEY } from "./browserUsage"
 import { BROWSER_USAGE_SETTINGS_KEY } from "./browserUsageSettings"
-import { exportDataAsync, importDataAsync } from "./dataBackup"
+import {
+  applyBackupValue,
+  BackupData,
+  exportDataAsync,
+  importDataAsync,
+} from "./dataBackup"
 import {
   getChromeLocal,
   getChromeSession,
@@ -30,6 +35,7 @@ import {
   LocalStorageChange,
   onLocalStorageChange,
 } from "./localStorageEmitter"
+import { KeyTimestamps, planMerge } from "./syncMerge"
 import { getSyncRuntimeStatus, setSyncRuntimeStatus } from "./syncRuntime"
 
 export type SyncInitContext = "startpage" | "popup"
@@ -86,6 +92,34 @@ const LEADER_KEY = "fluidity-sync.leader.v1"
 const REQUEST_KEY = "fluidity-sync.request.v1"
 
 const MAX_CONFLICT_COPIES = 3
+
+// 每键最后修改时间（用于多设备逐键合并；前缀命中 RUNTIME_IGNORE_PREFIXES）
+const KEY_TIMESTAMPS_KEY = "fluidity-sync.keyTimestamps.v1"
+
+const readKeyTimestamps = (): KeyTimestamps => {
+  try {
+    const raw = localStorage.getItem(KEY_TIMESTAMPS_KEY)
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw)
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as KeyTimestamps
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return {}
+}
+
+const recordKeyTimestamp = (key: string, ts = Date.now()): void => {
+  try {
+    const map = readKeyTimestamps()
+    map[key] = ts
+    localStorage.setItem(KEY_TIMESTAMPS_KEY, JSON.stringify(map))
+  } catch {
+    // ignore
+  }
+}
 
 const RUNTIME_IGNORE_PREFIXES = ["fluidity-sync.", "fluidity.gistSync."]
 
@@ -483,7 +517,7 @@ export const connectOrDiscover = async (options: {
   }
 
   const salt = randomBase64(16)
-  const plaintext = JSON.stringify(await exportDataAsync(), null, 2)
+  const plaintext = await buildSyncPlaintext()
   const envelope = await buildEnvelope({
     deviceId: config.deviceId,
     password: options.password,
@@ -611,6 +645,52 @@ const requestLeaderAction = (type: "pull" | "push"): void => {
 
 export const getGistSyncConfig = (): Promise<GistSyncConfigV1> => getConfig()
 
+type SyncPayload = BackupData & { keyTimestamps?: KeyTimestamps }
+
+/** 构建携带逐键时间戳的同步明文 */
+const buildSyncPlaintext = async (): Promise<string> => {
+  const backup = await exportDataAsync()
+  const recorded = readKeyTimestamps()
+  const keyTimestamps: KeyTimestamps = {}
+  for (const key of Object.keys(backup.data)) {
+    keyTimestamps[key] = recorded[key] ?? 0
+  }
+  const payload: SyncPayload = { ...backup, keyTimestamps }
+  return JSON.stringify(payload, null, 2)
+}
+
+/**
+ * 把远端快照逐键合并进本地（LWW + 集合类深度并集）。
+ * 返回是否存在需要回推的本地更新内容。
+ */
+const mergeRemoteBackup = async (
+  remote: SyncPayload,
+  remoteFallbackTs: number
+): Promise<boolean> => {
+  const localBackup = await exportDataAsync()
+  const plan = planMerge({
+    localData: localBackup.data,
+    localTimestamps: readKeyTimestamps(),
+    remoteData: remote.data ?? {},
+    remoteTimestamps: remote.keyTimestamps ?? {},
+    remoteFallbackTs,
+  })
+
+  isApplyingRemote = true
+  try {
+    for (const entry of plan) {
+      if (entry.value !== undefined) {
+        await applyBackupValue(entry.key, entry.value)
+      }
+      recordKeyTimestamp(entry.key, entry.timestamp)
+    }
+  } finally {
+    isApplyingRemote = false
+  }
+
+  return plan.some(entry => entry.needsPush)
+}
+
 export const pullNow = async (): Promise<void> => {
   const config = await getConfig()
   if (!config.enabled || !config.token || !config.gistId) {
@@ -655,21 +735,22 @@ export const pullNow = async (): Promise<void> => {
 
   try {
     const plaintext = await decryptEnvelope({ password, envelope })
-    const backup = JSON.parse(plaintext) as Parameters<
-      typeof importDataAsync
-    >[0]
+    const backup = JSON.parse(plaintext) as SyncPayload
 
-    isApplyingRemote = true
-    await importDataAsync(backup, { overwrite: true, skipApiKey: true })
-    isApplyingRemote = false
+    // 逐键合并：远端较新的应用到本地，本地较新的保留并回推
+    const needsPush = await mergeRemoteBackup(
+      backup,
+      envelope.meta?.updatedAt ?? 0
+    )
 
     const next: GistSyncConfigV1 = { ...config, lastKnownRevision: head }
     await setConfig(next)
     setSyncRuntimeStatus({
       state: "ok",
       updatedAt: Date.now(),
-      message: "同步完成",
+      message: needsPush ? "已合并，正在回推本地更新…" : "同步完成",
     })
+    if (needsPush) scheduleGeneralPush()
   } catch {
     isApplyingRemote = false
     setSyncRuntimeStatus({
@@ -795,37 +876,59 @@ export const pushNow = async (
     head &&
     head !== config.lastKnownRevision
   ) {
-    const plaintext = JSON.stringify(await exportDataAsync(), null, 2)
-    const envelope = await buildEnvelope({
-      deviceId: config.deviceId,
-      password,
-      saltB64: salt,
-      iterations,
-      plaintext,
-    })
-
-    const conflictName = `conflict.${Date.now()}.${config.deviceId}.json`
-    // 冲突副本只保留最近几份，否则 gist 会无限膨胀
-    const staleConflicts = Object.keys(gist.files)
-      .filter(name => name.startsWith("conflict."))
-      .sort()
-      .reverse()
-      .slice(MAX_CONFLICT_COPIES - 1)
-    const files: Record<string, { content: string } | null> = {
-      [conflictName]: { content: JSON.stringify(envelope) },
+    // 云端被其他设备更新过：先把远端逐键合并进本地，再推送合并结果。
+    // 只有远端无法解密时才退回"另存冲突副本"。
+    let mergedOk = false
+    if (remoteFile) {
+      try {
+        const remoteEnvelope = parseEnvelope(remoteFile)
+        const remotePlain = await decryptEnvelope({
+          password,
+          envelope: remoteEnvelope,
+        })
+        await mergeRemoteBackup(
+          JSON.parse(remotePlain) as SyncPayload,
+          remoteEnvelope.meta?.updatedAt ?? 0
+        )
+        mergedOk = true
+      } catch {
+        mergedOk = false
+      }
     }
-    for (const name of staleConflicts) files[name] = null
-    await updateGist(config.token, config.gistId, { files })
 
-    setSyncRuntimeStatus({
-      state: "error",
-      updatedAt: Date.now(),
-      message: "检测到冲突，已在云端另存副本",
-    })
-    throw new Error("CONFLICT")
+    if (!mergedOk) {
+      const plaintext = await buildSyncPlaintext()
+      const envelope = await buildEnvelope({
+        deviceId: config.deviceId,
+        password,
+        saltB64: salt,
+        iterations,
+        plaintext,
+      })
+
+      const conflictName = `conflict.${Date.now()}.${config.deviceId}.json`
+      // 冲突副本只保留最近几份，否则 gist 会无限膨胀
+      const staleConflicts = Object.keys(gist.files)
+        .filter(name => name.startsWith("conflict."))
+        .sort()
+        .reverse()
+        .slice(MAX_CONFLICT_COPIES - 1)
+      const files: Record<string, { content: string } | null> = {
+        [conflictName]: { content: JSON.stringify(envelope) },
+      }
+      for (const name of staleConflicts) files[name] = null
+      await updateGist(config.token, config.gistId, { files })
+
+      setSyncRuntimeStatus({
+        state: "error",
+        updatedAt: Date.now(),
+        message: "检测到冲突且无法自动合并，已在云端另存副本",
+      })
+      throw new Error("CONFLICT")
+    }
   }
 
-  const plaintext = JSON.stringify(await exportDataAsync(), null, 2)
+  const plaintext = await buildSyncPlaintext()
   const envelope = await buildEnvelope({
     deviceId: config.deviceId,
     password,
@@ -1008,6 +1111,9 @@ const createLocalChangeHandler =
     if (RUNTIME_IGNORE_PREFIXES.some(prefix => key.startsWith(prefix))) return
     if (!SYNCED_LOCAL_STORAGE_KEYS.has(key)) return
 
+    // 记录逐键修改时间，供多设备合并仲裁
+    recordKeyTimestamp(key)
+
     if (isLeader()) scheduleGeneralPush()
     else requestLeaderAction("push")
   }
@@ -1027,6 +1133,9 @@ const createChromeStorageChangedHandler =
     if (areaName !== "local") return
     if (!changes[BROWSER_USAGE_STORAGE_KEY] && !changes[BROWSER_USAGE_SETTINGS_KEY]) {
       return
+    }
+    for (const key of [BROWSER_USAGE_STORAGE_KEY, BROWSER_USAGE_SETTINGS_KEY]) {
+      if (changes[key]) recordKeyTimestamp(key)
     }
     if (isLeader()) markUsageDirtyAndSchedule()
     else requestLeaderAction("push")
