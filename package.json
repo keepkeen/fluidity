@@ -13,6 +13,7 @@
     "build:extension": "npm run verify && npm run build",
     "build:zip": "npm run build:extension && node scripts/create-extension-zip.mjs",
     "serve": "vite preview",
+    "test": "vitest run",
     "test:e2e:mv3": "npm run build && node scripts/mv3-e2e.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ./src --ext .ts,.tsx",
@@ -47,10 +48,12 @@
     "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-sonarjs": "^0.25.1",
     "gh-pages": "^6.3.0",
+    "jsdom": "^29.1.1",
     "playwright": "^1.60.0",
     "typescript": "^5.7.3",
     "vite": "^6.0.0",
-    "vite-plugin-checker": "^0.8.0"
+    "vite-plugin-checker": "^0.8.0",
+    "vitest": "^4.1.10"
   },
   "browserslist": [
     "defaults"
