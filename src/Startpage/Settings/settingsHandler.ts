@@ -13,7 +13,14 @@ import {
   themes,
   colorsType,
 } from "../../data/data"
-import { normalizeToHex, hexToHsl, hslToHex } from "../../utils/colorUtils"
+import {
+  calculateAccentHover,
+  calculateBgSecondary,
+  calculateHoverBg,
+  calculateTextMuted,
+  calculateTextOnAccent,
+  normalizeToHex,
+} from "../../utils/colorUtils"
 import { settingsLogger } from "../../utils/logger"
 
 // 新版 CSS 变量名常量（13 色系统）
@@ -147,47 +154,6 @@ const OLD_SUCCESS_COLOR = "--success-color"
 const OLD_SHADOW_COLOR = "--shadow-color"
 
 /**
- * 计算悬停背景色
- */
-const calcBgHover = (bgPrimary: string): string => {
-  const hsl = hexToHsl(bgPrimary)
-  const newL = Math.min(hsl.l + 8, 100)
-  return hslToHex(hsl.h, hsl.s, newL)
-}
-
-/**
- * 计算弱化文字色
- */
-const calcTextMuted = (textPrimary: string, bgPrimary: string): string => {
-  const textHsl = hexToHsl(textPrimary)
-  const bgHsl = hexToHsl(bgPrimary)
-  // 向背景色方向偏移 50%
-  const newL = textHsl.l + (bgHsl.l - textHsl.l) * 0.5
-  return hslToHex(textHsl.h, textHsl.s * 0.5, newL)
-}
-
-/**
- * 计算强调色悬停状态
- */
-const calcAccentHover = (accent: string): string => {
-  const hsl = hexToHsl(accent)
-  const newL = Math.max(hsl.l - 8, 0)
-  return hslToHex(hsl.h, hsl.s, newL)
-}
-
-/**
- * 计算强调色上的文字颜色
- */
-const calcAccentText = (
-  accent: string,
-  bgPrimary: string,
-  textPrimary: string
-): string => {
-  const accentHsl = hexToHsl(accent)
-  return accentHsl.l > 50 ? bgPrimary : textPrimary
-}
-
-/**
  * 从旧版主题迁移到新版 13 色系统
  */
 const migrateFromOldTheme = (
@@ -209,22 +175,22 @@ const migrateFromOldTheme = (
     [CSS_BG_PRIMARY]: bgPrimary,
     [CSS_BG_SECONDARY]:
       oldColors[CSS_BG_SECONDARY] || oldColors[OLD_BG_COLOR]
-        ? calcBgHover(bgPrimary)
+        ? calculateBgSecondary(bgPrimary)
         : "#252525",
-    [CSS_BG_HOVER]: oldColors[OLD_HOVER_BG] || calcBgHover(bgPrimary),
+    [CSS_BG_HOVER]: oldColors[OLD_HOVER_BG] || calculateHoverBg(textPrimary, bgPrimary),
     [CSS_TEXT_PRIMARY]: textPrimary,
     [CSS_TEXT_SECONDARY]: textSecondary,
-    [CSS_TEXT_MUTED]: calcTextMuted(textPrimary, bgPrimary),
+    [CSS_TEXT_MUTED]: calculateTextMuted(textPrimary, bgPrimary),
     [CSS_BORDER_DEFAULT]: oldColors[OLD_BORDER_COLOR] || "#4A4A4A",
     [CSS_BORDER_ACTIVE]: oldColors[OLD_BORDER_FOCUS] || accent,
     [CSS_ACCENT]: accent,
     [CSS_ACCENT_HOVER]:
       oldColors[OLD_ACCENT_COLOR2] ||
       oldColors[OLD_ACCENT_SECONDARY] ||
-      calcAccentHover(accent),
+      calculateAccentHover(accent, bgPrimary),
     [CSS_ACCENT_TEXT]:
       oldColors[OLD_TEXT_ON_ACCENT] ||
-      calcAccentText(accent, bgPrimary, textPrimary),
+      calculateTextOnAccent(accent, bgPrimary, textPrimary),
     [CSS_SUCCESS]: oldColors[OLD_SUCCESS_COLOR] || "#B4FFE6",
     [CSS_GLOW]: oldColors[OLD_SHADOW_COLOR] || accent,
   }
@@ -248,19 +214,19 @@ const fillMissingColors = (
   return {
     [CSS_BG_PRIMARY]: bgPrimary,
     [CSS_BG_SECONDARY]: colors[CSS_BG_SECONDARY] || defaults[CSS_BG_SECONDARY],
-    [CSS_BG_HOVER]: colors[CSS_BG_HOVER] || calcBgHover(bgPrimary),
+    [CSS_BG_HOVER]: colors[CSS_BG_HOVER] || calculateHoverBg(textPrimary, bgPrimary),
     [CSS_TEXT_PRIMARY]: textPrimary,
     [CSS_TEXT_SECONDARY]:
       colors[CSS_TEXT_SECONDARY] || defaults[CSS_TEXT_SECONDARY],
     [CSS_TEXT_MUTED]:
-      colors[CSS_TEXT_MUTED] || calcTextMuted(textPrimary, bgPrimary),
+      colors[CSS_TEXT_MUTED] || calculateTextMuted(textPrimary, bgPrimary),
     [CSS_BORDER_DEFAULT]:
       colors[CSS_BORDER_DEFAULT] || defaults[CSS_BORDER_DEFAULT],
     [CSS_BORDER_ACTIVE]: colors[CSS_BORDER_ACTIVE] || accent,
     [CSS_ACCENT]: accent,
-    [CSS_ACCENT_HOVER]: colors[CSS_ACCENT_HOVER] || calcAccentHover(accent),
+    [CSS_ACCENT_HOVER]: colors[CSS_ACCENT_HOVER] || calculateAccentHover(accent, bgPrimary),
     [CSS_ACCENT_TEXT]:
-      colors[CSS_ACCENT_TEXT] || calcAccentText(accent, bgPrimary, textPrimary),
+      colors[CSS_ACCENT_TEXT] || calculateTextOnAccent(accent, bgPrimary, textPrimary),
     [CSS_SUCCESS]: colors[CSS_SUCCESS] || defaults[CSS_SUCCESS],
     [CSS_GLOW]: colors[CSS_GLOW] || accent,
   }

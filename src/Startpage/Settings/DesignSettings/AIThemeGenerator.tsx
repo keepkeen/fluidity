@@ -6,7 +6,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
 import { Theme } from "../../../data/data"
 import {
-  generateTheme,
+  generateThemes,
   AIGeneratedTheme,
 } from "../../../services/themeGenerator"
 
@@ -199,6 +199,62 @@ const ErrorMessage = styled.div`
   color: var(--accent-hover);
 `
 
+const CandidateHint = styled.p`
+  font-size: 0.85rem;
+  opacity: 0.7;
+  margin: 12px 0 8px;
+`
+
+const CandidateRow = styled.div`
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+`
+
+const CandidateCard = styled.button<{ bg: string; selected: boolean }>`
+  flex: 1;
+  min-width: 110px;
+  padding: 14px 12px;
+  background: ${({ bg }) => bg};
+  border: 2px solid
+    ${({ selected }) => (selected ? "var(--accent)" : "var(--border-default)")};
+  cursor: pointer;
+  transition: 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+
+  :hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+`
+
+const CandidateName = styled.span<{ color: string }>`
+  color: ${({ color }) => color};
+  font-size: 0.9rem;
+  font-weight: 600;
+`
+
+const CandidateDots = styled.span`
+  display: flex;
+  gap: 6px;
+`
+
+const CandidateDot = styled.span<{ color: string }>`
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: ${({ color }) => color};
+  border: 1px solid rgba(128, 128, 128, 0.4);
+`
+
 interface Props {
   currentImage: string
   onApply: (theme: Theme) => void
@@ -213,26 +269,36 @@ export const AIThemeGenerator: React.FC<Props> = ({
   const [description, setDescription] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [generatedTheme, setGeneratedTheme] = useState<AIGeneratedTheme | null>(
-    null
-  )
+  const [candidates, setCandidates] = useState<AIGeneratedTheme[]>([])
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
+
+  const generatedTheme =
+    selectedIndex !== null ? candidates[selectedIndex] ?? null : null
 
   const maxLength = 200
 
   const handleGenerate = async () => {
     setLoading(true)
     setError(null)
-    setGeneratedTheme(null)
+    setCandidates([])
+    setSelectedIndex(null)
 
-    const result = await generateTheme(description)
+    const result = await generateThemes(description)
 
-    if (result.theme) {
-      setGeneratedTheme(result.theme)
+    if (result.themes.length > 0) {
+      setCandidates(result.themes)
     } else {
       setError(result.error ?? "生成失败")
     }
 
     setLoading(false)
+  }
+
+  // 点选候选：立即套用到草稿做整页实时预览
+  const handleSelectCandidate = (index: number) => {
+    setSelectedIndex(index)
+    const candidate = candidates[index]
+    if (candidate) onApply(convertToTheme(candidate))
   }
 
   const convertToTheme = (aiTheme: AIGeneratedTheme): Theme => ({
@@ -300,6 +366,34 @@ export const AIThemeGenerator: React.FC<Props> = ({
       </GenerateButton>
 
       {error && <ErrorMessage>{error}</ErrorMessage>}
+
+      {candidates.length > 0 && (
+        <>
+          <CandidateHint>
+            点击候选即可整页试穿，满意后点底部&quot;应用更改&quot;保存：
+          </CandidateHint>
+          <CandidateRow>
+            {candidates.map((candidate, index) => (
+              <CandidateCard
+                key={`${candidate.name}-${index}`}
+                type="button"
+                bg={candidate.bgPrimary}
+                selected={index === selectedIndex}
+                onClick={() => handleSelectCandidate(index)}
+              >
+                <CandidateName color={candidate.textPrimary}>
+                  {candidate.name}
+                </CandidateName>
+                <CandidateDots>
+                  <CandidateDot color={candidate.accent} />
+                  <CandidateDot color={candidate.textPrimary} />
+                  <CandidateDot color={candidate.bgSecondary} />
+                </CandidateDots>
+              </CandidateCard>
+            ))}
+          </CandidateRow>
+        </>
+      )}
 
       {generatedTheme && (
         <PreviewContainer>

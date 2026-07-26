@@ -195,3 +195,154 @@ export function calculateSuccessColor(accentSecondary: string): string {
 
 // 保留旧函数名以兼容
 export const calculateSecondaryColor = calculateTextSecondary
+
+/**
+ * 计算弱化文字色
+ * 原理：textPrimary 向 bgColor 方向偏移 50%，饱和度减半
+ */
+export function calculateTextMuted(
+  textPrimary: string,
+  bgColor: string
+): string {
+  const textHsl = hexToHsl(textPrimary)
+  const bgHsl = hexToHsl(bgColor)
+  const newL = textHsl.l + (bgHsl.l - textHsl.l) * 0.5
+  return hslToHex(textHsl.h, textHsl.s * 0.5, newL)
+}
+
+/**
+ * 计算强调色悬停态
+ * 原理：亮度向远离背景的方向偏移 8（深底上变亮、浅底上变深）
+ */
+export function calculateAccentHover(accent: string, bgColor: string): string {
+  const accentHsl = hexToHsl(accent)
+  const bgHsl = hexToHsl(bgColor)
+  const delta = bgHsl.l < 50 ? 8 : -8
+  const newL = Math.min(Math.max(accentHsl.l + delta, 0), 100)
+  return hslToHex(accentHsl.h, accentHsl.s, newL)
+}
+
+// ============ WCAG 对比度 ============
+
+/**
+ * 相对亮度（WCAG 标准）
+ */
+export function getLuminance(hex: string): number {
+  const clean = normalizeToHex(hex)
+  if (!/^#[0-9A-Fa-f]{6}$/.test(clean)) return 0
+  const r = parseInt(clean.slice(1, 3), 16) / 255
+  const g = parseInt(clean.slice(3, 5), 16) / 255
+  const b = parseInt(clean.slice(5, 7), 16) / 255
+  const toLinear = (c: number) =>
+    c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+  return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b)
+}
+
+/**
+ * 对比度（WCAG 标准，1-21）
+ */
+export function getContrastRatio(color1: string, color2: string): number {
+  const lum1 = getLuminance(color1)
+  const lum2 = getLuminance(color2)
+  const lighter = Math.max(lum1, lum2)
+  const darker = Math.min(lum1, lum2)
+  return (lighter + 0.05) / (darker + 0.05)
+}
+
+/**
+ * 保证前景色对背景色达到最小对比度：
+ * 不达标时沿远离背景亮度的方向逐步调整前景亮度，直到达标或到达黑/白极限。
+ */
+export function ensureContrast(
+  fg: string,
+  bg: string,
+  minRatio: number
+): string {
+  let current = normalizeToHex(fg)
+  if (getContrastRatio(current, bg) >= minRatio) return current
+
+  const { h, s } = hexToHsl(current)
+  const bgIsDark = getLuminance(bg) < 0.5
+  // 深底提亮前景，浅底压暗前景
+  for (let step = 1; step <= 20; step++) {
+    const { l } = hexToHsl(current)
+    const nextL = bgIsDark ? Math.min(l + 5, 100) : Math.max(l - 5, 0)
+    current = hslToHex(h, s, nextL)
+    if (getContrastRatio(current, bg) >= minRatio) return current
+    if (nextL === 100 || nextL === 0) break
+  }
+  // 单方向到极限仍不达标（如中灰背景）：黑/白必有一方对比度更高，
+  // 对任意背景 max(白, 黑) ≥ 4.58，因此 4.5 目标总能满足
+  return getContrastRatio("#ffffff", bg) >= getContrastRatio("#000000", bg)
+    ? "#ffffff"
+    : "#000000"
+}
+
+// ============ 主题派生管线 ============
+
+export interface ThemeSeed {
+  /** 页面主背景 */
+  bgPrimary: string
+  /** 强调色 */
+  accent: string
+  /** 主文字色（可选，缺省时按背景自动生成并保证对比度） */
+  textPrimary?: string
+}
+
+/**
+ * 由 2-3 个种子色推导完整 13 色主题。
+ * 所有可读性关系（文字/背景、强调色上的文字等）由本函数保证，
+ * 而不是依赖调用方（尤其是 AI）自觉满足。
+ */
+export function deriveThemeColors(seed: ThemeSeed): Record<string, string> {
+  const bg = normalizeToHex(seed.bgPrimary)
+  const accentRaw = normalizeToHex(seed.accent)
+  const bgHsl = hexToHsl(bg)
+  const bgIsDark = getLuminance(bg) < 0.5
+
+  // 主文字：给定则校正，否则从背景色相派生近白/近黑
+  const textSeed =
+    seed.textPrimary !== undefined
+      ? normalizeToHex(seed.textPrimary)
+      : hslToHex(bgHsl.h, Math.min(bgHsl.s, 15), bgIsDark ? 92 : 12)
+  const textPrimary = ensureContrast(textSeed, bg, 4.5)
+
+  // 强调色至少要能从背景上分辨出来
+  const accent = ensureContrast(accentRaw, bg, 2)
+
+  const textSecondary = ensureContrast(
+    calculateTextSecondary(textPrimary, bg),
+    bg,
+    3
+  )
+  const textMuted = ensureContrast(calculateTextMuted(textPrimary, bg), bg, 3)
+
+  const accentHsl = hexToHsl(accent)
+  const accentText = ensureContrast(
+    getContrastRatio(bg, accent) >= 4.5 ? bg : textPrimary,
+    accent,
+    4.5
+  )
+
+  const success = ensureContrast(
+    hslToHex(120, Math.min(accentHsl.s, 60), bgIsDark ? 65 : 35),
+    bg,
+    3
+  )
+
+  return {
+    "--bg-primary": bg,
+    "--bg-secondary": calculateBgSecondary(bg),
+    "--bg-hover": calculateHoverBg(textPrimary, bg),
+    "--text-primary": textPrimary,
+    "--text-secondary": textSecondary,
+    "--text-muted": textMuted,
+    "--border-default": calculateBorderColor(textPrimary, bg),
+    "--border-active": accent,
+    "--accent": accent,
+    "--accent-hover": calculateAccentHover(accent, bg),
+    "--accent-text": accentText,
+    "--success": success,
+    "--glow": accent,
+  }
+}
