@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useState } from "react"
+import React, { Suspense, useEffect, useRef, useState } from "react"
 
 import styled from "@emotion/styled"
 import {
@@ -9,6 +9,8 @@ import {
 } from "@fortawesome/free-solid-svg-icons"
 
 import * as Settings from "./settingsHandler"
+import { applyColors } from "../../base/colorUtils"
+import { applyThemeMode } from "../../base/theme"
 import { IconButton } from "../../components/IconButton"
 import { emitSettingsApplied } from "../../services/settingsEvents"
 import {
@@ -322,9 +324,15 @@ const isTabId = (value: string | undefined): value is SettingsTabId =>
 interface props {
   hidePopup: () => void
   initialTab?: string
+  /** 注册关闭守卫：返回 false 可阻止关闭（用于未应用更改提示） */
+  registerCloseGuard?: (guard: () => boolean) => void
 }
 
-export const SettingsWindow = ({ hidePopup, initialTab }: props) => {
+export const SettingsWindow = ({
+  hidePopup,
+  initialTab,
+  registerCloseGuard,
+}: props) => {
   const [currentTab, setCurrentTab] = useState<SettingsTabId>(
     isTabId(initialTab) ? initialTab : TAB_OPTIONS[0].id
   )
@@ -351,7 +359,53 @@ export const SettingsWindow = ({ hidePopup, initialTab }: props) => {
     }
   }, [initialTab])
 
+  const snapshot = () =>
+    JSON.stringify({
+      design,
+      themes,
+      linkGroups,
+      searchSettings,
+      aiSettings,
+      linkDisplaySettings,
+      wallpaperSettings,
+      cardAreaSettings,
+    })
+
+  // 挂载时的快照，用于关闭时检测未应用的更改
+  const initialSnapshotRef = useRef<string | null>(null)
+  if (initialSnapshotRef.current === null) {
+    initialSnapshotRef.current = snapshot()
+  }
+
+  const snapshotRef = useRef("")
+  snapshotRef.current = snapshot()
+
+  useEffect(() => {
+    registerCloseGuard?.(() => {
+      if (snapshotRef.current === initialSnapshotRef.current) return true
+      return window.confirm("有未应用的更改，确定放弃并关闭吗？")
+    })
+  }, [registerCloseGuard])
+
+  // 颜色/主题模式即时预览；未应用就关闭时回滚到已保存的设计
+  const appliedRef = useRef(false)
+  useEffect(() => {
+    applyColors(design.colors)
+    applyThemeMode(design.mode || "retro")
+  }, [design])
+
+  useEffect(
+    () => () => {
+      if (appliedRef.current) return
+      const persisted = Settings.Design.getWithFallback()
+      applyColors(persisted.colors)
+      applyThemeMode(persisted.mode || "retro")
+    },
+    []
+  )
+
   const applyValues = () => {
+    appliedRef.current = true
     Settings.Design.set(design)
     Settings.Themes.set(themes)
     Settings.Search.set(searchSettings)

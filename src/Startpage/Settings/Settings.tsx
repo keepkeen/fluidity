@@ -1,4 +1,4 @@
-import React, { Suspense, useState, useEffect } from "react"
+import React, { Suspense, useState, useEffect, useRef } from "react"
 
 import styled from "@emotion/styled"
 import { faSlidersH } from "@fortawesome/free-solid-svg-icons"
@@ -53,6 +53,8 @@ const SettingsPopupToggle = styled.button`
 export const Settings = () => {
   const [showSettings, setShowSettings] = useState(false)
   const [initialTab, setInitialTab] = useState<string | undefined>(undefined)
+  // SettingsWindow 注册的关闭守卫（未应用更改时弹确认）
+  const closeGuardRef = useRef<() => boolean>(() => true)
 
   // 通知全局设置窗口状态变化
   useEffect(() => {
@@ -68,7 +70,11 @@ export const Settings = () => {
     }
   }, [])
 
-  const hidePopup = () => setShowSettings(false)
+  const hidePopup = () => {
+    if (!closeGuardRef.current()) return
+    closeGuardRef.current = () => true
+    setShowSettings(false)
+  }
   const showDefaultSettings = () => {
     setInitialTab(undefined)
     setShowSettings(true)
@@ -97,7 +103,13 @@ export const Settings = () => {
       {showSettings && (
         <Modal onClose={hidePopup} label="设置">
           <Suspense fallback={null}>
-            <SettingsWindow hidePopup={hidePopup} initialTab={initialTab} />
+            <SettingsWindow
+              hidePopup={hidePopup}
+              initialTab={initialTab}
+              registerCloseGuard={guard => {
+                closeGuardRef.current = guard
+              }}
+            />
           </Suspense>
         </Modal>
       )}
