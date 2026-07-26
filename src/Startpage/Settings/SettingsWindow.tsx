@@ -29,12 +29,6 @@ const AISettings = React.lazy(() =>
   }))
 )
 
-const Changelog = React.lazy(() =>
-  import("./Changelog/Changelog").then(module => ({
-    default: module.Changelog,
-  }))
-)
-
 const DataSettings = React.lazy(() =>
   import("./DataSettings/DataSettings").then(module => ({
     default: module.DataSettings,
@@ -313,7 +307,6 @@ const TAB_OPTIONS = [
   { id: "search", label: "搜索栏" },
   { id: "ai", label: "AI 助手" },
   { id: "data", label: "数据" },
-  { id: "changelog", label: "更新日志" },
 ] as const
 
 export type SettingsTabId = (typeof TAB_OPTIONS)[number]["id"]
@@ -496,8 +489,6 @@ export const SettingsWindow = ({
           )}
 
           {currentTab === "data" && <DataSettings />}
-
-          {currentTab === "changelog" && <Changelog />}
         </Suspense>
       </WindowContent>
 

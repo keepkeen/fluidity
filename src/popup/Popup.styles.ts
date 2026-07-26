@@ -373,27 +373,6 @@ export const Button = styled.button<{ primary?: boolean; danger?: boolean }>`
   }
 `
 
-export const Toast = styled.div<{ visible: boolean }>`
-  position: fixed;
-  bottom: 16px;
-  left: 50%;
-  background: rgba(18, 18, 21, 0.92);
-  color: var(--text-primary, var(--default-color));
-  padding: 10px 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
-  font-size: 12px;
-  opacity: ${({ visible }) => (visible ? 1 : 0)};
-  transition: opacity 0.25s, transform 0.25s;
-  transform: ${({ visible }) =>
-    visible
-      ? "translateX(-50%) translateY(0)"
-      : "translateX(-50%) translateY(6px)"};
-  z-index: 200;
-  pointer-events: none;
-`
-
 export const CheckIcon = styled.span`
   color: var(--accent, var(--accent-color));
   margin-right: 6px;

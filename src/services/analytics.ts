@@ -268,40 +268,31 @@ export const getAnalyticsSummary = (): AnalyticsSummary => {
   }
 }
 
-interface PrivacySettings {
-  shareTopLinks: boolean
-  shareRecentSearches: boolean
-  shareTodos: boolean
-  shareClickStats: boolean
-  shareSearchStats: boolean
-}
-
 /**
- * 获取 AI 隐私设置
+ * 是否允许向 AI 发送使用习惯（常用链接/搜索/待办/统计）。
+ * 旧版是 5 个独立开关：任一被关闭视为不共享，避免迁移扩大共享范围。
  */
-const getAIPrivacySettings = (): PrivacySettings => {
+const getShareHabits = (): boolean => {
   try {
     const data = localStorage.getItem("ai-settings")
     if (data) {
-      const settings = JSON.parse(data) as Partial<PrivacySettings>
-      return {
-        shareTopLinks: settings.shareTopLinks ?? true,
-        shareRecentSearches: settings.shareRecentSearches ?? true,
-        shareTodos: settings.shareTodos ?? true,
-        shareClickStats: settings.shareClickStats ?? true,
-        shareSearchStats: settings.shareSearchStats ?? true,
+      const settings = JSON.parse(data) as Record<string, unknown>
+      if (typeof settings.shareHabits === "boolean") {
+        return settings.shareHabits
       }
+      const legacy = [
+        settings.shareTopLinks,
+        settings.shareRecentSearches,
+        settings.shareTodos,
+        settings.shareClickStats,
+        settings.shareSearchStats,
+      ]
+      return !legacy.some(v => v === false)
     }
   } catch {
     // ignore
   }
-  return {
-    shareTopLinks: true,
-    shareRecentSearches: true,
-    shareTodos: true,
-    shareClickStats: true,
-    shareSearchStats: true,
-  }
+  return true
 }
 
 /**
@@ -342,10 +333,8 @@ const getPendingTodos = (): string[] => {
 /**
  * 生成 AI 提示的上下文数据
  */
-// eslint-disable-next-line sonarjs/cognitive-complexity
 export const generateAIContext = (): string => {
   const summary = getAnalyticsSummary()
-  const privacySettings = getAIPrivacySettings()
   const now = new Date()
 
   const context: Record<string, unknown> = {
@@ -353,28 +342,16 @@ export const generateAIContext = (): string => {
     weekday: ["日", "一", "二", "三", "四", "五", "六"][now.getDay()],
   }
 
-  if (privacySettings.shareTopLinks) {
+  if (getShareHabits()) {
     context.topLinks =
       summary.topLinks.length > 0
         ? summary.topLinks.map(l => `${l.label}(${l.group})`)
         : ["暂无数据"]
-  }
-
-  if (privacySettings.shareRecentSearches) {
     context.recentSearches =
       summary.recentSearches.length > 0 ? summary.recentSearches : ["暂无数据"]
-  }
-
-  if (privacySettings.shareTodos) {
     const pendingTodos = getPendingTodos()
     context.pendingTodos = pendingTodos.length > 0 ? pendingTodos : ["暂无待办"]
-  }
-
-  if (privacySettings.shareClickStats) {
     context.totalClicks = summary.totalClicks
-  }
-
-  if (privacySettings.shareSearchStats) {
     context.totalSearches = summary.totalSearches
   }
 

@@ -1,5 +1,5 @@
 /* eslint-disable jsx-a11y/no-autofocus */
-import React, { useEffect, useMemo, useRef, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 
 import { css, Global } from "@emotion/react"
 import {
@@ -14,6 +14,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
+import { GlobalNotification } from "../components/GlobalNotification"
 import { SyncStatusDot } from "../components/SyncStatusDot"
 import { linkGroup, links as defaultLinks } from "../data/data"
 import { FALLBACK_COLORS, applyColors } from "../base/colorUtils"
@@ -53,7 +54,6 @@ import {
   SectionTitle,
   Title,
   TitleRow,
-  Toast,
   UrlDisplay,
 } from "./Popup.styles"
 
@@ -167,8 +167,6 @@ export const Popup = () => {
     url: string
   } | null>(null)
 
-  const [toast, setToast] = useState({ visible: false, message: "" })
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // 初始化
   useEffect(() => {
@@ -221,19 +219,13 @@ export const Popup = () => {
     applyColors(colors)
   }, [colors])
 
-  // 清理 Toast 定时器
-  useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
-    }
-  }, [])
-
+  // 与主页共用同一套通知组件
   const showToast = (message: string) => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
-    setToast({ visible: true, message })
-    toastTimerRef.current = setTimeout(() => {
-      setToast({ visible: false, message: "" })
-    }, 1900)
+    window.dispatchEvent(
+      new CustomEvent("show-notification", {
+        detail: { type: "success", title: message, message: "" },
+      })
+    )
   }
 
   const toggleGroup = (title: string) => {
@@ -791,7 +783,7 @@ export const Popup = () => {
           </Modal>
         )}
 
-        <Toast visible={toast.visible}>{toast.message}</Toast>
+        <GlobalNotification />
       </Container>
     </>
   )

@@ -583,106 +583,35 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
             <SettingElement>
               <ToggleContainer>
                 <SettingsLabel style={{ padding: 0 }}>
-                  最常访问链接
+                  发送使用习惯
                 </SettingsLabel>
                 <Toggle
                   type="button"
-                  active={aiSettings.shareTopLinks}
-                  aria-label="向 AI 共享最常访问链接"
-                  aria-pressed={aiSettings.shareTopLinks}
+                  active={aiSettings.shareHabits}
+                  aria-label="向 AI 发送使用习惯"
+                  aria-pressed={aiSettings.shareHabits}
                   onClick={() =>
                     setAISettings(prev => ({
                       ...prev,
-                      shareTopLinks: !prev.shareTopLinks,
+                      shareHabits: !prev.shareHabits,
                     }))
                   }
                 />
               </ToggleContainer>
+              <HelpText>
+                包含常用链接、最近搜索、待办事项与点击/搜索统计
+              </HelpText>
             </SettingElement>
 
             <SettingElement>
               <ToggleContainer>
                 <SettingsLabel style={{ padding: 0 }}>
-                  最近搜索记录
-                </SettingsLabel>
-                <Toggle
-                  type="button"
-                  active={aiSettings.shareRecentSearches}
-                  aria-label="向 AI 共享最近搜索记录"
-                  aria-pressed={aiSettings.shareRecentSearches}
-                  onClick={() =>
-                    setAISettings(prev => ({
-                      ...prev,
-                      shareRecentSearches: !prev.shareRecentSearches,
-                    }))
-                  }
-                />
-              </ToggleContainer>
-            </SettingElement>
-
-            <SettingElement>
-              <ToggleContainer>
-                <SettingsLabel style={{ padding: 0 }}>待办事项</SettingsLabel>
-                <Toggle
-                  type="button"
-                  active={aiSettings.shareTodos}
-                  aria-label="向 AI 共享待办事项"
-                  aria-pressed={aiSettings.shareTodos}
-                  onClick={() =>
-                    setAISettings(prev => ({
-                      ...prev,
-                      shareTodos: !prev.shareTodos,
-                    }))
-                  }
-                />
-              </ToggleContainer>
-            </SettingElement>
-
-            <SettingElement>
-              <ToggleContainer>
-                <SettingsLabel style={{ padding: 0 }}>点击统计数</SettingsLabel>
-                <Toggle
-                  type="button"
-                  active={aiSettings.shareClickStats}
-                  aria-label="向 AI 共享点击统计数"
-                  aria-pressed={aiSettings.shareClickStats}
-                  onClick={() =>
-                    setAISettings(prev => ({
-                      ...prev,
-                      shareClickStats: !prev.shareClickStats,
-                    }))
-                  }
-                />
-              </ToggleContainer>
-            </SettingElement>
-
-            <SettingElement>
-              <ToggleContainer>
-                <SettingsLabel style={{ padding: 0 }}>搜索统计数</SettingsLabel>
-                <Toggle
-                  type="button"
-                  active={aiSettings.shareSearchStats}
-                  aria-label="向 AI 共享搜索统计数"
-                  aria-pressed={aiSettings.shareSearchStats}
-                  onClick={() =>
-                    setAISettings(prev => ({
-                      ...prev,
-                      shareSearchStats: !prev.shareSearchStats,
-                    }))
-                  }
-                />
-              </ToggleContainer>
-            </SettingElement>
-
-            <SettingElement>
-              <ToggleContainer>
-                <SettingsLabel style={{ padding: 0 }}>
-                  浏览时长统计
+                  发送浏览记录
                 </SettingsLabel>
                 <Toggle
                   type="button"
                   active={aiSettings.shareBrowserUsage}
-                  aria-label="向 AI 共享浏览时长统计"
+                  aria-label="向 AI 发送浏览记录"
                   aria-pressed={aiSettings.shareBrowserUsage}
                   onClick={() =>
                     setAISettings(prev => ({

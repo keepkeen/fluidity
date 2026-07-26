@@ -26,12 +26,8 @@ export interface AISettings {
   collectSearchHistory: boolean // 是否记录搜索历史
 
   // 发送给 AI 的数据控制
-  shareTopLinks: boolean // 发送最常访问链接
-  shareRecentSearches: boolean // 发送最近搜索
-  shareTodos: boolean // 发送待办事项
-  shareClickStats: boolean // 发送点击统计
-  shareSearchStats: boolean // 发送搜索统计
-  shareBrowserUsage: boolean // 发送浏览时长统计
+  shareHabits: boolean // 发送使用习惯（常用链接/最近搜索/待办/点击与搜索统计）
+  shareBrowserUsage: boolean // 发送浏览记录（域名/页面时长）
 }
 
 // 缓存的 AI 响应
@@ -68,12 +64,8 @@ const DEFAULT_SETTINGS: AISettings = {
   collectLinkClicks: true,
   collectSearchHistory: true,
 
-  // 默认开启数据共享给 AI
-  shareTopLinks: true,
-  shareRecentSearches: true,
-  shareTodos: true,
-  shareClickStats: true,
-  shareSearchStats: true,
+  // 默认开启使用习惯共享；浏览记录默认不共享
+  shareHabits: true,
   shareBrowserUsage: false,
 }
 
@@ -124,9 +116,23 @@ export const AISettingsManager = {
   get(): AISettings {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.AI_SETTINGS)
-      return data
-        ? { ...DEFAULT_SETTINGS, ...(JSON.parse(data) as Partial<AISettings>) }
-        : DEFAULT_SETTINGS
+      if (!data) return DEFAULT_SETTINGS
+      const stored = JSON.parse(data) as Partial<AISettings> &
+        Record<string, unknown>
+      const merged = { ...DEFAULT_SETTINGS, ...stored }
+      // 迁移：旧版是 5 个独立共享开关；任一被关闭视为不共享，
+      // 避免迁移悄悄扩大共享范围
+      if (typeof stored.shareHabits !== "boolean") {
+        const legacy = [
+          stored.shareTopLinks,
+          stored.shareRecentSearches,
+          stored.shareTodos,
+          stored.shareClickStats,
+          stored.shareSearchStats,
+        ]
+        merged.shareHabits = !legacy.some(v => v === false)
+      }
+      return merged
     } catch {
       return DEFAULT_SETTINGS
     }

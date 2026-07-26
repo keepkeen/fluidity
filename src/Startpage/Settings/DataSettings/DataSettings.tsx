@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react"
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react"
 
 import {
   faDownload,
@@ -73,6 +73,12 @@ import {
   WarningBox,
   WarningIcon,
 } from "./DataSettings.styles"
+
+const Changelog = React.lazy(() =>
+  import("../Changelog/Changelog").then(module => ({
+    default: module.Changelog,
+  }))
+)
 
 const formatSyncError = (error: unknown, fallback: string): string => {
   const message = error instanceof Error ? error.message : ""
@@ -185,6 +191,7 @@ export const DataSettings: React.FC = () => {
   const [conflictCopies, setConflictCopies] = useState<ConflictCopy[] | null>(
     null
   )
+  const [showChangelog, setShowChangelog] = useState(false)
   const [runtimeStatus, setRuntimeStatus] = useState<SyncRuntimeStatus>(() =>
     getSyncRuntimeStatus()
   )
@@ -849,6 +856,22 @@ export const DataSettings: React.FC = () => {
                   <span>{syncError}</span>
                 </ResultDetails>
               </ResultMessage>
+            )}
+          </Section>
+
+          <Section>
+            <SectionTitle>更新日志</SectionTitle>
+            <Button
+              variant="secondary"
+              type="button"
+              onClick={() => setShowChangelog(prev => !prev)}
+            >
+              {showChangelog ? "收起更新日志" : "查看更新日志"}
+            </Button>
+            {showChangelog && (
+              <Suspense fallback={<Description>正在加载...</Description>}>
+                <Changelog />
+              </Suspense>
             )}
           </Section>
         </SettingsColumn>
