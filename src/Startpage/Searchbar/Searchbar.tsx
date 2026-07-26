@@ -721,15 +721,27 @@ export const Searchbar = () => {
     ]
   )
 
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (blurTimerRef.current) clearTimeout(blurTimerRef.current)
+    }
+  }, [])
+
   const handleFocus = useCallback(() => {
+    // 小屏上建议列表是静态布局，聚焦即展开会把链接区顶开；输入后再显示
+    const isSmallScreen = window.matchMedia("(max-width: 600px)").matches
+    if (isSmallScreen && !inputValue.trim()) return
     setShowSuggestions(true)
     // 建议会通过 useEffect 自动更新
-  }, [])
+  }, [inputValue])
 
   const handleBlur = (e: React.FocusEvent) => {
     // 延迟关闭，以便点击建议项时能够触发
     if (!containerRef.current?.contains(e.relatedTarget as Node)) {
-      setTimeout(() => setShowSuggestions(false), 150)
+      if (blurTimerRef.current) clearTimeout(blurTimerRef.current)
+      blurTimerRef.current = setTimeout(() => setShowSuggestions(false), 150)
     }
   }
 
@@ -775,7 +787,11 @@ export const Searchbar = () => {
           }
           type="text"
           value={inputValue}
-          onChange={e => setInputValue(e.target.value)}
+          onChange={e => {
+            setInputValue(e.target.value)
+            // 输入内容后展开建议（小屏聚焦时不自动展开，靠这里补上）
+            if (e.target.value.trim()) setShowSuggestions(true)
+          }}
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
           onBlur={handleBlur}

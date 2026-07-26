@@ -430,6 +430,11 @@ export const AccordionGroup = memo(
     const startWidthRef = useRef(0)
     const startYRef = useRef(0)
     const startHeightRef = useRef(0)
+    // 拖拽中只更新本地视觉状态，mouseup 才通知父级落盘，
+    // 避免每次 mousemove 都同步读写 localStorage
+    const pendingWidthRef = useRef<number | null>(null)
+    const pendingHeightRef = useRef<number | null>(null)
+    const [dragHeight, setDragHeight] = useState<number | null>(null)
 
     // 计算填充高度百分比（基于链接数量的相对排序）
     const fillPercent =
@@ -482,11 +487,15 @@ export const AccordionGroup = memo(
           Math.min(500, startWidthRef.current + deltaX)
         )
         setContentWidth(newWidth)
-        onWidthChange?.(newWidth)
+        pendingWidthRef.current = newWidth
       }
 
       const handleMouseUp = () => {
         setIsDraggingWidth(false)
+        if (pendingWidthRef.current !== null) {
+          onWidthChange?.(pendingWidthRef.current)
+          pendingWidthRef.current = null
+        }
       }
 
       document.addEventListener("mousemove", handleMouseMove)
@@ -520,11 +529,17 @@ export const AccordionGroup = memo(
           120,
           Math.min(600, startHeightRef.current + deltaY)
         )
-        onHeightChange?.(newHeight)
+        setDragHeight(newHeight)
+        pendingHeightRef.current = newHeight
       }
 
       const handleMouseUp = () => {
         setIsDraggingHeight(false)
+        setDragHeight(null)
+        if (pendingHeightRef.current !== null) {
+          onHeightChange?.(pendingHeightRef.current)
+          pendingHeightRef.current = null
+        }
       }
 
       document.addEventListener("mousemove", handleMouseMove)
@@ -536,9 +551,11 @@ export const AccordionGroup = memo(
       }
     }, [isDraggingHeight, onHeightChange])
 
-    // 计算动态高度（优先使用自定义高度）
+    // 计算动态高度（拖拽中的临时高度 > 自定义高度 > 自动计算）
     const dynamicHeight =
-      customHeight ?? calculateAccordionHeight(maxLinkCount, compact)
+      dragHeight ??
+      customHeight ??
+      calculateAccordionHeight(maxLinkCount, compact)
 
     return (
       <StyledAccordionGroup

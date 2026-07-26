@@ -99,6 +99,13 @@ export class ErrorBoundary extends Component<Props, State> {
     this.setState({ hasError: false, error: null })
   }
 
+  handleCopyDetails = (): void => {
+    const { error } = this.state
+    if (!error) return
+    const text = `${error.toString()}\n${error.stack ?? ""}`
+    void navigator.clipboard?.writeText(text).catch(() => undefined)
+  }
+
   render(): ReactNode {
     const { hasError, error } = this.state
     const { fallback, children } = this.props
@@ -119,6 +126,9 @@ export class ErrorBoundary extends Component<Props, State> {
             <ErrorDetails>
               <summary>查看错误详情</summary>
               <pre>{error.toString()}</pre>
+              <RetryButton type="button" onClick={this.handleCopyDetails}>
+                复制调试信息
+              </RetryButton>
             </ErrorDetails>
           )}
         </ErrorContainer>
