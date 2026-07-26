@@ -20,6 +20,8 @@ import { aiLogger } from "../utils/logger"
 export interface AISettings {
   enabled: boolean
   apiKey: string
+  /** OpenAI 兼容接口地址（不含 /chat/completions 路径） */
+  apiBaseUrl: string
   model: string
   cacheMinutes: number // 缓存时间（分钟）
 
@@ -59,9 +61,12 @@ const STORAGE_KEYS = {
   AI_CACHE: "ai-cache",
 }
 
+export const DEFAULT_AI_BASE_URL = "https://api.deepseek.com"
+
 const DEFAULT_SETTINGS: AISettings = {
   enabled: false,
   apiKey: "",
+  apiBaseUrl: DEFAULT_AI_BASE_URL,
   model: "deepseek-chat",
   cacheMinutes: 60, // 默认缓存1小时
 
@@ -223,8 +228,13 @@ export const callDeepSeekAPI = async (
     requestBody.temperature = temperature
   }
 
+  // 支持任意 OpenAI 兼容服务（OpenAI/Moonshot/本地 Ollama 等）
+  const baseUrl =
+    AISettingsManager.get().apiBaseUrl.trim().replace(/\/+$/, "") ||
+    DEFAULT_AI_BASE_URL
+
   const response = await fetchWithTimeout(
-    "https://api.deepseek.com/chat/completions",
+    `${baseUrl}/chat/completions`,
     {
       method: "POST",
       headers: {

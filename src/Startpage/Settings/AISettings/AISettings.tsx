@@ -9,8 +9,11 @@ import {
 } from "@fortawesome/free-solid-svg-icons"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
-import { AISettings as AISettingsType } from "../../../services/ai"
-import { ensureAIPermissions } from "../../../services/optionalPermissions"
+import {
+  AISettings as AISettingsType,
+  DEFAULT_AI_BASE_URL,
+} from "../../../services/ai"
+import { ensureAIPermissionsFor } from "../../../services/optionalPermissions"
 import { emitSettingsApplied } from "../../../services/settingsEvents"
 import {
   getAnalyticsSummary,
@@ -127,25 +130,6 @@ const IconBtn = styled.button`
   }
 `
 
-const Select = styled.select`
-  width: 100%;
-  padding: 10px 12px;
-  background: var(--bg-color);
-  border: 2px solid var(--border-color);
-  color: var(--default-color);
-  font-size: 0.9rem;
-  cursor: pointer;
-
-  &:focus {
-    outline: none;
-    border-color: var(--accent-color);
-  }
-
-  option {
-    background: var(--bg-color);
-    color: var(--default-color);
-  }
-`
 
 const HelpText = styled.p`
   font-size: 0.8rem;
@@ -288,9 +272,10 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
     setTestResult(null)
 
     try {
-      if (!(await ensureAIPermissions())) {
+      const baseUrl = aiSettings.apiBaseUrl.trim() || DEFAULT_AI_BASE_URL
+      if (!(await ensureAIPermissionsFor(baseUrl))) {
         setTestResult({
-          message: "❌ 未授予 DeepSeek API 访问权限，无法调用 AI",
+          message: "❌ 未授予 AI 接口访问权限，无法调用 AI",
           error: true,
         })
         return
@@ -333,8 +318,12 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
                   onClick={() => {
                     const enabling = !aiSettings.enabled
                     setAISettings(prev => ({ ...prev, enabled: enabling }))
-                    // 在用户手势中按需申请 DeepSeek 域名权限
-                    if (enabling) void ensureAIPermissions()
+                    // 在用户手势中按需申请 AI 接口域名权限
+                    if (enabling) {
+                      void ensureAIPermissionsFor(
+                        aiSettings.apiBaseUrl.trim() || DEFAULT_AI_BASE_URL
+                      )
+                    }
                   }}
                 />
               </ToggleContainer>
@@ -369,16 +358,42 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
             </SettingElement>
 
             <SettingElement>
-              <SettingsLabel>模型选择</SettingsLabel>
-              <Select
+              <SettingsLabel>API 地址</SettingsLabel>
+              <Input
+                type="text"
+                value={aiSettings.apiBaseUrl}
+                onChange={e =>
+                  setAISettings(prev => ({
+                    ...prev,
+                    apiBaseUrl: e.target.value,
+                  }))
+                }
+                placeholder={DEFAULT_AI_BASE_URL}
+                aria-label="AI 接口地址"
+              />
+              <HelpText>
+                任意 OpenAI 兼容接口，如 https://api.openai.com/v1
+                或本地 Ollama（http://localhost:11434/v1）。留空使用 DeepSeek
+              </HelpText>
+            </SettingElement>
+
+            <SettingElement>
+              <SettingsLabel>模型</SettingsLabel>
+              <Input
+                type="text"
+                list="ai-model-presets"
                 value={aiSettings.model}
                 onChange={e =>
                   setAISettings(prev => ({ ...prev, model: e.target.value }))
                 }
-              >
+                aria-label="AI 模型名称"
+                placeholder="deepseek-chat"
+              />
+              <datalist id="ai-model-presets">
                 <option value="deepseek-chat">DeepSeek Chat (推荐)</option>
                 <option value="deepseek-reasoner">DeepSeek Reasoner</option>
-              </Select>
+              </datalist>
+              <HelpText>与所选服务商匹配的模型名称</HelpText>
             </SettingElement>
 
             <SettingElement>

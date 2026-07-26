@@ -43,5 +43,15 @@ export const ensureOriginPermissions = async (
 export const ensureAIPermissions = (): Promise<boolean> =>
   ensureOriginPermissions(AI_PERMISSION_ORIGINS)
 
+/** 按用户配置的 AI 接口地址申请对应域名权限 */
+export const ensureAIPermissionsFor = (baseUrl: string): Promise<boolean> => {
+  try {
+    const origin = new URL(baseUrl).origin
+    return ensureOriginPermissions([`${origin}/*`])
+  } catch {
+    return Promise.resolve(false)
+  }
+}
+
 export const ensureSyncPermissions = (): Promise<boolean> =>
   ensureOriginPermissions(SYNC_PERMISSION_ORIGINS)
