@@ -301,6 +301,19 @@ export const GlobalNotification: React.FC = () => {
     }, 300)
   }, [])
 
+  // 悬停阅读时暂停自动收回，移开后短暂停留再收
+  const pauseAutoDismiss = useCallback(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current)
+      hideTimerRef.current = null
+    }
+  }, [])
+
+  const resumeAutoDismiss = useCallback(() => {
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
+    hideTimerRef.current = setTimeout(() => dismissBanner(), 1600)
+  }, [dismissBanner])
+
   // 接收通知事件：入历史 + 弹横幅
   useEffect(() => {
     const handler = (event: CustomEvent<NotificationData>) => {
@@ -382,6 +395,8 @@ export const GlobalNotification: React.FC = () => {
           role="status"
           aria-live="polite"
           onClick={dismissBanner}
+          onMouseEnter={pauseAutoDismiss}
+          onMouseLeave={resumeAutoDismiss}
         >
           <BannerIcon tone={banner.type} aria-hidden>
             <FontAwesomeIcon icon={typeIcon(banner.type)} />

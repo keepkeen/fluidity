@@ -406,7 +406,6 @@ export interface Theme {
   name: string
   colors: colorsType
   image: string
-  mode?: "modern" | "retro" // Default to 'retro' if undefined for backward compat
 }
 
 export const themes: Theme[] = [

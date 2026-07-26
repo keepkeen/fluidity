@@ -43,7 +43,6 @@ import { TodayScreenTime } from "../Usage/TodayScreenTime"
 const CELL = 96
 
 const GridContainer = styled.div`
-  animation: fade-up 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
   flex: 1;
   min-width: 0;
   max-width: 1040px;
@@ -59,11 +58,18 @@ const GridContainer = styled.div`
 const cellSpan = (item: HomeItem): { col: number; row: number } =>
   item.kind === "widget" ? { col: 3, row: 3 } : { col: 1, row: 1 }
 
+/**
+ * 外层承载 dnd-kit 的行内 transform 与交错入场动画；
+ * 抖动动画放内层，避免 CSS animation 覆盖行内 transform。
+ *
+ * settled 后必须移除入场动画：重排会让 React 移动 DOM 节点，
+ * 被移动节点的 CSS 动画会整体重启（掉落后全场闪一遍淡入）。
+ */
 const ItemShell = styled.div<{
   col: number
   row: number
-  jiggling: boolean
   delayIndex: number
+  settled: boolean
 }>`
   grid-column: span ${({ col }) => col};
   grid-row: span ${({ row }) => row};
@@ -71,9 +77,23 @@ const ItemShell = styled.div<{
   min-width: 0;
   min-height: 0;
 
+  animation: ${({ settled }) =>
+    settled ? "none" : "fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards"};
+  animation-delay: ${({ delayIndex }) => Math.min(delayIndex, 14) * 28}ms;
+`
+
+const JiggleBox = styled.div<{ jiggling: boolean; delayIndex: number }>`
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  transform-origin: 50% 50%;
+
   animation: ${({ jiggling }) =>
     jiggling ? "jiggle 0.28s ease-in-out infinite" : "none"};
-  animation-delay: ${({ delayIndex }) => (delayIndex % 4) * 70}ms;
+  /* 负延迟：各条目从周期中段开始，立即错相 */
+  animation-delay: ${({ delayIndex }) => -(delayIndex % 5) * 57}ms;
 `
 
 const AppTile = styled.button`
@@ -267,28 +287,35 @@ const SortableItem = ({
   item,
   index,
   editMode,
+  settled,
   onOpen,
   onRemove,
 }: {
   item: HomeItem
   index: number
   editMode: boolean
+  settled: boolean
   onOpen: (item: Extract<HomeItem, { kind: "app" }>) => void
   onRemove: (item: HomeItem) => void
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id })
   const span = cellSpan(item)
+  /* 固定挂载时的序号：animation-delay 若随重排变化会导致动画重启（闪烁） */
+  const [entranceIndex] = useState(index)
 
   return (
     <ItemShell
       ref={setNodeRef}
       col={span.col}
       row={span.row}
-      jiggling={editMode && !isDragging}
-      delayIndex={index}
+      delayIndex={entranceIndex}
+      settled={settled}
       style={{
-        transform: DndCSS.Transform.toString(transform),
+        /* 去掉 scale：跨尺寸槽位（图标↔小组件）拖动时不做压缩预览，iOS 手感 */
+        transform: DndCSS.Transform.toString(
+          transform ? { ...transform, scaleX: 1, scaleY: 1 } : null
+        ),
         transition,
         zIndex: isDragging ? 10 : undefined,
         opacity: isDragging ? 0.85 : 1,
@@ -299,44 +326,46 @@ const SortableItem = ({
       role={undefined}
       tabIndex={-1}
     >
-      {editMode && (
-        <RemoveBadge
-          type="button"
-          aria-label={
-            item.kind === "app" ? `删除 ${item.label}` : "移除小组件"
-          }
-          onPointerDown={e => e.stopPropagation()}
-          onClick={e => {
-            e.stopPropagation()
-            onRemove(item)
-          }}
-        >
-          <FontAwesomeIcon icon={faXmark} />
-        </RemoveBadge>
-      )}
+      <JiggleBox jiggling={editMode && !isDragging} delayIndex={entranceIndex}>
+        {editMode && (
+          <RemoveBadge
+            type="button"
+            aria-label={
+              item.kind === "app" ? `删除 ${item.label}` : "移除小组件"
+            }
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => {
+              e.stopPropagation()
+              onRemove(item)
+            }}
+          >
+            <FontAwesomeIcon icon={faXmark} />
+          </RemoveBadge>
+        )}
 
-      {item.kind === "widget" ? (
-        <WidgetShell>
-          {item.id === WIDGET_SCREEN_TIME ? (
-            <TodayScreenTime />
-          ) : (
-            <RediscoveryCard />
-          )}
-        </WidgetShell>
-      ) : (
-        <AppTile
-          type="button"
-          title={item.url}
-          onClick={() => {
-            if (!editMode) onOpen(item)
-          }}
-        >
-          <AppIconBox>
-            <Favicon url={item.url} icon={item.icon} size={30} />
-          </AppIconBox>
-          <AppLabel>{item.label}</AppLabel>
-        </AppTile>
-      )}
+        {item.kind === "widget" ? (
+          <WidgetShell>
+            {item.id === WIDGET_SCREEN_TIME ? (
+              <TodayScreenTime />
+            ) : (
+              <RediscoveryCard />
+            )}
+          </WidgetShell>
+        ) : (
+          <AppTile
+            type="button"
+            title={item.url}
+            onClick={() => {
+              if (!editMode) onOpen(item)
+            }}
+          >
+            <AppIconBox>
+              <Favicon url={item.url} icon={item.icon} size={30} />
+            </AppIconBox>
+            <AppLabel>{item.label}</AppLabel>
+          </AppTile>
+        )}
+      </JiggleBox>
     </ItemShell>
   )
 }
@@ -348,7 +377,16 @@ export const HomeGrid = () => {
   const [layout, setLayout] = useState(() => readHomeLayout())
   const [editMode, setEditMode] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
+  const [settled, setSettled] = useState(false)
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pressOriginRef = useRef<{ x: number; y: number } | null>(null)
+  const gridRef = useRef<HTMLDivElement | null>(null)
+
+  // 入场动画结束后移除 animation，避免重排移动 DOM 时动画重启闪烁
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(true), 1100)
+    return () => clearTimeout(timer)
+  }, [])
 
   const items = useMemo(
     () => buildHomeItems(linkGroups, layout, LinkAnalytics.get(), Date.now()),
@@ -361,20 +399,60 @@ export const HomeGrid = () => {
     })
   )
 
-  // 长按进入编辑模式（iOS 式）
-  const handlePointerDown = useCallback(() => {
-    if (longPressRef.current) clearTimeout(longPressRef.current)
-    longPressRef.current = setTimeout(() => setEditMode(true), 480)
-  }, [])
-
+  // 长按进入编辑模式（iOS 式）；允许 10px 以内的指针抖动
   const cancelLongPress = useCallback(() => {
     if (longPressRef.current) {
       clearTimeout(longPressRef.current)
       longPressRef.current = null
     }
+    pressOriginRef.current = null
   }, [])
 
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      cancelLongPress()
+      pressOriginRef.current = { x: e.clientX, y: e.clientY }
+      longPressRef.current = setTimeout(() => setEditMode(true), 480)
+    },
+    [cancelLongPress]
+  )
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      const origin = pressOriginRef.current
+      if (!origin) return
+      if (Math.hypot(e.clientX - origin.x, e.clientY - origin.y) > 10) {
+        cancelLongPress()
+      }
+    },
+    [cancelLongPress]
+  )
+
   useEffect(() => cancelLongPress, [cancelLongPress])
+
+  // 设置里"重置主屏布局"等外部改动 → 即时刷新
+  useEffect(() => {
+    const refresh = () => {
+      setLayout(readHomeLayout())
+      setLinkGroups(Links.getWithFallback())
+    }
+    window.addEventListener("fluidity-home-layout-changed", refresh)
+    return () =>
+      window.removeEventListener("fluidity-home-layout-changed", refresh)
+  }, [])
+
+  // iOS 式：点击网格空隙或网格外的壁纸区域退出编辑
+  useEffect(() => {
+    if (!editMode || deleteTarget) return
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node
+      const grid = gridRef.current
+      if (!grid) return
+      if (target === grid || !grid.contains(target)) setEditMode(false)
+    }
+    window.addEventListener("pointerdown", onPointerDown)
+    return () => window.removeEventListener("pointerdown", onPointerDown)
+  }, [editMode, deleteTarget])
 
   // Escape 退出编辑
   useEffect(() => {
@@ -468,9 +546,10 @@ export const HomeGrid = () => {
           strategy={rectSortingStrategy}
         >
           <GridContainer
+            ref={gridRef}
             onPointerDown={handlePointerDown}
             onPointerUp={cancelLongPress}
-            onPointerMove={cancelLongPress}
+            onPointerMove={handlePointerMove}
             onPointerLeave={cancelLongPress}
           >
             {items.map((item, index) => (
@@ -479,6 +558,7 @@ export const HomeGrid = () => {
                 item={item}
                 index={index}
                 editMode={editMode}
+                settled={settled}
                 onOpen={handleOpen}
                 onRemove={handleRemove}
               />
