@@ -18,6 +18,7 @@ import {
   BrowserUsageSettings,
   DEFAULT_BROWSER_USAGE_SETTINGS,
   getBrowserUsageSettings,
+  hasBrowserUsagePermissions,
   removeBrowserUsagePermissions,
   requestBrowserUsagePermissions,
   setBrowserUsageSettings,
@@ -178,6 +179,7 @@ export const DataSettings: React.FC = () => {
     useState<BrowserUsageSettings>(DEFAULT_BROWSER_USAGE_SETTINGS)
   const [usageBusy, setUsageBusy] = useState(false)
   const [usageError, setUsageError] = useState<string | null>(null)
+  const [usageSuccess, setUsageSuccess] = useState<string | null>(null)
 
   const [token, setToken] = useState("")
   const [syncPassword, setSyncPassword] = useState("")
@@ -263,16 +265,19 @@ export const DataSettings: React.FC = () => {
 
   const persistUsageSettings = async (
     nextSettings: BrowserUsageSettings
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     setUsageBusy(true)
     setUsageError(null)
+    setUsageSuccess(null)
     try {
       await setBrowserUsageSettings(nextSettings)
       setUsageSettingsState(nextSettings)
+      return true
     } catch (error) {
       setUsageError(
         error instanceof Error ? error.message : "浏览统计设置保存失败"
       )
+      return false
     } finally {
       setUsageBusy(false)
     }
@@ -280,17 +285,38 @@ export const DataSettings: React.FC = () => {
 
   const handleUsageEnabledChange = async (enabled: boolean): Promise<void> => {
     if (enabled) {
+      const alreadyGranted = await hasBrowserUsagePermissions()
       const granted = await requestBrowserUsagePermissions()
       if (!granted) {
         setUsageError("需要授予网站访问权限后才能统计浏览时长")
         return
       }
-      await persistUsageSettings({ ...usageSettings, enabled: true })
+      const saved = await persistUsageSettings({
+        ...usageSettings,
+        enabled: true,
+      })
+      if (!saved) {
+        if (!alreadyGranted) await removeBrowserUsagePermissions()
+        return
+      }
+      setUsageSuccess(
+        "浏览统计已启动，当前打开的普通网页会立即接入；新标签页本身不计入时长。"
+      )
       return
     }
 
-    await persistUsageSettings({ ...usageSettings, enabled: false })
-    void removeBrowserUsagePermissions()
+    const saved = await persistUsageSettings({
+      ...usageSettings,
+      enabled: false,
+    })
+    if (!saved) return
+
+    const removed = await removeBrowserUsagePermissions()
+    setUsageSuccess(
+      removed
+        ? "浏览统计已关闭，网站访问权限已移除。"
+        : "浏览统计已关闭；网站访问权限可在扩展详情页中检查。"
+    )
   }
 
   const handleUsagePrivacyChange = async (
@@ -578,6 +604,18 @@ export const DataSettings: React.FC = () => {
                 <ResultDetails>
                   <strong>浏览统计设置错误</strong>
                   <span>{usageError}</span>
+                </ResultDetails>
+              </ResultMessage>
+            )}
+
+            {usageSuccess && (
+              <ResultMessage success>
+                <ResultIcon success>
+                  <FontAwesomeIcon icon={faCheck} />
+                </ResultIcon>
+                <ResultDetails>
+                  <strong>浏览统计状态</strong>
+                  <span>{usageSuccess}</span>
                 </ResultDetails>
               </ResultMessage>
             )}

@@ -6,6 +6,8 @@
  * 降低安装时的权限告警面。
  */
 
+import { resolveAIServicePermissionOrigin } from "./aiEndpoint"
+
 export const AI_PERMISSION_ORIGINS = ["https://api.deepseek.com/*"]
 
 export const SYNC_PERMISSION_ORIGINS = [
@@ -46,8 +48,7 @@ export const ensureAIPermissions = (): Promise<boolean> =>
 /** 按用户配置的 AI 接口地址申请对应域名权限 */
 export const ensureAIPermissionsFor = (baseUrl: string): Promise<boolean> => {
   try {
-    const origin = new URL(baseUrl).origin
-    return ensureOriginPermissions([`${origin}/*`])
+    return ensureOriginPermissions([resolveAIServicePermissionOrigin(baseUrl)])
   } catch {
     return Promise.resolve(false)
   }

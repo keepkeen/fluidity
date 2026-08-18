@@ -30,12 +30,12 @@ const GreetingText = styled.div<{ $loading?: boolean }>`
   color: var(--text-primary);
   text-align: center;
   padding: 12px 26px;
-  border: 1px solid var(--surface-border);
+  border: 1px solid var(--home-stroke);
   border-radius: var(--radius-main);
-  background: var(--surface-bg);
+  background: var(--home-surface);
   backdrop-filter: var(--surface-blur);
   -webkit-backdrop-filter: var(--surface-blur);
-  box-shadow: var(--shadow-soft);
+  box-shadow: var(--home-shadow);
   opacity: ${({ $loading }) => ($loading ? 0.6 : 1)};
   transition: opacity 0.3s, transform 0.3s;
   max-width: 600px;
@@ -86,11 +86,11 @@ const DailyReviewText = styled.div`
 const RefreshButton = styled.button<{ spinning?: boolean }>`
   width: 36px;
   height: 36px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--home-stroke);
+  border-radius: 12px;
+  background: var(--home-surface);
+  backdrop-filter: var(--surface-blur);
+  -webkit-backdrop-filter: var(--surface-blur);
   color: var(--text-primary);
   cursor: pointer;
   display: flex;
@@ -99,7 +99,7 @@ const RefreshButton = styled.button<{ spinning?: boolean }>`
   transition: 0.2s;
 
   &:hover {
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--home-surface-strong);
     color: var(--accent);
   }
 
@@ -131,6 +131,7 @@ const AIBadge = styled.span`
   margin-left: 8px;
   vertical-align: middle;
   opacity: 0.8;
+  border-radius: 999px;
 `
 
 export const AIGreeting = () => {

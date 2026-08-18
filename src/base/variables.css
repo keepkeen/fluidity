@@ -20,6 +20,12 @@
 	--shadow-card: var(--shadow-soft);
 	--glass-opacity: 0.7;
 	--hover-transform: translateY(-1px);
+	/* 主屏统一表面：图标、小组件、搜索和问候共享同一层次。 */
+	--home-surface: color-mix(in srgb, var(--bg-primary) 68%, transparent);
+	--home-surface-strong: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+	--home-stroke: color-mix(in srgb, var(--text-primary) 16%, transparent);
+	--home-shadow: 0 10px 30px color-mix(in srgb, var(--bg-primary) 42%, transparent);
+	--home-shadow-pop: 0 22px 60px color-mix(in srgb, var(--bg-primary) 58%, transparent);
 	/* ===== 新版 13 色系统 ===== */
 
 	/* 背景层 */

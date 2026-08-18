@@ -331,7 +331,7 @@ const steps: Step[] = [
       {
         icon: faMagicWandSparkles,
         title: "AI 助手设置",
-        desc: "配置 DeepSeek API Key，控制数据收集和隐私选项",
+        desc: "配置 AI 服务的 API Key，控制数据收集和隐私选项",
       },
     ],
   },

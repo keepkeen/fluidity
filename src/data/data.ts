@@ -261,7 +261,7 @@ export interface Search {
 
 export const searchSettings: Search = {
   engine: searchEngines[0].value,
-  placeholder: "按 Enter 搜索，@ 切换引擎，/ 搜索链接",
+  placeholder: "搜索标签、拼音或网页，@ 切换引擎",
   fastForward: {
     deepl: "https://deepl.com/",
     maps: "https://google.de/maps/",
@@ -320,6 +320,7 @@ export type BingRegion = "cn" | "en-US" | "ja-JP" | "de-DE"
 // 壁纸设置接口
 export interface WallpaperSettings {
   source: WallpaperSource
+  followTheme: boolean
   displayMode: WallpaperDisplayMode
   presetImage: string
   customUrl: string
@@ -340,6 +341,7 @@ export interface CardAreaSettings {
 // 壁纸设置默认值
 export const defaultWallpaperSettings: WallpaperSettings = {
   source: "preset",
+  followTheme: true,
   displayMode: "fullscreen",
   presetImage: "",
   customUrl: "",

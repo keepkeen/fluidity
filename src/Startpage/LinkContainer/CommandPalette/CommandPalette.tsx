@@ -15,7 +15,8 @@ const Overlay = styled.div<{ visible: boolean }>`
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: color-mix(in srgb, var(--bg-primary) 58%, transparent);
+  backdrop-filter: blur(6px);
   opacity: ${({ visible }) => (visible ? 1 : 0)};
   pointer-events: ${({ visible }) => (visible ? "auto" : "none")};
   transition: opacity 0.2s;
@@ -31,12 +32,12 @@ const PaletteContainer = styled.div<{ visible: boolean }>`
   width: 90%;
   max-width: 600px;
   max-height: 70vh;
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  background: var(--home-surface);
+  backdrop-filter: var(--surface-blur);
+  -webkit-backdrop-filter: var(--surface-blur);
+  border: 1px solid var(--home-stroke);
+  border-radius: var(--radius-main);
+  box-shadow: var(--home-shadow-pop);
   opacity: ${({ visible }) => (visible ? 1 : 0)};
   pointer-events: ${({ visible }) => (visible ? "auto" : "none")};
   transition: opacity 0.2s, transform 0.2s;
@@ -50,7 +51,7 @@ const SearchHeader = styled.div`
   display: flex;
   align-items: center;
   padding: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--home-stroke);
   gap: 12px;
 `
 
@@ -116,7 +117,7 @@ const ResultsContainer = styled.div`
 `
 
 const GroupSection = styled.div`
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--home-stroke);
 
   &:last-child {
     border-bottom: none;
@@ -128,7 +129,7 @@ const GroupHeader = styled.div`
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--accent);
-  background: rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--home-surface-strong) 72%, transparent);
   display: flex;
   align-items: center;
   gap: 8px;

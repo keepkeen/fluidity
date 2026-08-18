@@ -69,6 +69,17 @@ export const Settings = () => {
     }
   }, [])
 
+  useEffect(() => {
+    const openSettings = (event: Event) => {
+      const detail = (event as CustomEvent<{ tab?: string }>).detail
+      setInitialTab(detail?.tab === "data" ? "data" : undefined)
+      setShowSettings(true)
+    }
+    window.addEventListener("fluidity:open-settings", openSettings)
+    return () =>
+      window.removeEventListener("fluidity:open-settings", openSettings)
+  }, [])
+
   const hidePopup = () => {
     if (!closeGuardRef.current()) return
     closeGuardRef.current = () => true

@@ -33,6 +33,11 @@ interface RegisteredContentScript {
   persistAcrossSessions: boolean
 }
 
+interface UsageRegistrationResult {
+  registered: boolean
+  injectedTabs: number
+}
+
 interface ScriptingApi {
   executeScript(
     details: { target: { tabId: number }; files: string[] },
@@ -421,11 +426,30 @@ const unregisterUsageContentScript = async (): Promise<void> => {
   })
 }
 
+const hasRegisteredUsageContentScript = async (): Promise<boolean> => {
+  const scripting = getScriptingApi()
+  if (!scripting?.getRegisteredContentScripts) return false
+
+  return await new Promise<boolean>((resolve, reject) => {
+    scripting.getRegisteredContentScripts(
+      { ids: [TRACKING_SCRIPT_ID] },
+      scripts => {
+        const err = runtimeError()
+        if (err?.message) {
+          reject(new Error(err.message))
+          return
+        }
+        resolve(scripts.some(script => script.id === TRACKING_SCRIPT_ID))
+      }
+    )
+  })
+}
+
 const registerUsageContentScript = async (): Promise<void> => {
   const scripting = getScriptingApi()
   if (!scripting?.registerContentScripts) return
 
-  await unregisterUsageContentScript()
+  if (await hasRegisteredUsageContentScript()) return
   await new Promise<void>((resolve, reject) => {
     scripting.registerContentScripts(
       [
@@ -449,15 +473,65 @@ const registerUsageContentScript = async (): Promise<void> => {
   })
 }
 
-const updateUsageContentScriptRegistration = async (): Promise<void> => {
-  const settings = await getUsageSettings()
-  if (!settings.enabled) {
-    await unregisterUsageContentScript()
-    return
+const injectUsageContentScriptIntoOpenTabs = async (): Promise<number> => {
+  const scripting = getScriptingApi()
+  if (!scripting?.executeScript || !chrome.tabs?.query) return 0
+
+  const tabs = await new Promise<chrome.tabs.Tab[]>(resolve => {
+    chrome.tabs.query({ url: HTTP_MATCHES }, resolve)
+  })
+
+  const results = await Promise.all(
+    tabs.map(
+      tab =>
+        new Promise<boolean>(resolve => {
+          if (typeof tab.id !== "number") {
+            resolve(false)
+            return
+          }
+          scripting.executeScript(
+            { target: { tabId: tab.id }, files: [CONTENT_SCRIPT_FILE] },
+            () => {
+              const error = runtimeError()
+              resolve(!error?.message)
+            }
+          )
+        })
+    )
+  )
+
+  return results.filter(Boolean).length
+}
+
+const updateUsageContentScriptRegistration =
+  async (): Promise<UsageRegistrationResult> => {
+    const settings = await getUsageSettings()
+    if (!settings.enabled) {
+      await unregisterUsageContentScript()
+      return { registered: false, injectedTabs: 0 }
+    }
+
+    await registerUsageContentScript()
+    const injectedTabs = await injectUsageContentScriptIntoOpenTabs()
+    return { registered: true, injectedTabs }
   }
 
-  await registerUsageContentScript()
-}
+// storage.onChanged、设置页消息和启动事件可能同时到达。动态脚本注册不是
+// 原子操作，因此所有更新必须经过同一队列，避免两个 unregister/register
+// 交错后出现“设置已开启但脚本没有注册”的状态。
+let usageRegistrationQueue = Promise.resolve<UsageRegistrationResult>({
+  registered: false,
+  injectedTabs: 0,
+})
+
+const enqueueUsageContentScriptRegistration =
+  (): Promise<UsageRegistrationResult> => {
+    const next = usageRegistrationQueue
+      .catch(() => ({ registered: false, injectedTabs: 0 }))
+      .then(updateUsageContentScriptRegistration)
+    usageRegistrationQueue = next
+    return next
+  }
 
 // 快捷键在新标签页打开命令面板；不再向任意网页注入覆盖层
 const openPalettePage = () => {
@@ -476,11 +550,11 @@ chrome.runtime.onInstalled.addListener(() => {
   } catch {
     // ignore
   }
-  void updateUsageContentScriptRegistration().catch(() => undefined)
+  void enqueueUsageContentScriptRegistration().catch(() => undefined)
 })
 
 chrome.runtime.onStartup?.addListener(() => {
-  void updateUsageContentScriptRegistration().catch(() => undefined)
+  void enqueueUsageContentScriptRegistration().catch(() => undefined)
 })
 
 chrome.idle.onStateChanged.addListener(async next => {
@@ -510,9 +584,14 @@ chrome.runtime.onMessage.addListener((msg: UsageMessage, _sender, sendResponse) 
   }
 
   if (msg?.type === "fluidity:usageSettingsChanged") {
-    Promise.resolve(updateUsageContentScriptRegistration()).finally(() =>
-      sendResponse({ ok: true })
-    )
+    void enqueueUsageContentScriptRegistration()
+      .then(result => sendResponse({ ok: true, ...result }))
+      .catch(() =>
+        sendResponse({
+          ok: false,
+          error: "无法在已授权网站上启动浏览统计，请重新加载扩展后再试",
+        })
+      )
     return true
   }
 })
@@ -520,7 +599,7 @@ chrome.runtime.onMessage.addListener((msg: UsageMessage, _sender, sendResponse) 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") return
   if (!changes[USAGE_SETTINGS_KEY]) return
-  void updateUsageContentScriptRegistration().catch(() => undefined)
+  void enqueueUsageContentScriptRegistration().catch(() => undefined)
 })
 
 chrome.runtime.onConnect?.addListener(port => {
@@ -536,4 +615,4 @@ chrome.runtime.onConnect?.addListener(port => {
   })
 })
 
-void updateUsageContentScriptRegistration().catch(() => undefined)
+void enqueueUsageContentScriptRegistration().catch(() => undefined)

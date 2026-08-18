@@ -400,7 +400,16 @@ export const Wallpaper = {
   getWithFallback: () => {
     try {
       const settings = Wallpaper.get()
-      if (settings) return { ...defaultWallpaperSettings, ...settings }
+      if (settings) {
+        const followTheme =
+          typeof settings.followTheme === "boolean"
+            ? settings.followTheme
+            : !(
+                typeof settings.presetImage === "string" &&
+                settings.presetImage.trim()
+              )
+        return { ...defaultWallpaperSettings, ...settings, followTheme }
+      }
       return defaultWallpaperSettings
     } catch {
       settingsLogger.error("Wallpaper settings appear to be corrupted.")

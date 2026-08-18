@@ -316,12 +316,104 @@ const getCurrentAsRecentSegment = (
   }
 }
 
+const getUncountedCurrentSegment = (
+  st: BrowserUsageStoreV1,
+  nowMs: number
+): BrowserUsageRecentSegment | null => {
+  const cur = st.current
+  if (!cur?.domain || !cur.page) return null
+
+  const startTs = safeNumber(cur.countedTs, safeNumber(cur.startTs, 0))
+  const lastTs = safeNumber(cur.lastTs, 0)
+  const intervalMs = safeNumber(st.intervalMs, 5000)
+  const endTs = Math.min(nowMs, lastTs + intervalMs)
+  if (!(startTs > 0) || !(endTs > startTs)) return null
+
+  return {
+    startTs,
+    endTs,
+    domain: cur.domain,
+    page: cur.page,
+    title: cur.title,
+  }
+}
+
+const summarizeTodayWithCurrent = (
+  st: BrowserUsageStoreV1,
+  nowMs: number
+): BrowserUsageSummary => {
+  const today = toDayStringLocal(nowMs)
+  const day = st.days[today]
+  const byDomain: Record<string, number | undefined> = {
+    ...(day?.byDomain ?? {}),
+  }
+  const byPage: Record<
+    string,
+    { sec: number; domain: string; title?: string } | undefined
+  > = Object.fromEntries(
+    Object.entries(day?.byPage ?? {}).map(([page, stat]) => [
+      page,
+      stat
+        ? {
+            sec: safeNumber(stat.sec, 0),
+            domain: stat.domain,
+            title: stat.title,
+          }
+        : undefined,
+    ])
+  )
+  const byHour = Array.isArray(day?.byHour)
+    ? day.byHour.map(value => safeNumber(value, 0)).slice(0, 24)
+    : new Array<number>(24).fill(0)
+  while (byHour.length < 24) byHour.push(0)
+
+  let totalSec = safeNumber(day?.totalSec, 0)
+  const live = getUncountedCurrentSegment(st, nowMs)
+  if (live) {
+    const startOfToday = new Date(nowMs)
+    startOfToday.setHours(0, 0, 0, 0)
+    const overlapStart = Math.max(live.startTs, startOfToday.getTime())
+    const overlapEnd = Math.min(live.endTs, nowMs)
+    if (overlapEnd > overlapStart) {
+      const liveSec = (overlapEnd - overlapStart) / 1000
+      totalSec += liveSec
+      accumulateSegmentOverlap(
+        live,
+        startOfToday.getTime(),
+        nowMs,
+        byDomain,
+        byPage
+      )
+      byHour[new Date(overlapStart).getHours()] += liveSec
+    }
+  }
+
+  return {
+    totalSec,
+    topDomains: Object.entries(byDomain)
+      .map(([domain, sec]) => ({ domain, sec: safeNumber(sec, 0) }))
+      .filter(item => item.domain && item.sec > 0)
+      .sort((a, b) => b.sec - a.sec)
+      .slice(0, 10),
+    topPages: Object.entries(byPage)
+      .map(([page, stat]) => ({
+        page,
+        domain: stat?.domain ?? "",
+        title: stat?.title,
+        sec: safeNumber(stat?.sec, 0),
+      }))
+      .filter(item => item.page && item.domain && item.sec > 0)
+      .sort((a, b) => b.sec - a.sec)
+      .slice(0, 10),
+    byHour,
+  }
+}
+
 export const getTodayBrowserUsageSummary =
   async (): Promise<BrowserUsageSummary> => {
     const st = await getBrowserUsageStore()
     if (!st) return emptySummary()
-    const today = toDayStringLocal(Date.now())
-    return summarizeDay(st.days[today], { domains: 10, pages: 10 })
+    return summarizeTodayWithCurrent(st, Date.now())
   }
 
 export const getBrowserUsageSummaryForDay = async (

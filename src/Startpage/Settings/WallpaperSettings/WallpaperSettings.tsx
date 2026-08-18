@@ -50,6 +50,7 @@ const WALLPAPER_DISPLAY_FULLSCREEN = "fullscreen"
 interface Props {
   wallpaperSettings: WallpaperSettingsType
   onWallpaperChange: (settings: WallpaperSettingsType) => void
+  themeImage: string
 }
 
 const sourceOptions: { value: WallpaperSource; label: string }[] = [
@@ -69,6 +70,7 @@ const bingRegionOptions: { value: BingRegion; label: string }[] = [
 export const WallpaperSettings: React.FC<Props> = ({
   wallpaperSettings,
   onWallpaperChange,
+  themeImage,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -83,7 +85,7 @@ export const WallpaperSettings: React.FC<Props> = ({
   }
 
   const handlePresetChange = (presetImage: string) => {
-    onWallpaperChange({ ...wallpaperSettings, presetImage })
+    onWallpaperChange({ ...wallpaperSettings, presetImage, followTheme: false })
   }
 
   const handleCustomUrlChange = (customUrl: string) => {
@@ -162,7 +164,9 @@ export const WallpaperSettings: React.FC<Props> = ({
     const fallback = images[0].value
     switch (wallpaperSettings.source) {
       case WALLPAPER_SOURCE_PRESET:
-        return wallpaperSettings.presetImage || fallback
+        return wallpaperSettings.followTheme
+          ? themeImage || fallback
+          : wallpaperSettings.presetImage || fallback
       case WALLPAPER_SOURCE_CUSTOM_URL:
         return wallpaperSettings.customUrl || fallback
       case WALLPAPER_SOURCE_LOCAL:
@@ -177,7 +181,9 @@ export const WallpaperSettings: React.FC<Props> = ({
     wallpaperSettings.customUrl,
     wallpaperSettings.localImageData,
     wallpaperSettings.presetImage,
+    wallpaperSettings.followTheme,
     wallpaperSettings.source,
+    themeImage,
   ])
 
   useEffect(() => {
@@ -224,17 +230,29 @@ export const WallpaperSettings: React.FC<Props> = ({
 
               {/* 预设图片选择 */}
               {wallpaperSettings.source === WALLPAPER_SOURCE_PRESET && (
-                <ImageGrid>
-                  {images.map(img => (
-                    <ImageOption
-                      key={img.label}
-                      active={wallpaperSettings.presetImage === img.value}
-                      onClick={() => handlePresetChange(img.value)}
-                    >
-                      <img src={img.value} alt={img.label} />
-                    </ImageOption>
-                  ))}
-                </ImageGrid>
+                <>
+                  <Toggle
+                    label="壁纸跟随当前主题"
+                    checked={wallpaperSettings.followTheme}
+                    onChange={followTheme =>
+                      onWallpaperChange({ ...wallpaperSettings, followTheme })
+                    }
+                  />
+                  <ImageGrid>
+                    {images.map(img => (
+                      <ImageOption
+                        key={img.label}
+                        active={
+                          !wallpaperSettings.followTheme &&
+                          wallpaperSettings.presetImage === img.value
+                        }
+                        onClick={() => handlePresetChange(img.value)}
+                      >
+                        <img src={img.value} alt={img.label} />
+                      </ImageOption>
+                    ))}
+                  </ImageGrid>
+                </>
               )}
 
               {/* 自定义 URL */}

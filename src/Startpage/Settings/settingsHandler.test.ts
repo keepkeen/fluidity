@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { Search } from "./settingsHandler"
+import { Search, Wallpaper } from "./settingsHandler"
 
 const KEY = "search-settings"
 
@@ -78,5 +78,44 @@ describe("writeLocalJson quota handling", () => {
 
     setItem.mockRestore()
     window.removeEventListener("show-notification", listener)
+  })
+})
+
+describe("Wallpaper legacy settings migration", () => {
+  it("preserves a manually selected preset from before followTheme existed", () => {
+    localStorage.setItem(
+      "wallpaper-settings",
+      JSON.stringify({
+        source: "preset",
+        presetImage: "wallpapers/manual.svg",
+      })
+    )
+
+    expect(Wallpaper.getWithFallback()).toMatchObject({
+      presetImage: "wallpapers/manual.svg",
+      followTheme: false,
+    })
+  })
+
+  it("uses the matching theme wallpaper when no legacy preset was selected", () => {
+    localStorage.setItem(
+      "wallpaper-settings",
+      JSON.stringify({ source: "preset", presetImage: "" })
+    )
+
+    expect(Wallpaper.getWithFallback().followTheme).toBe(true)
+  })
+
+  it("preserves a saved preset even when another source is currently active", () => {
+    localStorage.setItem(
+      "wallpaper-settings",
+      JSON.stringify({
+        source: "custom-url",
+        customUrl: "https://example.com/current.jpg",
+        presetImage: "wallpapers/saved.svg",
+      })
+    )
+
+    expect(Wallpaper.getWithFallback().followTheme).toBe(false)
   })
 })

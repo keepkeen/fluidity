@@ -33,18 +33,35 @@ const normalizeBrowserUsageSettings = (
   includePageTitle: Boolean(raw?.includePageTitle),
 })
 
-const notifyBackground = (): void => {
-  try {
-    if (typeof chrome === "undefined" || !chrome.runtime?.sendMessage) return
-    chrome.runtime.sendMessage(
-      { type: "fluidity:usageSettingsChanged" },
-      () => {
-        void chrome.runtime.lastError
-      }
-    )
-  } catch {
-    // ignore
-  }
+interface UsageSettingsResponse {
+  ok?: boolean
+  error?: string
+}
+
+const notifyBackground = async (): Promise<void> => {
+  if (typeof chrome === "undefined" || !chrome.runtime?.sendMessage) return
+
+  await new Promise<void>((resolve, reject) => {
+    try {
+      chrome.runtime.sendMessage(
+        { type: "fluidity:usageSettingsChanged" },
+        (response?: UsageSettingsResponse) => {
+          const runtimeError = chrome.runtime.lastError
+          if (runtimeError) {
+            reject(new Error("浏览统计后台未响应，请重新加载扩展后再试"))
+            return
+          }
+          if (response?.ok === false) {
+            reject(new Error(response.error || "浏览统计脚本启用失败"))
+            return
+          }
+          resolve()
+        }
+      )
+    } catch {
+      reject(new Error("浏览统计后台未响应，请重新加载扩展后再试"))
+    }
+  })
 }
 
 export const getBrowserUsageSettings =
@@ -71,8 +88,14 @@ export const setBrowserUsageSettings = async (
 ): Promise<void> => {
   const normalized = normalizeBrowserUsageSettings(settings)
   if (hasChromeStorage()) {
+    const previous = await getBrowserUsageSettings()
     await setChromeLocal(BROWSER_USAGE_SETTINGS_KEY, normalized)
-    notifyBackground()
+    try {
+      await notifyBackground()
+    } catch (error) {
+      await setChromeLocal(BROWSER_USAGE_SETTINGS_KEY, previous)
+      throw error
+    }
     return
   }
 

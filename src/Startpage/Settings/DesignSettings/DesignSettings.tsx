@@ -23,6 +23,12 @@ import {
   LinkDisplaySettings,
 } from "../../../data/data"
 import {
+  DEFAULT_HOME_PAGE_SHORTCUT_MODIFIER,
+  HomePageShortcutModifier,
+  readHomeLayout,
+  saveHomeLayout,
+} from "../../../services/homeLayout"
+import {
   StyledSettingsContent,
   SettingElement,
   SettingsButton,
@@ -78,6 +84,13 @@ const PreviewScrim = styled.div`
   position: absolute;
   inset: 0;
   background: linear-gradient(rgba(0, 0, 0, 0.14), rgba(0, 0, 0, 0.34));
+`
+
+const SettingHint = styled.p`
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
 `
 
 const PreviewBadge = styled.span<{ side: "left" | "right" }>`
@@ -274,6 +287,10 @@ export const DesignSettings = ({
   setLinkDisplaySettings,
 }: props) => {
   const [isNewDesign, setIsNewDesign] = useState(false)
+  const [pageShortcutModifier, setPageShortcutModifier] =
+    useState<HomePageShortcutModifier>(
+      () => readHomeLayout().pageShortcutModifier
+    )
 
   const setName = (name: string) => setDesign({ ...design, name: name })
   const setColors = (colors: colorsType) =>
@@ -319,6 +336,7 @@ export const DesignSettings = ({
               variant="secondary"
               onClick={() => {
                 localStorage.removeItem("fluidity.homeLayout.v1")
+                setPageShortcutModifier(DEFAULT_HOME_PAGE_SHORTCUT_MODIFIER)
                 window.dispatchEvent(new Event("fluidity-home-layout-changed"))
                 window.dispatchEvent(
                   new CustomEvent("show-notification", {
@@ -346,6 +364,31 @@ export const DesignSettings = ({
                 })
               }
             />
+          </SettingElement>
+
+          <SettingElement>
+            <Dropdown
+              value={pageShortcutModifier}
+              items={[
+                { label: "Option / Alt + 1–9", value: "alt" },
+                { label: "Control + 1–9", value: "control" },
+                { label: "Shift + 1–9", value: "shift" },
+                { label: "关闭数字跳页快捷键", value: "disabled" },
+              ]}
+              onChange={value => {
+                const modifier = value as HomePageShortcutModifier
+                const next = {
+                  ...readHomeLayout(),
+                  pageShortcutModifier: modifier,
+                }
+                setPageShortcutModifier(modifier)
+                saveHomeLayout(next)
+                window.dispatchEvent(new Event("fluidity-home-layout-changed"))
+              }}
+            />
+            <SettingHint>
+              主屏可用左右方向键或横向滑动翻页；数字快捷键会直接跳到对应页。
+            </SettingHint>
           </SettingElement>
 
           <SectionDivider />

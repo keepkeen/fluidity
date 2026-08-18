@@ -10,7 +10,13 @@ import {
   normalizeDomainKey,
 } from "./browserUsage"
 import { fetchWithTimeout } from "./http"
+import {
+  DEFAULT_AI_BASE_URL,
+  resolveChatCompletionsUrl,
+} from "./aiEndpoint"
 import { aiLogger } from "../utils/logger"
+
+export { DEFAULT_AI_BASE_URL, resolveChatCompletionsUrl } from "./aiEndpoint"
 
 // AI 设置接口
 export interface AISettings {
@@ -51,8 +57,6 @@ const STORAGE_KEYS = {
   AI_CACHE: "ai-cache",
 }
 
-export const DEFAULT_AI_BASE_URL = "https://api.deepseek.com"
-
 const DEFAULT_SETTINGS: AISettings = {
   enabled: false,
   apiKey: "",
@@ -67,6 +71,39 @@ const DEFAULT_SETTINGS: AISettings = {
   // 默认开启使用习惯共享；浏览记录默认不共享
   shareHabits: true,
   shareBrowserUsage: false,
+}
+
+const AI_RESPONSE_CACHE_KEYS = [
+  STORAGE_KEYS.AI_CACHE,
+  "ai-theme-cache",
+  "report-cache",
+  "fluidity.ai.dailyReview.v1",
+]
+const AI_RESPONSE_CACHE_SCOPE_KEY = "ai-response-cache-scope.v1"
+
+/** 清除由当前服务商、模型或数据共享设置派生出的 AI 内容。 */
+export const clearAIResponseCaches = (): void => {
+  for (const key of AI_RESPONSE_CACHE_KEYS) {
+    localStorage.removeItem(key)
+  }
+}
+
+const getAIResponseCacheScope = (settings: AISettings): string =>
+  JSON.stringify({
+    version: 1,
+    enabled: settings.enabled,
+    apiBaseUrl: settings.apiBaseUrl.trim() || DEFAULT_AI_BASE_URL,
+    model: settings.model.trim() || DEFAULT_SETTINGS.model,
+    shareHabits: settings.shareHabits,
+    shareBrowserUsage: settings.shareBrowserUsage,
+  })
+
+const syncAIResponseCacheScope = (settings: AISettings): void => {
+  const nextScope = getAIResponseCacheScope(settings)
+  if (localStorage.getItem(AI_RESPONSE_CACHE_SCOPE_KEY) !== nextScope) {
+    clearAIResponseCaches()
+    localStorage.setItem(AI_RESPONSE_CACHE_SCOPE_KEY, nextScope)
+  }
 }
 
 /**
@@ -116,7 +153,10 @@ export const AISettingsManager = {
   get(): AISettings {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.AI_SETTINGS)
-      if (!data) return DEFAULT_SETTINGS
+      if (!data) {
+        syncAIResponseCacheScope(DEFAULT_SETTINGS)
+        return DEFAULT_SETTINGS
+      }
       const stored = JSON.parse(data) as Partial<AISettings> &
         Record<string, unknown>
       const merged = { ...DEFAULT_SETTINGS, ...stored }
@@ -132,6 +172,7 @@ export const AISettingsManager = {
         ]
         merged.shareHabits = !legacy.some(v => v === false)
       }
+      syncAIResponseCacheScope(merged)
       return merged
     } catch {
       return DEFAULT_SETTINGS
@@ -140,9 +181,29 @@ export const AISettingsManager = {
 
   set(settings: Partial<AISettings>): void {
     const current = this.get()
+    const next = { ...current, ...settings }
+    next.apiKey = next.apiKey.trim()
+    next.apiBaseUrl = next.apiBaseUrl.trim() || DEFAULT_AI_BASE_URL
+    next.model = next.model.trim() || DEFAULT_SETTINGS.model
+
+    const invalidatesAIResponses =
+      current.apiKey.trim() !== next.apiKey ||
+      current.apiBaseUrl.trim() !== next.apiBaseUrl ||
+      current.model.trim() !== next.model ||
+      current.enabled !== next.enabled ||
+      current.shareHabits !== next.shareHabits ||
+      current.shareBrowserUsage !== next.shareBrowserUsage
+
     localStorage.setItem(
       STORAGE_KEYS.AI_SETTINGS,
-      JSON.stringify({ ...current, ...settings })
+      JSON.stringify(next)
+    )
+    if (invalidatesAIResponses) {
+      clearAIResponseCaches()
+    }
+    localStorage.setItem(
+      AI_RESPONSE_CACHE_SCOPE_KEY,
+      getAIResponseCacheScope(next)
     )
   },
 
@@ -194,16 +255,22 @@ export const callDeepSeekAPI = async (
   apiKey: string,
   prompt: string,
   model = "deepseek-chat",
-  options?: { maxTokens?: number; temperature?: number }
+  options?: {
+    maxTokens?: number
+    temperature?: number
+    apiBaseUrl?: string
+    timeoutMs?: number
+  }
 ): Promise<string> => {
   const maxTokens = options?.maxTokens ?? 100
   const temperature = options?.temperature ?? 0.8
+  const normalizedModel = model.trim() || "deepseek-chat"
 
   // DeepSeek Reasoner 模型不支持 temperature 参数
-  const isReasonerModel = model === "deepseek-reasoner"
+  const isReasonerModel = normalizedModel === "deepseek-reasoner"
 
   const requestBody: Record<string, unknown> = {
-    model,
+    model: normalizedModel,
     messages: [
       {
         role: "user",
@@ -220,24 +287,28 @@ export const callDeepSeekAPI = async (
 
   // 支持任意 OpenAI 兼容服务（OpenAI/Moonshot/本地 Ollama 等）
   const baseUrl =
-    AISettingsManager.get().apiBaseUrl.trim().replace(/\/+$/, "") ||
-    DEFAULT_AI_BASE_URL
+    options?.apiBaseUrl ?? AISettingsManager.get().apiBaseUrl
+  const endpoint = resolveChatCompletionsUrl(baseUrl)
 
   const response = await fetchWithTimeout(
-    `${baseUrl}/chat/completions`,
+    endpoint,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey.trim()}`,
       },
       body: JSON.stringify(requestBody),
     },
-    { timeoutMs: 30_000, retries: 1, retryDelayMs: 1000 }
+    {
+      timeoutMs: options?.timeoutMs ?? 30_000,
+      retries: 1,
+      retryDelayMs: 1000,
+    }
   )
 
   if (!response.ok) {
-    const error = await response.text()
+    const error = (await response.text()).slice(0, 1000)
     throw new Error(`API 请求失败: ${response.status} - ${error}`)
   }
 

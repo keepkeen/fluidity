@@ -10,6 +10,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
 import { WidgetCard } from "../../components/WidgetCard"
 import { LinkAnalytics } from "../../services/analytics"
+import { linkGroup } from "../../data/data"
 import { navigateToLink } from "../../services/linkSearch"
 import {
   findForgottenLinks,
@@ -17,7 +18,6 @@ import {
   readRediscoveryState,
   snoozeRediscovery,
 } from "../../services/rediscovery"
-import { Links } from "../Settings/settingsHandler"
 
 const StyledWidgetCard = styled(WidgetCard)`
   height: 100%;
@@ -155,15 +155,23 @@ const formatAge = (lastClicked: number | null): string => {
   return `上次打开是 ${days} 天前`
 }
 
-export const RediscoveryCard = () => {
-  // refreshTick：操作后重新采样（打开/暂缓/删除都会改变候选集）
+interface RediscoveryCardProps {
+  linkGroups: linkGroup[]
+  onRequestRemove: (url: string, label: string) => void
+}
+
+export const RediscoveryCard = ({
+  linkGroups,
+  onRequestRemove,
+}: RediscoveryCardProps) => {
+  // 打开/暂缓后重新采样；删除由父级 linkGroups 更新触发。
   const [refreshTick, setRefreshTick] = useState(0)
 
   const picks = useMemo(() => {
     void refreshTick
     const now = Date.now()
     const candidates = findForgottenLinks(
-      Links.getWithFallback(),
+      linkGroups,
       LinkAnalytics.get(),
       now
     )
@@ -173,7 +181,7 @@ export const RediscoveryCard = () => {
       readRediscoveryState().snoozed,
       now
     )
-  }, [refreshTick])
+  }, [linkGroups, refreshTick])
 
   const refresh = useCallback(() => setRefreshTick(t => t + 1), [])
 
@@ -184,21 +192,6 @@ export const RediscoveryCard = () => {
 
   const handleSnooze = (url: string) => {
     snoozeRediscovery(url, Date.now())
-    refresh()
-  }
-
-  const handleRemove = (pick: (typeof picks)[number]) => {
-    const confirmed = window.confirm(
-      `从收藏中删除"${pick.label}"？此操作立即生效。`
-    )
-    if (!confirmed) return
-    const groups = Links.getWithFallback()
-      .map(group => ({
-        ...group,
-        links: group.links.filter(link => link.value !== pick.url),
-      }))
-      .filter(group => group.links.length > 0)
-    Links.set(groups)
     refresh()
   }
 
@@ -241,7 +234,7 @@ export const RediscoveryCard = () => {
                   </ActionBtn>
                   <ActionBtn
                     type="button"
-                    onClick={() => handleRemove(pick)}
+                    onClick={() => onRequestRemove(pick.url, pick.label)}
                     title="从收藏中删除"
                   >
                     <FontAwesomeIcon icon={faTrash} />

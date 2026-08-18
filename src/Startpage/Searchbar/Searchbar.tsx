@@ -16,7 +16,12 @@ import ecosia from "../../data/pictures/ecosia.svg"
 import google from "../../data/pictures/google.svg"
 import qwant from "../../data/pictures/qwant.svg"
 import { SearchHistory, LinkAnalytics } from "../../services/analytics"
+import { readHomeLayout } from "../../services/homeLayout"
 import { searchLinksOnly, navigateToLink } from "../../services/linkSearch"
+import {
+  matchSearchText,
+  rankSearchHistory,
+} from "../../services/smartSearch"
 import * as Settings from "../Settings/settingsHandler"
 
 export const queryToken = "{{query}}"
@@ -37,6 +42,7 @@ interface Suggestion {
   type: SuggestionType
   url?: string
   icon?: string
+  detail?: string
   groupTitle?: string // 用于 quicklink 类型
   engine?: SearchEngine // 用于 engine 类型
 }
@@ -67,12 +73,12 @@ const SearchInputWrapper = styled.div`
   align-items: flex-start;
   justify-content: center;
   padding: 12px 18px;
-  background: var(--surface-bg);
+  background: var(--home-surface);
   backdrop-filter: var(--surface-blur);
   -webkit-backdrop-filter: var(--surface-blur);
-  border: 1px solid var(--surface-border);
+  border: 1px solid var(--home-stroke);
   border-radius: var(--radius-main);
-  box-shadow: var(--shadow-soft);
+  box-shadow: var(--home-shadow);
   transition: border-color var(--transition-fast);
 
   :focus-within {
@@ -182,8 +188,11 @@ const SuggestionsContainer = styled.div<{ visible: boolean }>`
   bottom: 100%;
   left: calc(2.9rem + 10px);
   right: 0;
-  max-height: ${({ visible }) => (visible ? "300px" : "0")};
-  overflow: hidden;
+  max-height: ${({ visible }) =>
+    visible ? "min(420px, calc(100vh - 120px))" : "0"};
+  overflow-x: hidden;
+  overflow-y: ${({ visible }) => (visible ? "auto" : "hidden")};
+  overscroll-behavior: contain;
   transition: max-height 0.2s ease-out, opacity 0.2s ease-out;
   opacity: ${({ visible }) => (visible ? 1 : 0)};
   margin-bottom: 8px;
@@ -193,7 +202,7 @@ const SuggestionsContainer = styled.div<{ visible: boolean }>`
     left: auto;
     right: auto;
     bottom: auto;
-    max-height: ${({ visible }) => (visible ? "220px" : "0")};
+    max-height: ${({ visible }) => (visible ? "260px" : "0")};
     overflow-y: ${({ visible }) => (visible ? "auto" : "hidden")};
     margin-bottom: ${({ visible }) => (visible ? "8px" : "0")};
   }
@@ -234,7 +243,22 @@ const SuggestionItem = styled.li<{ selected: boolean }>`
 
 const SuggestionText = styled.span`
   flex: 1;
+  min-width: 0;
   font-size: 1rem;
+`
+
+const SuggestionLabel = styled.span`
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`
+
+const SuggestionDetail = styled.span`
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -254,9 +278,9 @@ const SuggestionType = styled.span<{ selected: boolean }>`
 
 const typeLabels: Record<Suggestion["type"], string> = {
   history: "历史",
-  link: "链接",
+  link: "常用",
   fastforward: "快捷",
-  quicklink: "快链",
+  quicklink: "标签",
   engine: "引擎",
 }
 
@@ -265,14 +289,16 @@ const typeLabels: Record<Suggestion["type"], string> = {
  */
 const getLinkSuggestions = (
   query: string,
-  linkGroups: linkGroup[]
+  linkGroups: linkGroup[],
+  limit = 8
 ): Suggestion[] => {
   const results = searchLinksOnly(linkGroups, query)
-  return results.slice(0, 8).map(link => ({
+  return results.slice(0, limit).map(link => ({
     text: link.label,
     type: "quicklink" as const,
     url: link.value,
     groupTitle: link.groupTitle,
+    detail: link.groupTitle,
   }))
 }
 
@@ -281,57 +307,50 @@ const getLinkSuggestions = (
  */
 const getSuggestions = (
   query: string,
-  searchSettings: SearchType
+  searchSettings: SearchType,
+  linkGroups: linkGroup[]
 ): Suggestion[] => {
-  const suggestions: Suggestion[] = []
+  const collector = new SuggestionCollector(8)
   const lowerQuery = query.toLowerCase()
 
-  // 1. 快捷词匹配（优先级最高）
+  // 标签保留最多 5 席，确保历史搜索不会被大量导入标签完全挤掉。
+  getLinkSuggestions(query, linkGroups, 5).forEach(suggestion =>
+    collector.add(suggestion)
+  )
+
+  rankSearchHistory(SearchHistory.get(), query, 3).forEach(record => {
+    collector.add({
+      text: record.query,
+      type: "history",
+      detail: "再次搜索",
+    })
+  })
+
+  // 快捷词匹配
   Object.entries(searchSettings.fastForward).forEach(([key, url]) => {
-    if (key.toLowerCase().includes(lowerQuery)) {
-      suggestions.push({
-        text: key,
-        type: "fastforward",
-        url,
-      })
+    if (matchSearchText(key, lowerQuery).score > 0) {
+      collector.add({ text: key, type: "fastforward", url })
     }
   })
 
-  // 2. 搜索历史匹配
-  const recentSearches = SearchHistory.getRecent(20)
-  recentSearches.forEach(search => {
-    if (
-      search.toLowerCase().includes(lowerQuery) &&
-      !suggestions.some(s => s.text === search)
-    ) {
-      suggestions.push({
-        text: search,
-        type: "history",
-      })
-    }
-  })
-
-  // 3. 常用链接匹配
+  // 分析数据可能包含已被用户删除的旧标签，作为末位常用链接保留。
   const topLinks = LinkAnalytics.getTopLinks(10)
   topLinks.forEach(link => {
-    if (
-      link.label.toLowerCase().includes(lowerQuery) &&
-      !suggestions.some(s => s.text === link.label)
-    ) {
+    if (matchSearchText(link.label, lowerQuery).score > 0) {
       const analytics = LinkAnalytics.get()
       const linkData = Object.values(analytics).find(
         l => l.label === link.label
       )
-      suggestions.push({
+      collector.add({
         text: link.label,
         type: "link",
         url: linkData?.url,
+        detail: link.group || "常用链接",
       })
     }
   })
 
-  // 限制建议数量为5个
-  return suggestions.slice(0, 5)
+  return collector.getAll()
 }
 
 // 去重建议收集器
@@ -370,15 +389,24 @@ const getDefaultSuggestions = (searchSettings: SearchType): Suggestion[] => {
   const collector = new SuggestionCollector(8)
 
   // 1. 最近搜索（优先级最高）
-  SearchHistory.getRecent(5).forEach(search => {
-    collector.add({ text: search, type: "history" })
+  rankSearchHistory(SearchHistory.get(), "", 5).forEach(record => {
+    collector.add({
+      text: record.query,
+      type: "history",
+      detail: "最近搜索",
+    })
   })
 
   // 2. 最常访问的链接
   const analytics = LinkAnalytics.get()
   LinkAnalytics.getTopLinks(5).forEach(link => {
     const linkData = Object.values(analytics).find(l => l.label === link.label)
-    collector.add({ text: link.label, type: "link", url: linkData?.url })
+    collector.add({
+      text: link.label,
+      type: "link",
+      url: linkData?.url,
+      detail: link.group || "常用链接",
+    })
   })
 
   // 4. 快捷词
@@ -398,8 +426,11 @@ export const Searchbar = () => {
     []
   )
   const defaultEngine: string = searchSettings.engine
+  const legacyPlaceholder = "按 Enter 搜索，@ 切换引擎，/ 搜索链接"
   const placeholder =
-    searchSettings.placeholder ?? "按 Enter 搜索，@ 切换引擎，/ 搜索链接"
+    !searchSettings.placeholder || searchSettings.placeholder === legacyPlaceholder
+      ? "搜索标签、拼音或网页，@ 切换引擎"
+      : searchSettings.placeholder
 
   const [inputValue, setInputValue] = useState("")
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
@@ -501,7 +532,7 @@ export const Searchbar = () => {
     // 普通搜索模式
     setIsLinkMode(false)
     const normalSuggestions = inputValue.trim()
-      ? getSuggestions(inputValue, searchSettings)
+      ? getSuggestions(inputValue, searchSettings, linkGroups)
       : getDefaultSuggestions(searchSettings)
     setSuggestions(normalSuggestions)
     setSelectedIndex(-1)
@@ -512,6 +543,48 @@ export const Searchbar = () => {
     linkGroups,
     handleEngineModeInput,
   ])
+
+  useEffect(() => {
+    const handleGlobalTyping = (event: KeyboardEvent) => {
+      const target = event.target
+      const isEditable =
+        target instanceof HTMLElement &&
+        (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) ||
+          target.isContentEditable)
+      const interactionBlocked = Boolean(
+        document.querySelector('[role="dialog"]') ||
+          document.querySelector('[data-home-editing="true"]')
+      )
+      const isShiftPageShortcut =
+        readHomeLayout().pageShortcutModifier === "shift" &&
+        event.shiftKey &&
+        /^Digit[1-9]$/.test(event.code)
+      if (
+        isEditable ||
+        interactionBlocked ||
+        isShiftPageShortcut ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey
+      )
+        return
+
+      const isImeStart =
+        event.isComposing || event.key === "Process" || event.keyCode === 229
+      const isPrintable = event.key.length === 1 && event.key !== "/"
+      if (!isImeStart && !isPrintable) return
+
+      setShowSuggestions(true)
+      inputRef.current?.focus()
+      if (isPrintable) {
+        event.preventDefault()
+        setInputValue(event.key)
+      }
+    }
+
+    window.addEventListener("keydown", handleGlobalTyping, true)
+    return () => window.removeEventListener("keydown", handleGlobalTyping, true)
+  }, [])
 
   // 根据设置决定跳转方式
   const navigateTo = useCallback(
@@ -710,18 +783,33 @@ export const Searchbar = () => {
   return (
     <StyledSearchbarContainer ref={containerRef}>
       <SuggestionsContainer visible={showSuggestions && suggestions.length > 0}>
-        <SuggestionsList>
+        <SuggestionsList
+          id="search-suggestions"
+          role="listbox"
+          aria-hidden={!showSuggestions || suggestions.length === 0}
+        >
           {suggestions.map((suggestion, index) => (
             <SuggestionItem
+              id={`search-suggestion-${index}`}
               key={`${suggestion.type}-${suggestion.text}`}
+              role="option"
+              aria-selected={index === selectedIndex}
               selected={index === selectedIndex}
-              onMouseDown={() => handleSuggestionClick(suggestion)}
+              onMouseDown={event => {
+                event.preventDefault()
+                handleSuggestionClick(suggestion)
+              }}
               onMouseEnter={() => setSelectedIndex(index)}
             >
               <SuggestionText>
-                {suggestion.icon
-                  ? `${suggestion.icon} ${suggestion.text}`
-                  : suggestion.text}
+                <SuggestionLabel>
+                  {suggestion.icon
+                    ? `${suggestion.icon} ${suggestion.text}`
+                    : suggestion.text}
+                </SuggestionLabel>
+                {suggestion.detail && (
+                  <SuggestionDetail>{suggestion.detail}</SuggestionDetail>
+                )}
               </SuggestionText>
               <SuggestionType selected={index === selectedIndex}>
                 {typeLabels[suggestion.type]}
@@ -762,6 +850,13 @@ export const Searchbar = () => {
             tempEngine ? `使用 ${tempEngine.label} 搜索...` : placeholder
           }
           type="text"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-controls="search-suggestions"
+          aria-expanded={showSuggestions && suggestions.length > 0}
+          aria-activedescendant={
+            selectedIndex >= 0 ? `search-suggestion-${selectedIndex}` : undefined
+          }
           value={inputValue}
           onChange={e => {
             setInputValue(e.target.value)
@@ -771,8 +866,6 @@ export const Searchbar = () => {
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
           onBlur={handleBlur}
-          // eslint-disable-next-line jsx-a11y/no-autofocus
-          autoFocus
         />
       </SearchInputWrapper>
     </StyledSearchbarContainer>

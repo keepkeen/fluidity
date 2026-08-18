@@ -16,9 +16,19 @@ export const WIDGET_SCREEN_TIME = "widget:screen-time"
 export const WIDGET_REDISCOVERY = "widget:rediscovery"
 export const ALL_WIDGET_IDS = [WIDGET_SCREEN_TIME, WIDGET_REDISCOVERY]
 
+export type HomePageShortcutModifier =
+  | "alt"
+  | "control"
+  | "shift"
+  | "disabled"
+
+export const DEFAULT_HOME_PAGE_SHORTCUT_MODIFIER: HomePageShortcutModifier =
+  "alt"
+
 export interface HomeLayoutState {
   order: string[]
   hiddenWidgets: string[]
+  pageShortcutModifier: HomePageShortcutModifier
 }
 
 export type HomeItem =
@@ -46,12 +56,21 @@ export const readHomeLayout = (): HomeLayoutState => {
               (v): v is string => typeof v === "string"
             )
           : [],
+        pageShortcutModifier: ["alt", "control", "shift", "disabled"].includes(
+          String(parsed.pageShortcutModifier)
+        )
+          ? (parsed.pageShortcutModifier as HomePageShortcutModifier)
+          : DEFAULT_HOME_PAGE_SHORTCUT_MODIFIER,
       }
     }
   } catch {
     // ignore
   }
-  return { order: [], hiddenWidgets: [] }
+  return {
+    order: [],
+    hiddenWidgets: [],
+    pageShortcutModifier: DEFAULT_HOME_PAGE_SHORTCUT_MODIFIER,
+  }
 }
 
 export const saveHomeLayout = (state: HomeLayoutState): void => {

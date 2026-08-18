@@ -245,6 +245,7 @@ export const generateWeeklyReport = async (): Promise<{
   fromAI: boolean
 }> => {
   const weekId = getWeekString(new Date())
+  const settings = AISettingsManager.get()
 
   // 检查缓存
   const cached = ReportCache.getWeekly(weekId)
@@ -270,8 +271,6 @@ export const generateWeeklyReport = async (): Promise<{
   } catch {
     // ignore
   }
-  const settings = AISettingsManager.get()
-
   // 如果 AI 未配置，返回默认总结
   if (!settings.enabled || !settings.apiKey) {
     return { summary: getDefaultWeeklySummary(stats), fromAI: false }
@@ -307,6 +306,7 @@ export const generateMonthlyReport = async (): Promise<{
   fromAI: boolean
 }> => {
   const monthId = getMonthString(new Date())
+  const settings = AISettingsManager.get()
 
   // 检查缓存
   const cached = ReportCache.getMonthly(monthId)
@@ -336,8 +336,6 @@ export const generateMonthlyReport = async (): Promise<{
   } catch {
     // ignore
   }
-  const settings = AISettingsManager.get()
-
   // 如果 AI 未配置，返回默认总结
   if (!settings.enabled || !settings.apiKey) {
     return { summary: getDefaultMonthlySummary(stats), fromAI: false }

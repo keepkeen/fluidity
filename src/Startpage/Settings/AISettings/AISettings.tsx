@@ -14,6 +14,7 @@ import { Toggle } from "../../../components/Toggle"
 import {
   AISettings as AISettingsType,
   DEFAULT_AI_BASE_URL,
+  resolveChatCompletionsUrl,
 } from "../../../services/ai"
 import { ensureAIPermissionsFor } from "../../../services/optionalPermissions"
 import { emitSettingsApplied } from "../../../services/settingsEvents"
@@ -156,24 +157,61 @@ interface Props {
   setAISettings: React.Dispatch<React.SetStateAction<AISettingsType>>
 }
 
-const formatAIError = (error: unknown): string => {
+const extractProviderError = (message: string): string => {
+  const match = message.match(/API 请求失败:\s*\d+\s*-\s*([\s\S]+)/)
+  const raw = match?.[1]?.trim()
+  if (!raw) return ""
+
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    const findMessage = (value: unknown): string => {
+      if (typeof value === "string") return value
+      if (!value || typeof value !== "object") return ""
+      const record = value as Record<string, unknown>
+      for (const key of ["message", "error", "detail"]) {
+        const found = findMessage(record[key])
+        if (found) return found
+      }
+      return ""
+    }
+    return findMessage(parsed).slice(0, 240)
+  } catch {
+    return raw.slice(0, 240)
+  }
+}
+
+export const formatAIError = (error: unknown): string => {
   const message = error instanceof Error ? error.message : ""
   const lower = message.toLowerCase()
+  const providerError = extractProviderError(message)
+
+  if (message.startsWith("API 地址")) return message
 
   if (message.includes("401") || lower.includes("auth")) {
-    return "API Key 无效或已过期，请检查 DeepSeek API Key。"
+    return providerError
+      ? `认证失败（401）：${providerError}`
+      : "认证失败（401），请检查当前服务商的 API Key。"
   }
   if (message.includes("402") || lower.includes("balance")) {
-    return "DeepSeek 账户额度不可用，请检查余额或计费状态。"
+    return providerError
+      ? `额度不可用（402）：${providerError}`
+      : "服务商账户额度不可用，请检查订阅或余额。"
+  }
+  if (message.includes("403")) {
+    return providerError
+      ? `访问被拒绝（403）：${providerError}`
+      : "当前 Key 无权访问该模型。"
   }
   if (message.includes("429") || lower.includes("rate")) {
-    return "请求过于频繁，请稍后再试。"
+    return providerError
+      ? `请求受限（429）：${providerError}`
+      : "请求过于频繁，请稍后再试。"
   }
   if (message.includes("请求超时") || lower.includes("network")) {
     return "网络请求失败，请检查连接后重试。"
   }
 
-  return "连接失败，请稍后重试。"
+  return providerError ? `服务请求失败：${providerError}` : "连接失败，请稍后重试。"
 }
 
 export const AISettings = ({ aiSettings, setAISettings }: Props) => {
@@ -186,6 +224,29 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
 
   const summary = getAnalyticsSummary()
 
+  const handleEnabledChange = async (enabling: boolean) => {
+    if (!enabling) {
+      setAISettings(prev => ({ ...prev, enabled: false }))
+      return
+    }
+
+    const baseUrl = aiSettings.apiBaseUrl.trim() || DEFAULT_AI_BASE_URL
+    setTestResult(null)
+    try {
+      resolveChatCompletionsUrl(baseUrl)
+      if (!(await ensureAIPermissionsFor(baseUrl))) {
+        setTestResult({
+          message: "❌ 未授予 AI 接口访问权限，AI 助手未启用",
+          error: true,
+        })
+        return
+      }
+      setAISettings(prev => ({ ...prev, enabled: true }))
+    } catch (error) {
+      setTestResult({ message: `❌ ${formatAIError(error)}`, error: true })
+    }
+  }
+
   const handleTestAPI = async () => {
     if (!aiSettings.apiKey) {
       setTestResult({ message: "请先输入 API Key", error: true })
@@ -197,6 +258,7 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
 
     try {
       const baseUrl = aiSettings.apiBaseUrl.trim() || DEFAULT_AI_BASE_URL
+      resolveChatCompletionsUrl(baseUrl)
       if (!(await ensureAIPermissionsFor(baseUrl))) {
         setTestResult({
           message: "❌ 未授予 AI 接口访问权限，无法调用 AI",
@@ -208,7 +270,8 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
       const result = await callDeepSeekAPI(
         aiSettings.apiKey,
         "请用一句话介绍你自己（不超过30字）",
-        aiSettings.model
+        aiSettings.model,
+        { apiBaseUrl: baseUrl }
       )
       setTestResult({ message: `✅ 连接成功！AI 回复: "${result}"` })
     } catch (error) {
@@ -233,15 +296,7 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
               <Toggle
                 label="启用 AI 提示"
                 checked={aiSettings.enabled}
-                onChange={enabling => {
-                  setAISettings(prev => ({ ...prev, enabled: enabling }))
-                  // 在用户手势中按需申请 AI 接口域名权限
-                  if (enabling) {
-                    void ensureAIPermissionsFor(
-                      aiSettings.apiBaseUrl.trim() || DEFAULT_AI_BASE_URL
-                    )
-                  }
-                }}
+                onChange={enabling => void handleEnabledChange(enabling)}
               />
               <HelpText>
                 开启后，页面顶部会显示 AI 生成的个性化问候和提醒
@@ -257,7 +312,7 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
                   onChange={e =>
                     setAISettings(prev => ({ ...prev, apiKey: e.target.value }))
                   }
-                  placeholder="输入你的 DeepSeek API Key"
+                  placeholder="输入服务商 API Key"
                 />
                 <IconBtn
                   type="button"
@@ -269,7 +324,7 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
                 </IconBtn>
               </InputContainer>
               <HelpText>
-                在 platform.deepseek.com 获取 API Key，数据仅存储在本地
+                从所选服务商获取 API Key，数据仅存储在本地
               </HelpText>
             </SettingElement>
 
@@ -288,8 +343,8 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
                 aria-label="AI 接口地址"
               />
               <HelpText>
-                任意 OpenAI 兼容接口，如 https://api.openai.com/v1
-                或本地 Ollama（http://localhost:11434/v1）。留空使用 DeepSeek
+                可填写 Base URL 或完整 /chat/completions 端点，例如
+                https://opencode.ai/zen/go/v1。留空使用 DeepSeek
               </HelpText>
             </SettingElement>
 
@@ -308,6 +363,9 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
               <datalist id="ai-model-presets">
                 <option value="deepseek-chat">DeepSeek Chat (推荐)</option>
                 <option value="deepseek-reasoner">DeepSeek Reasoner</option>
+                <option value="deepseek-v4-flash">
+                  OpenCode Go · DeepSeek V4 Flash
+                </option>
               </datalist>
               <HelpText>与所选服务商匹配的模型名称</HelpText>
             </SettingElement>

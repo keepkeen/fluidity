@@ -14,6 +14,10 @@ import {
   normalizeDomainKey,
   upsertDomainAppName,
 } from "../../services/browserUsage"
+import {
+  getBrowserUsageSettings,
+  hasBrowserUsagePermissions,
+} from "../../services/browserUsageSettings"
 
 const StyledWidgetCard = styled(WidgetCard)`
   height: 100%;
@@ -63,17 +67,21 @@ const Item = styled.div`
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
-  border: 1px solid var(--surface-border);
-  border-radius: var(--radius-sm);
+  padding: 8px 6px;
+  border: 0;
+  border-bottom: 1px solid var(--home-stroke);
+  border-radius: 0;
   color: var(--text-primary);
-  background: rgba(var(--bg-secondary-rgb), 0.2);
+  background: transparent;
   overflow: hidden;
   transition: 0.2s;
 
   &:hover {
-    background: rgba(var(--bg-secondary-rgb), 0.4);
-    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+
+  &:last-child {
+    border-bottom: 0;
   }
 `
 
@@ -142,6 +150,27 @@ const Empty = styled.div`
   text-align: center;
 `
 
+const EmptyAction = styled.button`
+  margin: 10px auto 0;
+  padding: 7px 13px;
+  border: 1px solid var(--home-stroke);
+  border-radius: 999px;
+  background: var(--home-surface-strong);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+
+  :hover,
+  :focus-visible {
+    border-color: var(--accent);
+    color: var(--accent);
+    outline: none;
+  }
+`
+
+type TrackingState = "disabled" | "permission-missing" | "waiting" | "active"
+
 const secToMin = (sec: number): number => Math.round((sec / 60) * 10) / 10
 
 const pad2 = (n: number): string => String(n).padStart(2, "0")
@@ -191,13 +220,17 @@ const getTodayScreenTimeViewModel = async (): Promise<{
   items: { domain: string; label: string; minutes: number }[]
   missingDomains: string[]
   lastUpdatedAt: number | null
+  trackingState: TrackingState
 } | null> => {
   try {
-    const [summary, domainApps, store] = await Promise.all([
-      getTodayBrowserUsageSummary(),
-      getDomainApps(),
-      getBrowserUsageStore(),
-    ])
+    const [summary, domainApps, store, settings, hasPermissions] =
+      await Promise.all([
+        getTodayBrowserUsageSummary(),
+        getDomainApps(),
+        getBrowserUsageStore(),
+        getBrowserUsageSettings(),
+        hasBrowserUsagePermissions(),
+      ])
     const lastUpdatedAt =
       typeof store?.updatedAt === "number" ? store.updatedAt : null
 
@@ -220,6 +253,13 @@ const getTodayScreenTimeViewModel = async (): Promise<{
       }),
       missingDomains,
       lastUpdatedAt,
+      trackingState: !settings.enabled
+        ? "disabled"
+        : !hasPermissions
+          ? "permission-missing"
+          : summary.totalSec > 0
+            ? "active"
+            : "waiting",
     }
   } catch {
     return null
@@ -252,6 +292,8 @@ export const TodayScreenTime = () => {
   >([])
   const [loading, setLoading] = useState(true)
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null)
+  const [trackingState, setTrackingState] =
+    useState<TrackingState>("disabled")
   // 前 6 天的每日总时长（分钟），今天的柱子由 totalMinutes 实时驱动
   const [history, setHistory] = useState<{ day: string; minutes: number }[]>([])
   const [avgMinutes, setAvgMinutes] = useState<number | null>(null)
@@ -296,11 +338,13 @@ export const TodayScreenTime = () => {
         setItems(vm.items)
         setTotalMinutes(vm.totalMinutes)
         setLastUpdatedAt(vm.lastUpdatedAt)
+        setTrackingState(vm.trackingState)
         resolveMissingDomainLabels(vm.missingDomains, resolvingRef.current)
       } else {
         setItems([])
         setTotalMinutes(0)
         setLastUpdatedAt(null)
+        setTrackingState("disabled")
       }
       setLoading(false)
     }
@@ -339,6 +383,12 @@ export const TodayScreenTime = () => {
   }, [])
 
   const maxMinutes = Math.max(...items.map(i => i.minutes), 0)
+  const emptyMessage =
+    trackingState === "disabled"
+      ? "浏览时长统计尚未启用"
+      : trackingState === "permission-missing"
+        ? "网站访问权限已失效，请重新授权"
+        : "已启用：请在普通网页停留几秒；新标签页本身不计时"
 
   return (
     <StyledWidgetCard
@@ -398,7 +448,23 @@ export const TodayScreenTime = () => {
         )}
 
         {items.length === 0 ? (
-          <Empty>{loading ? "正在统计…" : "暂无数据"}</Empty>
+          <Empty>
+            {loading ? "正在检查统计状态…" : emptyMessage}
+            {!loading && trackingState !== "active" && (
+              <EmptyAction
+                type="button"
+                onClick={() =>
+                  window.dispatchEvent(
+                    new CustomEvent("fluidity:open-settings", {
+                      detail: { tab: "data" },
+                    })
+                  )
+                }
+              >
+                {trackingState === "disabled" ? "开启统计" : "检查设置"}
+              </EmptyAction>
+            )}
+          </Empty>
         ) : (
           <List>
             {items.map((item, idx) => (

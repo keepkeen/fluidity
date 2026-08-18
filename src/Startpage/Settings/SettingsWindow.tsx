@@ -20,7 +20,10 @@ import {
 import {
   AISettingsManager,
   AISettings as AISettingsType,
+  DEFAULT_AI_BASE_URL,
+  resolveChatCompletionsUrl,
 } from "../../services/ai"
+import { ensureAIPermissionsFor } from "../../services/optionalPermissions"
 
 const AISettings = React.lazy(() =>
   import("./AISettings/AISettings").then(module => ({
@@ -342,6 +345,13 @@ const UnsavedHint = styled.span<{ visible: boolean }>`
   }
 `
 
+const ApplyError = styled.span`
+  align-self: center;
+  color: var(--accent-hover);
+  font-size: 0.85rem;
+  text-align: center;
+`
+
 // tab 用稳定 id 做路由标识，label 仅用于显示——文案改动不能破坏跳转逻辑
 const TAB_OPTIONS = [
   { id: "links", label: "链接" },
@@ -446,6 +456,8 @@ export const SettingsWindow = ({
     useState<LinkDisplaySettings>(Settings.LinkDisplay.getWithFallback())
   const [wallpaperSettings, setWallpaperSettings] =
     useState<WallpaperSettingsType>(Settings.Wallpaper.getWithFallback())
+  const [isApplying, setIsApplying] = useState(false)
+  const [applyError, setApplyError] = useState<string | null>(null)
 
   useEffect(() => {
     if (isTabId(initialTab)) {
@@ -510,7 +522,38 @@ export const SettingsWindow = ({
     []
   )
 
-  const applyValues = () => {
+  const applyValues = async () => {
+    setApplyError(null)
+    const normalizedAISettings = {
+      ...aiSettings,
+      apiKey: aiSettings.apiKey.trim(),
+      apiBaseUrl: aiSettings.apiBaseUrl.trim() || DEFAULT_AI_BASE_URL,
+      model: aiSettings.model.trim() || "deepseek-chat",
+    }
+
+    try {
+      resolveChatCompletionsUrl(normalizedAISettings.apiBaseUrl)
+    } catch (error) {
+      setCurrentTab("ai")
+      setApplyError(
+        error instanceof Error ? error.message : "AI 接口地址格式无效"
+      )
+      return
+    }
+
+    if (normalizedAISettings.enabled) {
+      setIsApplying(true)
+      const granted = await ensureAIPermissionsFor(
+        normalizedAISettings.apiBaseUrl
+      )
+      setIsApplying(false)
+      if (!granted) {
+        setCurrentTab("ai")
+        setApplyError("未授予新 AI 接口的访问权限，设置尚未保存")
+        return
+      }
+    }
+
     appliedRef.current = true
     Settings.Design.set(design)
     Settings.Themes.set(themes)
@@ -518,7 +561,8 @@ export const SettingsWindow = ({
     Settings.Links.set(linkGroups)
     Settings.LinkDisplay.set(linkDisplaySettings)
     Settings.Wallpaper.set(wallpaperSettings)
-    AISettingsManager.set(aiSettings)
+    AISettingsManager.set(normalizedAISettings)
+    initialSnapshotRef.current = snapshotRef.current
     emitSettingsApplied()
   }
 
@@ -584,6 +628,7 @@ export const SettingsWindow = ({
             <WallpaperSettings
               wallpaperSettings={wallpaperSettings}
               onWallpaperChange={setWallpaperSettings}
+              themeImage={design.image}
             />
           )}
 
@@ -605,14 +650,18 @@ export const SettingsWindow = ({
       <WindowFooter>
         <SettingsButton
           type="button"
-          onClick={() => applyValues()}
-          disabled={!isDirty}
-          text={"应用更改"}
+          onClick={() => void applyValues()}
+          disabled={!isDirty || isApplying}
+          text={isApplying ? "正在授权..." : "应用更改"}
           icon={faSave}
         />
-        <UnsavedHint visible={isDirty} role="status">
-          ● 有未应用的更改
-        </UnsavedHint>
+        {applyError ? (
+          <ApplyError role="alert">{applyError}</ApplyError>
+        ) : (
+          <UnsavedHint visible={isDirty} role="status">
+            ● 有未应用的更改
+          </UnsavedHint>
+        )}
         <SettingsButton
           type="button"
           onClick={() => {

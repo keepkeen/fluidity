@@ -57,7 +57,30 @@ const BackgroundOverlay = styled.div<{ opacity: number }>`
   right: 0;
   bottom: 0;
   z-index: -1;
-  background: rgba(0, 0, 0, ${({ opacity }) => opacity});
+  background:
+    radial-gradient(
+      ellipse at 50% 42%,
+      transparent 18%,
+      color-mix(
+          in srgb,
+          var(--bg-primary) ${({ opacity }) => Math.round(opacity * 55)}%,
+          transparent
+        )
+        100%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(
+        in srgb,
+        var(--bg-primary) ${({ opacity }) => Math.round(opacity * 42)}%,
+        transparent
+      ),
+      color-mix(
+        in srgb,
+        var(--bg-primary) ${({ opacity }) => Math.round(opacity * 100)}%,
+        transparent
+      )
+    );
   pointer-events: none;
 `
 
@@ -111,13 +134,21 @@ export const Startpage = () => {
   // 加载壁纸
   useEffect(() => {
     const loadWallpaper = async () => {
-      const { source, presetImage, customUrl, localImageData, bingRegion } =
-        wallpaperSettings
+      const {
+        source,
+        followTheme,
+        presetImage,
+        customUrl,
+        localImageData,
+        bingRegion,
+      } = wallpaperSettings
 
       try {
         switch (source) {
           case "preset":
-            setWallpaperUrl(presetImage || designSettings.image)
+            setWallpaperUrl(
+              followTheme ? designSettings.image : presetImage || designSettings.image
+            )
             break
           case "custom-url":
             setWallpaperUrl(customUrl || designSettings.image)

@@ -3,19 +3,12 @@ import React, { ReactNode } from "react"
 import styled from "@emotion/styled"
 
 const StyledCard = styled.div`
-  background: rgba(var(--bg-primary-rgb), var(--glass-opacity));
-  /* Fallback color mix */
-  background: color-mix(
-    in srgb,
-    var(--bg-primary),
-    transparent calc(100% * (1 - var(--glass-opacity, 0.9)))
-  );
-
-  border: 1px solid var(--surface-border);
+  background: var(--home-surface);
+  border: 1px solid var(--home-stroke);
   border-radius: var(--radius-main);
-  box-shadow: var(--shadow-card);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--home-shadow);
+  backdrop-filter: var(--surface-blur);
+  -webkit-backdrop-filter: var(--surface-blur);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -31,19 +24,16 @@ const CardHeader = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--surface-border);
-  background: rgba(var(--bg-secondary-rgb), 0.5);
-  /* Fallback */
-  background: color-mix(in srgb, var(--bg-secondary), transparent 0.5);
+  border-bottom: 1px solid var(--home-stroke);
+  background: color-mix(in srgb, var(--home-surface-strong) 72%, transparent);
 `
 
 const CardTitle = styled.h3`
   margin: 0;
   font-size: 0.9rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--accent);
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
 `
 
 const CardContent = styled.div`
