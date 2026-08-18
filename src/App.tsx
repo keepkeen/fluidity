@@ -1,43 +1,34 @@
 import "./base/variables.css"
 
+import { useEffect, useLayoutEffect, useState } from "react"
+
+import { applyColors } from "./base/colorUtils"
+import { applyThemeMode } from "./base/theme"
 import { ErrorBoundary } from "./components/ErrorBoundary"
+import { onSettingsApplied } from "./services/settingsEvents"
 import * as Settings from "./Startpage/Settings/settingsHandler"
 import { Startpage } from "./Startpage/Startpage"
 
-// 颜色变量别名映射（新变量名 -> 旧变量名）
-const COLOR_ALIASES: Record<string, string> = {
-  "--bg-primary": "--bg-color",
-  "--text-primary": "--default-color",
-  "--text-secondary": "--secondary-color",
-  "--border-default": "--border-color",
-  "--accent": "--accent-color",
-  "--accent-hover": "--accent-color2",
-}
-
-/**
- * 应用颜色变量到 CSS
- */
-const applyColors = (colors: Record<string, string>): void => {
-  const root = document.documentElement
-
-  // 设置所有颜色变量
-  Object.entries(colors).forEach(([key, value]) => {
-    root.style.setProperty(key, value)
-    // 设置兼容性别名
-    const alias = COLOR_ALIASES[key]
-    if (alias) {
-      root.style.setProperty(alias, value)
-    }
-  })
-}
-
 const App = () => {
-  const colors = Settings.Design.getWithFallback().colors
-  applyColors(colors)
+  // 应用设置后 bump key 重挂载 Startpage，各组件挂载时重读 localStorage
+  const [settingsVersion, setSettingsVersion] = useState(0)
+
+  useEffect(
+    () => onSettingsApplied(() => setSettingsVersion(v => v + 1)),
+    []
+  )
+
+  // 写 document CSS 变量是副作用，不能在 render 阶段执行
+  useLayoutEffect(() => {
+    const design = Settings.Design.getWithFallback()
+    applyColors(design.colors)
+    // Apply theme mode (modern vs retro)
+    applyThemeMode()
+  }, [settingsVersion])
 
   return (
     <ErrorBoundary>
-      <Startpage />
+      <Startpage key={settingsVersion} />
     </ErrorBoundary>
   )
 }

@@ -2,15 +2,11 @@ import { useEffect, useState } from "react"
 
 import styled from "@emotion/styled"
 
-import { AchievementBadge } from "./components/AchievementBadge"
-import { HeatMap } from "./components/HeatMap"
 import { StatCard } from "./components/StatCard"
 import { TopDurations } from "./components/TopDurations"
 import { TopLinks } from "./components/TopLinks"
-import { getWeeklyAchievements } from "../../services/achievements"
 import { getAnalyticsSummary } from "../../services/analytics"
 import { getWeeklyBrowserUsageSummary } from "../../services/browserUsage"
-import { TodoContributions } from "../../services/contributions"
 import {
   generateWeeklyReport,
   getWeeklyStats,
@@ -26,7 +22,7 @@ const Container = styled.div`
 
 const AISection = styled.div`
   padding: 12px 16px;
-  border: 2px solid var(--default-color);
+  border: 1px solid var(--surface-border-strong);
   background: rgba(0, 0, 0, 0.1);
 `
 
@@ -70,13 +66,13 @@ const ContentColumn = styled.div`
   flex-direction: column;
   gap: 12px;
   padding: 12px;
-  border: 2px solid var(--default-color);
+  border: 1px solid var(--surface-border-strong);
   background: rgba(0, 0, 0, 0.1);
 `
 
 const TopLinksSection = styled.div`
   padding: 12px 16px;
-  border: 2px solid var(--default-color);
+  border: 1px solid var(--surface-border-strong);
   background: rgba(0, 0, 0, 0.1);
 `
 
@@ -96,8 +92,6 @@ export const WeeklyReport: React.FC<WeeklyReportProps> = ({ onLoaded }) => {
   >([])
 
   const stats = getWeeklyStats()
-  const weekData = TodoContributions.getWeekData(-1)
-  const achievements = getWeeklyAchievements()
   const summary = getAnalyticsSummary()
 
   useEffect(() => {
@@ -143,8 +137,6 @@ export const WeeklyReport: React.FC<WeeklyReportProps> = ({ onLoaded }) => {
     void loadUsage()
   }, [])
 
-  const todoDiff = stats.todosCompleted - stats.prevWeekTodos
-
   return (
     <Container>
       {/* AI 点评 */}
@@ -158,36 +150,10 @@ export const WeeklyReport: React.FC<WeeklyReportProps> = ({ onLoaded }) => {
 
       {/* 数据卡片 */}
       <StatsRow>
-        <StatCard
-          icon="📋"
-          label="待办完成"
-          value={stats.todosCompleted}
-          trend={{ value: todoDiff, suffix: " vs上周" }}
-        />
+        <StatCard icon="🌐" label="浏览时长" value={`${usageMinutes}分钟`} />
         <StatCard icon="🔗" label="链接点击" value={stats.linkClicks} />
         <StatCard icon="🔍" label="搜索次数" value={stats.searches} />
-        <StatCard icon="🌐" label="浏览时长" value={`${usageMinutes}分钟`} />
-        <StatCard icon="⏰" label="活跃天数" value={`${stats.activeDays}/7`} />
       </StatsRow>
-
-      {/* 热力图和成就 */}
-      <ContentRow>
-        <ContentColumn>
-          <HeatMap
-            type="daily"
-            data={weekData}
-            title="每日完成热力图"
-            icon="📊"
-          />
-        </ContentColumn>
-        <ContentColumn>
-          <AchievementBadge
-            achievements={achievements}
-            title="本周成就"
-            icon="🏅"
-          />
-        </ContentColumn>
-      </ContentRow>
 
       {/* 本周最爱 */}
       <TopLinksSection>

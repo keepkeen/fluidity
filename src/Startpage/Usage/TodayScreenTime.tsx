@@ -2,55 +2,26 @@ import { useEffect, useRef, useState } from "react"
 
 import styled from "@emotion/styled"
 
+import { WidgetCard } from "../../components/WidgetCard"
 import { resolveAppNameForDomain } from "../../services/ai"
 import {
   BROWSER_USAGE_STORAGE_KEY,
   getBrowserUsageStore,
+  getBrowserUsageSummaryForDay,
   getDomainApps,
   getTodayBrowserUsageSummary,
   guessAppNameFromDomain,
   normalizeDomainKey,
   upsertDomainAppName,
 } from "../../services/browserUsage"
+import {
+  getBrowserUsageSettings,
+  hasBrowserUsagePermissions,
+} from "../../services/browserUsageSettings"
 
-const Panel = styled.div`
-  width: 100%;
+const StyledWidgetCard = styled(WidgetCard)`
   height: 100%;
-  border: 2px solid var(--default-color);
-  background: var(--bg-color);
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-  padding: 10px;
-
-  @media screen and (max-width: 600px) {
-    padding: 6px;
-  }
-`
-
-const PanelInner = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  height: 100%;
-  padding: 16px;
-  border: 1px solid var(--default-color);
-  opacity: 0.9;
-  overflow: hidden;
-
-  @media screen and (max-width: 600px) {
-    padding: 12px;
-  }
-`
-
-const PanelHeader = styled.div`
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  color: var(--default-color);
-  font-weight: 600;
-  letter-spacing: 1px;
+  border-radius: var(--radius-main);
 `
 
 const HeaderLeft = styled.div`
@@ -96,11 +67,22 @@ const Item = styled.div`
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
-  border: 2px solid var(--default-color);
-  color: var(--default-color);
-  background: rgba(0, 0, 0, 0);
+  padding: 8px 6px;
+  border: 0;
+  border-bottom: 1px solid var(--home-stroke);
+  border-radius: 0;
+  color: var(--text-primary);
+  background: transparent;
   overflow: hidden;
+  transition: 0.2s;
+
+  &:hover {
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+
+  &:last-child {
+    border-bottom: 0;
+  }
 `
 
 const Fill = styled.div<{ width: number }>`
@@ -109,14 +91,14 @@ const Fill = styled.div<{ width: number }>`
   left: 0;
   bottom: 0;
   width: ${({ width }) => width}%;
-  background: linear-gradient(90deg, var(--accent-color), var(--accent-color2));
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
   opacity: 0.18;
   pointer-events: none;
 `
 
 const Rank = styled.div`
   font-weight: 700;
-  color: var(--accent-color);
+  color: var(--accent);
 `
 
 const Domain = styled.div`
@@ -134,13 +116,70 @@ const Minutes = styled.div`
   text-align: right;
 `
 
+const TrendRow = styled.div`
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 42px;
+  padding: 0 4px;
+`
+
+const TrendBar = styled.div<{ heightPct: number; today: boolean }>`
+  flex: 1;
+  min-width: 0;
+  height: ${({ heightPct }) => Math.max(heightPct, 4)}%;
+  background: ${({ today }) =>
+    today ? "var(--accent)" : "rgba(var(--bg-secondary-rgb), 0.9)"};
+  border: 1px solid
+    ${({ today }) => (today ? "var(--accent)" : "var(--border-default)")};
+  border-radius: 2px 2px 0 0;
+  transition: height 0.3s;
+`
+
+const CompareHint = styled.div<{ over: boolean }>`
+  font-size: 0.78rem;
+  padding: 0 4px;
+  color: ${({ over }) => (over ? "var(--accent-hover)" : "var(--success)")};
+  opacity: 0.9;
+`
+
 const Empty = styled.div`
   font-size: 0.9rem;
   opacity: 0.65;
   padding: 10px 0;
+  text-align: center;
 `
 
+const EmptyAction = styled.button`
+  margin: 10px auto 0;
+  padding: 7px 13px;
+  border: 1px solid var(--home-stroke);
+  border-radius: 999px;
+  background: var(--home-surface-strong);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+
+  :hover,
+  :focus-visible {
+    border-color: var(--accent);
+    color: var(--accent);
+    outline: none;
+  }
+`
+
+type TrackingState = "disabled" | "permission-missing" | "waiting" | "active"
+
 const secToMin = (sec: number): number => Math.round((sec / 60) * 10) / 10
+
+const pad2 = (n: number): string => String(n).padStart(2, "0")
+
+const dayStringDaysAgo = (daysAgo: number): string => {
+  const d = new Date()
+  d.setDate(d.getDate() - daysAgo)
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
 
 const formatMinutes = (minutes: number): string => {
   if (!Number.isFinite(minutes) || minutes <= 0) return "0"
@@ -181,13 +220,17 @@ const getTodayScreenTimeViewModel = async (): Promise<{
   items: { domain: string; label: string; minutes: number }[]
   missingDomains: string[]
   lastUpdatedAt: number | null
+  trackingState: TrackingState
 } | null> => {
   try {
-    const [summary, domainApps, store] = await Promise.all([
-      getTodayBrowserUsageSummary(),
-      getDomainApps(),
-      getBrowserUsageStore(),
-    ])
+    const [summary, domainApps, store, settings, hasPermissions] =
+      await Promise.all([
+        getTodayBrowserUsageSummary(),
+        getDomainApps(),
+        getBrowserUsageStore(),
+        getBrowserUsageSettings(),
+        hasBrowserUsagePermissions(),
+      ])
     const lastUpdatedAt =
       typeof store?.updatedAt === "number" ? store.updatedAt : null
 
@@ -210,6 +253,13 @@ const getTodayScreenTimeViewModel = async (): Promise<{
       }),
       missingDomains,
       lastUpdatedAt,
+      trackingState: !settings.enabled
+        ? "disabled"
+        : !hasPermissions
+          ? "permission-missing"
+          : summary.totalSec > 0
+            ? "active"
+            : "waiting",
     }
   } catch {
     return null
@@ -242,7 +292,39 @@ export const TodayScreenTime = () => {
   >([])
   const [loading, setLoading] = useState(true)
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null)
+  const [trackingState, setTrackingState] =
+    useState<TrackingState>("disabled")
+  // 前 6 天的每日总时长（分钟），今天的柱子由 totalMinutes 实时驱动
+  const [history, setHistory] = useState<{ day: string; minutes: number }[]>([])
+  const [avgMinutes, setAvgMinutes] = useState<number | null>(null)
   const resolvingRef = useRef<Set<string>>(new Set())
+
+  // 历史数据一次加载即可（过去的天数不会再变）
+  useEffect(() => {
+    let mounted = true
+    const loadHistory = async () => {
+      const days: { day: string; minutes: number }[] = []
+      for (let i = 7; i >= 1; i--) {
+        const day = dayStringDaysAgo(i)
+        try {
+          const summary = await getBrowserUsageSummaryForDay(day, {
+            domains: 0,
+            pages: 0,
+          })
+          days.push({ day, minutes: secToMin(summary.totalSec) })
+        } catch {
+          days.push({ day, minutes: 0 })
+        }
+      }
+      if (!mounted) return
+      setAvgMinutes(days.reduce((sum, d) => sum + d.minutes, 0) / days.length)
+      setHistory(days.slice(1))
+    }
+    void loadHistory()
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   useEffect(() => {
     let mounted = true
@@ -256,11 +338,13 @@ export const TodayScreenTime = () => {
         setItems(vm.items)
         setTotalMinutes(vm.totalMinutes)
         setLastUpdatedAt(vm.lastUpdatedAt)
+        setTrackingState(vm.trackingState)
         resolveMissingDomainLabels(vm.missingDomains, resolvingRef.current)
       } else {
         setItems([])
         setTotalMinutes(0)
         setLastUpdatedAt(null)
+        setTrackingState("disabled")
       }
       setLoading(false)
     }
@@ -299,33 +383,87 @@ export const TodayScreenTime = () => {
   }, [])
 
   const maxMinutes = Math.max(...items.map(i => i.minutes), 0)
+  const emptyMessage =
+    trackingState === "disabled"
+      ? "浏览时长统计尚未启用"
+      : trackingState === "permission-missing"
+        ? "网站访问权限已失效，请重新授权"
+        : "已启用：请在普通网页停留几秒；新标签页本身不计时"
 
   return (
-    <Panel>
-      <PanelInner>
-        <PanelHeader>
-          <HeaderLeft>
-            <span>今日屏幕时间</span>
-            <HeaderHint>
-              <HintTop>TOP 5 应用</HintTop>
-              {lastUpdatedAt ? (
-                <UpdatedHint>
-                  更新于{" "}
-                  {new Date(lastUpdatedAt).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit",
-                  })}
-                </UpdatedHint>
-              ) : null}
-            </HeaderHint>
-          </HeaderLeft>
-          <Total>{loading ? "…" : `${formatMinutes(totalMinutes)} 分钟`}</Total>
-        </PanelHeader>
+    <StyledWidgetCard
+      title="屏幕时间"
+      actions={
+        <Total>{loading ? "…" : `${formatMinutes(totalMinutes)} 分钟`}</Total>
+      }
+    >
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "12px",
+          height: "100%",
+        }}
+      >
+        <HeaderLeft style={{ padding: "0 4px" }}>
+          <HeaderHint>
+            <HintTop>TOP 5</HintTop>
+            {lastUpdatedAt ? (
+              <UpdatedHint>
+                Update:{" "}
+                {new Date(lastUpdatedAt).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </UpdatedHint>
+            ) : null}
+          </HeaderHint>
+        </HeaderLeft>
+
+        {(history.length > 0 || totalMinutes > 0) && (
+          <TrendRow aria-hidden>
+            {[...history, { day: "今天", minutes: totalMinutes }].map(bar => {
+              const trendMax = Math.max(
+                ...history.map(h => h.minutes),
+                totalMinutes,
+                1
+              )
+              return (
+                <TrendBar
+                  key={bar.day}
+                  heightPct={Math.round((bar.minutes / trendMax) * 100)}
+                  today={bar.day === "今天"}
+                  title={`${bar.day}：${formatMinutes(bar.minutes)} 分钟`}
+                />
+              )
+            })}
+          </TrendRow>
+        )}
+
+        {avgMinutes !== null && avgMinutes > 0 && !loading && (
+          <CompareHint over={totalMinutes > avgMinutes}>
+            比过去 7 天平均{totalMinutes >= avgMinutes ? "多" : "少"}{" "}
+            {formatMinutes(Math.abs(totalMinutes - avgMinutes))} 分钟
+          </CompareHint>
+        )}
 
         {items.length === 0 ? (
           <Empty>
-            {loading ? "正在统计…" : "暂无数据（打开网页后会开始统计）"}
+            {loading ? "正在检查统计状态…" : emptyMessage}
+            {!loading && trackingState !== "active" && (
+              <EmptyAction
+                type="button"
+                onClick={() =>
+                  window.dispatchEvent(
+                    new CustomEvent("fluidity:open-settings", {
+                      detail: { tab: "data" },
+                    })
+                  )
+                }
+              >
+                {trackingState === "disabled" ? "开启统计" : "检查设置"}
+              </EmptyAction>
+            )}
           </Empty>
         ) : (
           <List>
@@ -347,7 +485,7 @@ export const TodayScreenTime = () => {
             ))}
           </List>
         )}
-      </PanelInner>
-    </Panel>
+      </div>
+    </StyledWidgetCard>
   )
 }

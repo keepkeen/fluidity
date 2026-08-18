@@ -7,16 +7,15 @@ import "./base/index.css"
 import { hasChromeStorage } from "./services/extensionStore"
 import { startGistAutoSync } from "./services/gistSync"
 
-// Register a lightweight service worker to enable offline use when served locally.
-// Skip in extension context to avoid chrome-extension:// caching issues.
-if (
-  "serviceWorker" in navigator &&
-  ["http:", "https:", "file:"].includes(window.location.protocol)
-) {
+// 清理历史版本注册的开发用 service worker（扩展形态不再使用 SW）
+if ("serviceWorker" in navigator && import.meta.env.DEV) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
-      .register(`${import.meta.env.BASE_URL}sw.js`)
-      .catch(err => console.error("Service worker registration failed:", err))
+      .getRegistrations()
+      .then(registrations =>
+        Promise.all(registrations.map(registration => registration.unregister()))
+      )
+      .catch(err => console.error("Service worker cleanup failed:", err))
   })
 }
 

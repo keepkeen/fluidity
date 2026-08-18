@@ -112,7 +112,7 @@ export const AI = {
 
 export const A11Y = {
   // 焦点管理
-  FOCUS_VISIBLE_OUTLINE: "2px solid var(--accent-color)",
+  FOCUS_VISIBLE_OUTLINE: "2px solid var(--accent)",
   FOCUS_VISIBLE_OFFSET: "2px",
 
   // 最小触摸目标
@@ -132,7 +132,6 @@ export const STORAGE_KEYS = {
   LINK_DISPLAY: "link-display-settings",
   WALLPAPER: "wallpaper-settings",
   CARD_AREA: "card-area-settings",
-  TODOS: "todos",
   SEARCH_HISTORY: "search-history",
   LINK_ANALYTICS: "link-analytics",
   BING_WALLPAPER_CACHE: "bing-wallpaper-cache",

@@ -1,12 +1,12 @@
 import styled from "@emotion/styled"
 
 const StyledInput = styled.input`
-  border: 2px solid var(--border-color);
+  border: 1px solid var(--surface-border);
   width: calc(100% - 40px);
   height: 36px;
   padding: 0 20px;
-  background-color: var(--bg-color);
-  color: var(--default-color);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
   outline: none;
   opacity: 0.5;
   :enabled:hover,

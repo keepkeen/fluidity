@@ -7,7 +7,7 @@ const Card = styled.div`
   flex-direction: column;
   align-items: center;
   padding: 12px 16px;
-  border: 2px solid var(--default-color);
+  border: 1px solid var(--surface-border-strong);
   background: rgba(0, 0, 0, 0.1);
   min-width: 100px;
   flex: 1;
@@ -32,7 +32,7 @@ const Label = styled.span`
 const Value = styled.span`
   font-size: 1.5rem;
   font-weight: 600;
-  color: var(--accent-color);
+  color: var(--accent);
 
   @media screen and (max-width: 600px) {
     font-size: 1.2rem;
@@ -44,10 +44,10 @@ const Trend = styled.span<{ positive: boolean; neutral: boolean }>`
   margin-top: 4px;
   color: ${({ positive, neutral }) =>
     neutral
-      ? "var(--default-color)"
+      ? "var(--text-primary)"
       : positive
       ? "#39d353"
-      : "var(--accent-color2)"};
+      : "var(--accent-hover)"};
 `
 
 interface StatCardProps {

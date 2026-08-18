@@ -89,6 +89,7 @@ export const getDailyReview = async (): Promise<{
   day: string
 } | null> => {
   const day = getYesterdayStringLocal()
+  const settings = AISettingsManager.get()
   const cached = getCache(day)
   if (cached) {
     return { summary: cached.summary, fromAI: cached.fromAI, day }
@@ -111,8 +112,14 @@ export const getDailyReview = async (): Promise<{
         )}m)`
     )
 
-  const settings = AISettingsManager.get()
-  if (!settings.enabled || !settings.apiKey || totalMinutes <= 0) {
+  // 未开启"发送浏览时长统计"时，浏览域名/页面绝不能进入 AI prompt，
+  // 此时只用本地模板生成回顾
+  if (
+    !settings.enabled ||
+    !settings.apiKey ||
+    !settings.shareBrowserUsage ||
+    totalMinutes <= 0
+  ) {
     const fallback = buildFallbackSummary(
       totalMinutes,
       summary.topDomains.map(d => d.domain)

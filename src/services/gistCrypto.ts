@@ -21,6 +21,12 @@ export const base64ToBytes = (b64: string): Uint8Array => {
   return bytes
 }
 
+const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer => {
+  const buffer = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(buffer).set(bytes)
+  return buffer
+}
+
 export const deriveAesKeyFromPassword = async (options: {
   password: string
   saltB64: string
@@ -38,7 +44,7 @@ export const deriveAesKeyFromPassword = async (options: {
   return await crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
-      salt: base64ToBytes(options.saltB64),
+      salt: toArrayBuffer(base64ToBytes(options.saltB64)),
       iterations: options.iterations,
       hash: "SHA-256",
     },
@@ -56,9 +62,9 @@ export const aesGcmEncryptToBase64 = async (options: {
 }): Promise<string> => {
   const encoder = new TextEncoder()
   const ciphertext = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv: base64ToBytes(options.ivB64) },
+    { name: "AES-GCM", iv: toArrayBuffer(base64ToBytes(options.ivB64)) },
     options.key,
-    encoder.encode(options.plaintext)
+    toArrayBuffer(encoder.encode(options.plaintext))
   )
   return bytesToBase64(new Uint8Array(ciphertext))
 }
@@ -69,9 +75,9 @@ export const aesGcmDecryptFromBase64 = async (options: {
   ciphertextB64: string
 }): Promise<string> => {
   const plaintext = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: base64ToBytes(options.ivB64) },
+    { name: "AES-GCM", iv: toArrayBuffer(base64ToBytes(options.ivB64)) },
     options.key,
-    base64ToBytes(options.ciphertextB64)
+    toArrayBuffer(base64ToBytes(options.ciphertextB64))
   )
   return new TextDecoder().decode(plaintext)
 }

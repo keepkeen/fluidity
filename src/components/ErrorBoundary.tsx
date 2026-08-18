@@ -22,42 +22,42 @@ const ErrorContainer = styled.div`
   min-height: 200px;
   padding: 40px;
   text-align: center;
-  color: var(--default-color);
+  color: var(--text-primary);
 `
 
 const ErrorTitle = styled.h2`
   font-size: 1.5rem;
   margin-bottom: 16px;
-  color: var(--accent-color);
+  color: var(--accent);
 `
 
 const ErrorMessage = styled.p`
   font-size: 0.9rem;
-  color: var(--secondary-color);
+  color: var(--text-secondary);
   margin-bottom: 24px;
   max-width: 400px;
 `
 
 const RetryButton = styled.button`
   padding: 10px 24px;
-  border: 2px solid var(--accent-color);
+  border: 1px solid var(--accent);
   border-radius: 6px;
   background: transparent;
-  color: var(--accent-color);
+  color: var(--accent);
   font-size: 1rem;
   cursor: pointer;
   transition: all 0.2s;
 
   &:hover {
-    background: var(--accent-color);
-    color: var(--bg-color);
+    background: var(--accent);
+    color: var(--bg-primary);
   }
 `
 
 const ErrorDetails = styled.details`
   margin-top: 20px;
   font-size: 0.8rem;
-  color: var(--secondary-color);
+  color: var(--text-secondary);
   text-align: left;
   max-width: 500px;
 
@@ -99,6 +99,13 @@ export class ErrorBoundary extends Component<Props, State> {
     this.setState({ hasError: false, error: null })
   }
 
+  handleCopyDetails = (): void => {
+    const { error } = this.state
+    if (!error) return
+    const text = `${error.toString()}\n${error.stack ?? ""}`
+    void navigator.clipboard?.writeText(text).catch(() => undefined)
+  }
+
   render(): ReactNode {
     const { hasError, error } = this.state
     const { fallback, children } = this.props
@@ -119,6 +126,9 @@ export class ErrorBoundary extends Component<Props, State> {
             <ErrorDetails>
               <summary>查看错误详情</summary>
               <pre>{error.toString()}</pre>
+              <RetryButton type="button" onClick={this.handleCopyDetails}>
+                复制调试信息
+              </RetryButton>
             </ErrorDetails>
           )}
         </ErrorContainer>
@@ -134,7 +144,7 @@ export class ErrorBoundary extends Component<Props, State> {
  */
 const SmallErrorFallback = styled.div`
   padding: 12px;
-  color: var(--secondary-color);
+  color: var(--text-secondary);
   font-size: 0.85rem;
   text-align: center;
 `

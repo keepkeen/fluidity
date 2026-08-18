@@ -2,8 +2,6 @@ import { useEffect, useState } from "react"
 
 import styled from "@emotion/styled"
 
-import { AchievementBadge } from "./components/AchievementBadge"
-import { HeatMap } from "./components/HeatMap"
 import { StatCard } from "./components/StatCard"
 import {
   TimeDistribution,
@@ -11,10 +9,6 @@ import {
 } from "./components/TimeDistribution"
 import { TopDurations } from "./components/TopDurations"
 import { TopLinks } from "./components/TopLinks"
-import {
-  getMonthlyAchievements,
-  getMonthWeeklyData,
-} from "../../services/achievements"
 import { getAnalyticsSummary } from "../../services/analytics"
 import { getMonthlyBrowserUsageSummary } from "../../services/browserUsage"
 import {
@@ -32,7 +26,7 @@ const Container = styled.div`
 
 const AISection = styled.div`
   padding: 12px 16px;
-  border: 2px solid var(--default-color);
+  border: 1px solid var(--surface-border-strong);
   background: rgba(0, 0, 0, 0.1);
 `
 
@@ -76,30 +70,8 @@ const ContentColumn = styled.div`
   flex-direction: column;
   gap: 12px;
   padding: 12px;
-  border: 2px solid var(--default-color);
+  border: 1px solid var(--surface-border-strong);
   background: rgba(0, 0, 0, 0.1);
-`
-
-const ForecastSection = styled.div`
-  padding: 12px 16px;
-  border: 2px solid var(--accent-color);
-  background: rgba(0, 0, 0, 0.1);
-`
-
-const ForecastTitle = styled.div`
-  font-size: 0.85rem;
-  font-weight: 600;
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--accent-color);
-`
-
-const ForecastText = styled.div`
-  font-size: 0.9rem;
-  line-height: 1.5;
-  opacity: 0.9;
 `
 
 interface MonthlyReportProps {
@@ -108,7 +80,6 @@ interface MonthlyReportProps {
 
 export const MonthlyReport: React.FC<MonthlyReportProps> = ({ onLoaded }) => {
   const [aiSummary, setAiSummary] = useState<string>("")
-  const [forecast, setForecast] = useState<string>("")
   const [loading, setLoading] = useState(true)
   const [usageMinutes, setUsageMinutes] = useState<number>(0)
   const [topDomains, setTopDomains] = useState<
@@ -122,26 +93,22 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({ onLoaded }) => {
   >(convertToTimeSlots(undefined))
 
   const stats = getMonthlyStats()
-  const achievements = getMonthlyAchievements()
   const summary = getAnalyticsSummary()
+  const timeSlots = usageTimeSlots
 
-  // 获取上月数据
+  // 上月的年/月（用于时长汇总查询）
   const now = new Date()
   const lastMonth = now.getMonth() === 0 ? 12 : now.getMonth()
   const year = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
-  const weeklyData = getMonthWeeklyData(year, lastMonth)
-  const timeSlots = usageTimeSlots
 
   useEffect(() => {
     const loadAISummary = async () => {
       try {
         const result = await generateMonthlyReport()
         setAiSummary(result.summary)
-        setForecast(result.forecast)
       } catch (error) {
         aiLogger.error("加载 AI 总结失败:", error)
         setAiSummary(`${stats.monthName}辛苦了，新的一月继续加油！💪`)
-        setForecast("期待你在新的一月创造更多可能！🚀")
       } finally {
         setLoading(false)
         onLoaded?.()
@@ -179,8 +146,6 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({ onLoaded }) => {
     void loadUsage()
   }, [lastMonth, summary.activeHours, year])
 
-  const todoDiff = stats.todosCompleted - stats.prevMonthTodos
-
   return (
     <Container>
       {/* AI 月度点评 */}
@@ -194,45 +159,10 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({ onLoaded }) => {
 
       {/* 数据卡片 */}
       <StatsRow>
-        <StatCard
-          icon="📋"
-          label="待办完成"
-          value={stats.todosCompleted}
-          trend={{ value: todoDiff, suffix: " vs上月" }}
-        />
+        <StatCard icon="🌐" label="浏览时长" value={`${usageMinutes}分钟`} />
         <StatCard icon="🔗" label="链接点击" value={stats.linkClicks} />
         <StatCard icon="🔍" label="搜索次数" value={stats.searches} />
-        <StatCard icon="🌐" label="浏览时长" value={`${usageMinutes}分钟`} />
-        <StatCard
-          icon="📅"
-          label="活跃天数"
-          value={`${stats.activeDays}/${stats.daysInMonth}`}
-          trend={{
-            value: Math.round((stats.activeDays / stats.daysInMonth) * 100),
-            suffix: "% 出勤",
-            isPercentage: false,
-          }}
-        />
       </StatsRow>
-
-      {/* 周度趋势和成就 */}
-      <ContentRow>
-        <ContentColumn>
-          <HeatMap
-            type="weekly"
-            data={weeklyData}
-            title="周度趋势图"
-            icon="📊"
-          />
-        </ContentColumn>
-        <ContentColumn>
-          <AchievementBadge
-            achievements={achievements}
-            title="月度成就"
-            icon="🏆"
-          />
-        </ContentColumn>
-      </ContentRow>
 
       {/* 活跃时段和最爱链接 */}
       <ContentRow>
@@ -271,14 +201,6 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({ onLoaded }) => {
         </ContentColumn>
       </ContentRow>
 
-      {/* 新月展望 */}
-      <ForecastSection>
-        <ForecastTitle>
-          <span>🔮</span>
-          <span>新月展望</span>
-        </ForecastTitle>
-        <ForecastText>{loading ? "正在预测..." : forecast}</ForecastText>
-      </ForecastSection>
     </Container>
   )
 }

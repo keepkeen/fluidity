@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react"
 
 import styled from "@emotion/styled"
+import { faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons"
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
 import {
   Search as SearchType,
@@ -14,12 +16,12 @@ import ecosia from "../../data/pictures/ecosia.svg"
 import google from "../../data/pictures/google.svg"
 import qwant from "../../data/pictures/qwant.svg"
 import { SearchHistory, LinkAnalytics } from "../../services/analytics"
+import { readHomeLayout } from "../../services/homeLayout"
 import { searchLinksOnly, navigateToLink } from "../../services/linkSearch"
-import { getRecommendedTagsForToday } from "../../services/recommendedTags"
 import {
-  ensureSearchRecommendationsForToday,
-  getRecommendedQuickSearchesForToday,
-} from "../../services/searchRecommendations"
+  matchSearchText,
+  rankSearchHistory,
+} from "../../services/smartSearch"
 import * as Settings from "../Settings/settingsHandler"
 
 export const queryToken = "{{query}}"
@@ -31,10 +33,8 @@ export type SearchSettings = SearchType
 type SuggestionType =
   | "history"
   | "link"
-  | "todo"
   | "fastforward"
   | "quicklink"
-  | "tag"
   | "engine" // 新增：搜索引擎建议
 
 interface Suggestion {
@@ -42,13 +42,16 @@ interface Suggestion {
   type: SuggestionType
   url?: string
   icon?: string
+  detail?: string
   groupTitle?: string // 用于 quicklink 类型
   engine?: SearchEngine // 用于 engine 类型
 }
 
 const StyledSearchbarContainer = styled.div`
+  animation: fade-up 0.55s cubic-bezier(0.22, 1, 0.36, 1) 160ms both;
   position: relative;
-  margin: 0 100px 40px calc(100px - 2.9rem - 10px);
+  margin: 0 var(--page-margin) clamp(12px, 2.5vh, 40px)
+    calc(var(--page-margin) - 2.9rem - 10px);
   height: min-content;
   display: flex;
   flex-direction: column;
@@ -56,20 +59,12 @@ const StyledSearchbarContainer = styled.div`
   justify-content: flex-end;
   flex-shrink: 0;
 
-  @media screen and (max-width: 1200px) {
-    margin-left: calc(60px - 2.9rem - 10px);
-    margin-right: 60px;
-  }
-
-  @media screen and (max-width: 900px) {
-    margin-left: calc(40px - 2.9rem - 10px);
-    margin-right: 40px;
-  }
-
   @media screen and (max-width: 600px) {
-    margin-left: 20px;
-    margin-right: 20px;
+    width: calc(100% - 24px);
+    margin-left: 12px;
+    margin-right: 12px;
     margin-bottom: 20px;
+    box-sizing: border-box;
   }
 `
 
@@ -77,50 +72,61 @@ const SearchInputWrapper = styled.div`
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 12px 16px;
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  padding: 12px 18px;
+  background: var(--home-surface);
+  backdrop-filter: var(--surface-blur);
+  -webkit-backdrop-filter: var(--surface-blur);
+  border: 1px solid var(--home-stroke);
+  border-radius: var(--radius-main);
+  box-shadow: var(--home-shadow);
+  transition: border-color var(--transition-fast);
+
+  :focus-within {
+    border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+  min-width: 0;
+  box-sizing: border-box;
 `
 
 const StyledSearchbar = styled.input`
   width: 100%;
-  font-size: 30pt;
+  min-width: 0;
+  /* 字号随视口流式缩放：~15pt @600px → 26pt 封顶，低分辨率不再需要手动缩放 */
+  font-size: clamp(15pt, 1.2vw + 7pt, 26pt);
 
   background-color: transparent;
-  color: var(--default-color);
+  color: var(--text-primary);
   transition: 0.3s;
   border: none;
 
   ::placeholder {
-    color: var(--default-color);
+    color: var(--text-primary);
     opacity: 0.6;
   }
 
   :focus {
     outline: none;
   }
-
-  @media screen and (max-width: 900px) {
-    font-size: 24pt;
-  }
-
-  @media screen and (max-width: 600px) {
-    font-size: 18pt;
-  }
 `
 
-const SearchIcon = styled.div<{ src: string }>`
+/* mask 的 URL 经 CSS 变量注入：emotion 无法序列化 url() 内的函数插值，
+   直接插值会导致整条 mask-image 声明被丢弃（图标从不显示的根因） */
+const SearchIcon = styled.div`
   height: 2.9rem;
   width: 3.1rem;
+  flex-shrink: 0;
   margin: auto 10px auto 0;
 
-  background: var(--default-color);
+  background: var(--text-primary);
 
-  mask-size: cover;
-  mask-image: url(${({ src }) => src});
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-image: var(--engine-icon);
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-image: var(--engine-icon);
 
   @media screen and (max-width: 900px) {
     height: 2.4rem;
@@ -134,16 +140,44 @@ const SearchIcon = styled.div<{ src: string }>`
   }
 `
 
+/* 无专属 logo 的引擎（百度/Bing/知乎/自定义等）回退到通用放大镜 */
+const FallbackSearchIcon = styled.div`
+  height: 2.9rem;
+  width: 3.1rem;
+  flex-shrink: 0;
+  margin: auto 10px auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+  font-size: 2rem;
+
+  @media screen and (max-width: 900px) {
+    height: 2.4rem;
+    width: 2.6rem;
+    font-size: 1.7rem;
+  }
+
+  @media screen and (max-width: 600px) {
+    height: 1.8rem;
+    width: 2rem;
+    margin-right: 8px;
+    font-size: 1.3rem;
+  }
+`
+
 // 当前搜索引擎标签
 const EngineTag = styled.span`
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
-  margin-right: 8px;
-  background: var(--accent-color);
-  color: var(--bg-color);
-  border-radius: 4px;
-  font-size: 14px;
+  align-self: center;
+  padding: 4px 12px;
+  margin-right: 10px;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 999px;
+  font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
   flex-shrink: 0;
@@ -154,66 +188,99 @@ const SuggestionsContainer = styled.div<{ visible: boolean }>`
   bottom: 100%;
   left: calc(2.9rem + 10px);
   right: 0;
-  max-height: ${({ visible }) => (visible ? "300px" : "0")};
-  overflow: hidden;
+  max-height: ${({ visible }) =>
+    visible ? "min(420px, calc(100vh - 120px))" : "0"};
+  overflow-x: hidden;
+  overflow-y: ${({ visible }) => (visible ? "auto" : "hidden")};
+  overscroll-behavior: contain;
   transition: max-height 0.2s ease-out, opacity 0.2s ease-out;
   opacity: ${({ visible }) => (visible ? 1 : 0)};
   margin-bottom: 8px;
+
+  @media screen and (max-width: 600px) {
+    position: static;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    max-height: ${({ visible }) => (visible ? "260px" : "0")};
+    overflow-y: ${({ visible }) => (visible ? "auto" : "hidden")};
+    margin-bottom: ${({ visible }) => (visible ? "8px" : "0")};
+  }
 `
 
 const SuggestionsList = styled.ul`
   list-style: none;
   margin: 0;
   padding: 0;
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-primary) 82%, transparent);
+  backdrop-filter: var(--surface-blur);
+  -webkit-backdrop-filter: var(--surface-blur);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-pop);
   overflow: hidden;
 `
 
 const SuggestionItem = styled.li<{ selected: boolean }>`
-  padding: 12px 16px;
+  padding: 11px 16px;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 12px;
-  transition: 0.15s;
+  transition: background var(--transition-fast), color var(--transition-fast);
   background: ${({ selected }) =>
-    selected ? "var(--accent-color)" : "transparent"};
+    selected
+      ? "color-mix(in srgb, var(--accent) 20%, transparent)"
+      : "transparent"};
   color: ${({ selected }) =>
-    selected ? "var(--bg-color)" : "var(--default-color)"};
+    selected ? "var(--accent)" : "var(--text-primary)"};
 
   &:hover {
-    background: var(--accent-color);
-    color: var(--bg-color);
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+    color: var(--accent);
   }
 `
 
 const SuggestionText = styled.span`
   flex: 1;
+  min-width: 0;
   font-size: 1rem;
+`
+
+const SuggestionLabel = styled.span`
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`
+
+const SuggestionDetail = styled.span`
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 `
 
 const SuggestionType = styled.span<{ selected: boolean }>`
-  font-size: 0.75rem;
-  padding: 2px 8px;
+  font-size: 0.72rem;
+  padding: 2px 9px;
+  border-radius: 999px;
   border: 1px solid
-    ${({ selected }) => (selected ? "var(--bg-color)" : "var(--default-color)")};
-  opacity: 0.7;
+    ${({ selected }) =>
+      selected
+        ? "color-mix(in srgb, var(--accent) 55%, transparent)"
+        : "var(--surface-border)"};
+  color: ${({ selected }) => (selected ? "var(--accent)" : "var(--text-muted)")};
 `
 
 const typeLabels: Record<Suggestion["type"], string> = {
   history: "历史",
-  link: "链接",
-  todo: "待办",
+  link: "常用",
   fastforward: "快捷",
-  quicklink: "快链",
-  tag: "推荐",
+  quicklink: "标签",
   engine: "引擎",
 }
 
@@ -222,14 +289,16 @@ const typeLabels: Record<Suggestion["type"], string> = {
  */
 const getLinkSuggestions = (
   query: string,
-  linkGroups: linkGroup[]
+  linkGroups: linkGroup[],
+  limit = 8
 ): Suggestion[] => {
   const results = searchLinksOnly(linkGroups, query)
-  return results.slice(0, 8).map(link => ({
+  return results.slice(0, limit).map(link => ({
     text: link.label,
     type: "quicklink" as const,
     url: link.value,
     groupTitle: link.groupTitle,
+    detail: link.groupTitle,
   }))
 }
 
@@ -238,81 +307,50 @@ const getLinkSuggestions = (
  */
 const getSuggestions = (
   query: string,
-  searchSettings: SearchType
+  searchSettings: SearchType,
+  linkGroups: linkGroup[]
 ): Suggestion[] => {
-  const suggestions: Suggestion[] = []
+  const collector = new SuggestionCollector(8)
   const lowerQuery = query.toLowerCase()
 
-  // 1. 快捷词匹配（优先级最高）
+  // 标签保留最多 5 席，确保历史搜索不会被大量导入标签完全挤掉。
+  getLinkSuggestions(query, linkGroups, 5).forEach(suggestion =>
+    collector.add(suggestion)
+  )
+
+  rankSearchHistory(SearchHistory.get(), query, 3).forEach(record => {
+    collector.add({
+      text: record.query,
+      type: "history",
+      detail: "再次搜索",
+    })
+  })
+
+  // 快捷词匹配
   Object.entries(searchSettings.fastForward).forEach(([key, url]) => {
-    if (key.toLowerCase().includes(lowerQuery)) {
-      suggestions.push({
-        text: key,
-        type: "fastforward",
-        url,
-      })
+    if (matchSearchText(key, lowerQuery).score > 0) {
+      collector.add({ text: key, type: "fastforward", url })
     }
   })
 
-  // 2. 搜索历史匹配
-  const recentSearches = SearchHistory.getRecent(20)
-  recentSearches.forEach(search => {
-    if (
-      search.toLowerCase().includes(lowerQuery) &&
-      !suggestions.some(s => s.text === search)
-    ) {
-      suggestions.push({
-        text: search,
-        type: "history",
-      })
-    }
-  })
-
-  // 3. 常用链接匹配
+  // 分析数据可能包含已被用户删除的旧标签，作为末位常用链接保留。
   const topLinks = LinkAnalytics.getTopLinks(10)
   topLinks.forEach(link => {
-    if (
-      link.label.toLowerCase().includes(lowerQuery) &&
-      !suggestions.some(s => s.text === link.label)
-    ) {
+    if (matchSearchText(link.label, lowerQuery).score > 0) {
       const analytics = LinkAnalytics.get()
       const linkData = Object.values(analytics).find(
         l => l.label === link.label
       )
-      suggestions.push({
+      collector.add({
         text: link.label,
         type: "link",
         url: linkData?.url,
+        detail: link.group || "常用链接",
       })
     }
   })
 
-  // 4. 待办事项匹配
-  try {
-    const todosRaw = localStorage.getItem("todos")
-    if (todosRaw) {
-      const todos = JSON.parse(todosRaw) as {
-        text: string
-        done: boolean
-      }[]
-      todos
-        .filter(t => !t.done && t.text.toLowerCase().includes(lowerQuery))
-        .slice(0, 3)
-        .forEach(todo => {
-          if (!suggestions.some(s => s.text === todo.text)) {
-            suggestions.push({
-              text: todo.text,
-              type: "todo",
-            })
-          }
-        })
-    }
-  } catch {
-    // ignore
-  }
-
-  // 限制建议数量为5个
-  return suggestions.slice(0, 5)
+  return collector.getAll()
 }
 
 // 去重建议收集器
@@ -343,20 +381,6 @@ class SuggestionCollector {
   }
 }
 
-// 获取未完成的待办建议
-const getTodoSuggestions = (): Suggestion[] => {
-  try {
-    const todosRaw = localStorage.getItem("todos")
-    if (!todosRaw) return []
-    const todos = JSON.parse(todosRaw) as { text: string; done: boolean }[]
-    return todos
-      .filter(t => !t.done)
-      .map(todo => ({ text: todo.text, type: "todo" as const }))
-  } catch {
-    return []
-  }
-}
-
 /**
  * 获取默认建议（无输入时）
  * 历史和推荐去重，总数限制5个
@@ -364,30 +388,26 @@ const getTodoSuggestions = (): Suggestion[] => {
 const getDefaultSuggestions = (searchSettings: SearchType): Suggestion[] => {
   const collector = new SuggestionCollector(8)
 
-  // 0. AI 推荐标签（优先展示）
-  getRecommendedTagsForToday().forEach(tag => {
-    collector.add({ text: tag, type: "tag", icon: "🏷️" })
-  })
-
-  // 0.1 推荐快捷搜索
-  getRecommendedQuickSearchesForToday().forEach(item => {
-    collector.add({ text: item.label, type: "fastforward", url: item.url })
-  })
-
   // 1. 最近搜索（优先级最高）
-  SearchHistory.getRecent(5).forEach(search => {
-    collector.add({ text: search, type: "history" })
+  rankSearchHistory(SearchHistory.get(), "", 5).forEach(record => {
+    collector.add({
+      text: record.query,
+      type: "history",
+      detail: "最近搜索",
+    })
   })
 
   // 2. 最常访问的链接
   const analytics = LinkAnalytics.get()
   LinkAnalytics.getTopLinks(5).forEach(link => {
     const linkData = Object.values(analytics).find(l => l.label === link.label)
-    collector.add({ text: link.label, type: "link", url: linkData?.url })
+    collector.add({
+      text: link.label,
+      type: "link",
+      url: linkData?.url,
+      detail: link.group || "常用链接",
+    })
   })
-
-  // 3. 未完成的待办
-  getTodoSuggestions().forEach(todo => collector.add(todo))
 
   // 4. 快捷词
   Object.entries(searchSettings.fastForward).forEach(([key, url]) => {
@@ -406,8 +426,11 @@ export const Searchbar = () => {
     []
   )
   const defaultEngine: string = searchSettings.engine
+  const legacyPlaceholder = "按 Enter 搜索，@ 切换引擎，/ 搜索链接"
   const placeholder =
-    searchSettings.placeholder ?? "按 Enter 搜索，@ 切换引擎，/ 搜索链接"
+    !searchSettings.placeholder || searchSettings.placeholder === legacyPlaceholder
+      ? "搜索标签、拼音或网页，@ 切换引擎"
+      : searchSettings.placeholder
 
   const [inputValue, setInputValue] = useState("")
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
@@ -415,7 +438,6 @@ export const Searchbar = () => {
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [isLinkMode, setIsLinkMode] = useState(false) // 是否处于链接搜索模式
   const [tempEngine, setTempEngine] = useState<SearchEngine | null>(null) // 临时选择的引擎
-  const [recommendationTick, setRecommendationTick] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -510,7 +532,7 @@ export const Searchbar = () => {
     // 普通搜索模式
     setIsLinkMode(false)
     const normalSuggestions = inputValue.trim()
-      ? getSuggestions(inputValue, searchSettings)
+      ? getSuggestions(inputValue, searchSettings, linkGroups)
       : getDefaultSuggestions(searchSettings)
     setSuggestions(normalSuggestions)
     setSelectedIndex(-1)
@@ -520,20 +542,48 @@ export const Searchbar = () => {
     searchSettings,
     linkGroups,
     handleEngineModeInput,
-    recommendationTick,
   ])
 
   useEffect(() => {
-    let mounted = true
-    void ensureSearchRecommendationsForToday().then(updated => {
-      if (!mounted) return
-      if (updated) {
-        setRecommendationTick(t => t + 1)
+    const handleGlobalTyping = (event: KeyboardEvent) => {
+      const target = event.target
+      const isEditable =
+        target instanceof HTMLElement &&
+        (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) ||
+          target.isContentEditable)
+      const interactionBlocked = Boolean(
+        document.querySelector('[role="dialog"]') ||
+          document.querySelector('[data-home-editing="true"]')
+      )
+      const isShiftPageShortcut =
+        readHomeLayout().pageShortcutModifier === "shift" &&
+        event.shiftKey &&
+        /^Digit[1-9]$/.test(event.code)
+      if (
+        isEditable ||
+        interactionBlocked ||
+        isShiftPageShortcut ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey
+      )
+        return
+
+      const isImeStart =
+        event.isComposing || event.key === "Process" || event.keyCode === 229
+      const isPrintable = event.key.length === 1 && event.key !== "/"
+      if (!isImeStart && !isPrintable) return
+
+      setShowSuggestions(true)
+      inputRef.current?.focus()
+      if (isPrintable) {
+        event.preventDefault()
+        setInputValue(event.key)
       }
-    })
-    return () => {
-      mounted = false
     }
+
+    window.addEventListener("keydown", handleGlobalTyping, true)
+    return () => window.removeEventListener("keydown", handleGlobalTyping, true)
   }, [])
 
   // 根据设置决定跳转方式
@@ -550,14 +600,15 @@ export const Searchbar = () => {
 
   const redirectToSearch = useCallback(
     (query: string) => {
+      const trimmedQuery = query.trim()
       // 记录搜索历史
-      if (query.trim()) {
-        SearchHistory.trackSearch(query, currentEngine)
+      if (trimmedQuery) {
+        SearchHistory.trackSearch(trimmedQuery, currentEngine)
       }
 
       let targetUrl: string
-      if (searchSettings.fastForward[query]) {
-        targetUrl = searchSettings.fastForward[query]
+      if (searchSettings.fastForward[trimmedQuery]) {
+        targetUrl = searchSettings.fastForward[trimmedQuery]
       } else {
         // for compatibility with old engine urls before fluidity 0.5.0
         if (!currentEngine.includes(queryToken)) {
@@ -705,33 +756,60 @@ export const Searchbar = () => {
     ]
   )
 
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (blurTimerRef.current) clearTimeout(blurTimerRef.current)
+    }
+  }, [])
+
   const handleFocus = useCallback(() => {
+    // 小屏上建议列表是静态布局，聚焦即展开会把链接区顶开；输入后再显示
+    const isSmallScreen = window.matchMedia("(max-width: 600px)").matches
+    if (isSmallScreen && !inputValue.trim()) return
     setShowSuggestions(true)
     // 建议会通过 useEffect 自动更新
-  }, [])
+  }, [inputValue])
 
   const handleBlur = (e: React.FocusEvent) => {
     // 延迟关闭，以便点击建议项时能够触发
     if (!containerRef.current?.contains(e.relatedTarget as Node)) {
-      setTimeout(() => setShowSuggestions(false), 150)
+      if (blurTimerRef.current) clearTimeout(blurTimerRef.current)
+      blurTimerRef.current = setTimeout(() => setShowSuggestions(false), 150)
     }
   }
 
   return (
     <StyledSearchbarContainer ref={containerRef}>
       <SuggestionsContainer visible={showSuggestions && suggestions.length > 0}>
-        <SuggestionsList>
+        <SuggestionsList
+          id="search-suggestions"
+          role="listbox"
+          aria-hidden={!showSuggestions || suggestions.length === 0}
+        >
           {suggestions.map((suggestion, index) => (
             <SuggestionItem
+              id={`search-suggestion-${index}`}
               key={`${suggestion.type}-${suggestion.text}`}
+              role="option"
+              aria-selected={index === selectedIndex}
               selected={index === selectedIndex}
-              onMouseDown={() => handleSuggestionClick(suggestion)}
+              onMouseDown={event => {
+                event.preventDefault()
+                handleSuggestionClick(suggestion)
+              }}
               onMouseEnter={() => setSelectedIndex(index)}
             >
               <SuggestionText>
-                {suggestion.icon
-                  ? `${suggestion.icon} ${suggestion.text}`
-                  : suggestion.text}
+                <SuggestionLabel>
+                  {suggestion.icon
+                    ? `${suggestion.icon} ${suggestion.text}`
+                    : suggestion.text}
+                </SuggestionLabel>
+                {suggestion.detail && (
+                  <SuggestionDetail>{suggestion.detail}</SuggestionDetail>
+                )}
               </SuggestionText>
               <SuggestionType selected={index === selectedIndex}>
                 {typeLabels[suggestion.type]}
@@ -741,7 +819,21 @@ export const Searchbar = () => {
         </SuggestionsList>
       </SuggestionsContainer>
       <SearchInputWrapper>
-        {searchSymbol && <SearchIcon src={searchSymbol} />}
+        {searchSymbol ? (
+          <SearchIcon
+            aria-hidden
+            style={
+              // data: URI 含空格/引号，url() 必须加引号才是合法 CSS 值
+              {
+                "--engine-icon": `url("${searchSymbol}")`,
+              } as React.CSSProperties
+            }
+          />
+        ) : (
+          <FallbackSearchIcon aria-hidden>
+            <FontAwesomeIcon icon={faMagnifyingGlass} />
+          </FallbackSearchIcon>
+        )}
         {tempEngine && (
           <EngineTag
             onClick={() => setTempEngine(null)}
@@ -753,17 +845,27 @@ export const Searchbar = () => {
         )}
         <StyledSearchbar
           ref={inputRef}
+          aria-label="搜索"
           placeholder={
             tempEngine ? `使用 ${tempEngine.label} 搜索...` : placeholder
           }
           type="text"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-controls="search-suggestions"
+          aria-expanded={showSuggestions && suggestions.length > 0}
+          aria-activedescendant={
+            selectedIndex >= 0 ? `search-suggestion-${selectedIndex}` : undefined
+          }
           value={inputValue}
-          onChange={e => setInputValue(e.target.value)}
+          onChange={e => {
+            setInputValue(e.target.value)
+            // 输入内容后展开建议（小屏聚焦时不自动展开，靠这里补上）
+            if (e.target.value.trim()) setShowSuggestions(true)
+          }}
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
           onBlur={handleBlur}
-          // eslint-disable-next-line jsx-a11y/no-autofocus
-          autoFocus
         />
       </SearchInputWrapper>
     </StyledSearchbarContainer>

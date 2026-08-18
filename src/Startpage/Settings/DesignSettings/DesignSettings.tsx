@@ -1,10 +1,18 @@
 import React, { useEffect, useState } from "react"
 
 import styled from "@emotion/styled"
-import { faPlus, faMinus, faSave } from "@fortawesome/free-solid-svg-icons"
+import {
+  faPlus,
+  faMinus,
+  faSave,
+  faSearch,
+} from "@fortawesome/free-solid-svg-icons"
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
 import { AIThemeGenerator } from "./AIThemeGenerator"
 import { ColorPicker } from "../../../components/ColorPicker"
+import { Button } from "../../../components/Button"
+import { Toggle } from "../../../components/Toggle"
 import { Dropdown } from "../../../components/Dropdown"
 import { OptionSlider } from "../../../components/OptionSlider"
 import { OptionTextInput } from "../../../components/OptionTextInput"
@@ -13,8 +21,13 @@ import {
   colorsType,
   images,
   LinkDisplaySettings,
-  LinkDisplayMode,
 } from "../../../data/data"
+import {
+  DEFAULT_HOME_PAGE_SHORTCUT_MODIFIER,
+  HomePageShortcutModifier,
+  readHomeLayout,
+  saveHomeLayout,
+} from "../../../services/homeLayout"
 import {
   StyledSettingsContent,
   SettingElement,
@@ -22,169 +35,214 @@ import {
   SettingsLabel,
 } from "../SettingsWindow"
 
-const DesignPreview = styled.div<{ name: string; colors: colorsType }>`
-  ${({ colors }) => {
-    return (
-      Object.keys(colors)
-        .map((key: string) => key + `:` + colors[key])
-        .toString()
-        .replaceAll(",", ";") + ";"
-    )
-  }}
+/**
+ * 设计预览：迷你主屏模拟。
+ * 草稿主题的 13 色以行内 CSS 变量注入，仅作用于预览区域，
+ * 后代元素直接用 var(--*) 即可拿到未应用的候选颜色。
+ */
+const DesignPreview = styled.div<{ colors: colorsType }>`
+  ${({ colors }) =>
+    Object.entries(colors)
+      .map(([key, value]) => `${key}:${value}`)
+      .join(";") + ";"}
 
-  background-color: var(--bg-color);
-  display: flex;
-  justify-content: space-evenly;
-  align-items: center;
-  border: 2px solid var(--accent-color);
   width: calc(100% - 400px);
   height: 100%;
   position: relative;
-  ::before {
-    content: "${({ name }) => name}";
-    color: var(--accent-color);
-    position: absolute;
-    top: 10px;
-    left: 15px;
-    font-size: 0.8rem;
-  }
-  ::after {
-    content: "设计预览";
-    color: var(--accent-color);
-    position: absolute;
-    top: 10px;
-    right: 15px;
-    font-size: 0.8rem;
-  }
-  @media screen and (max-width: 1400px) {
-    > img {
-      width: 200px;
-      height: 200px;
-    }
-    > div > div {
-      width: 50px;
-      height: 200px;
-      > h2 {
-        font-size: 1rem;
-      }
-      > .wave {
-        width: 50px;
-      }
-    }
-  }
-  @media screen and (max-width: 1200px) {
-    > img {
-      width: 150px;
-      height: 150px;
-    }
-    > div > div {
-      width: 1rem;
-      margin-left: 0.5rem;
-      height: 150px;
-      > h2 {
-        font-size: 0.8rem;
-      }
-      > .wave {
-        display: none;
-      }
-    }
-  }
-`
-const ImagePreviewWrapper = styled.div`
-  margin: 10px;
-  height: 300px;
-  width: 300px;
-  border: 1px solid var(--default-color);
-  padding: 5px;
-  position: relative;
-  animation: circling-shadow-small 4s ease 0s infinite normal;
+  overflow: hidden;
+  border-radius: var(--radius-main);
+  border: 1px solid var(--border-default);
+  background: var(--bg-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 `
 
-const ImagePreview = styled.img`
+const WallpaperImg = styled.img`
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
 `
 
-const ImageFallback = styled.div`
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-color);
-  color: var(--default-color);
-  font-size: 0.8rem;
-  text-align: center;
-  opacity: 0.5;
-`
-
-// 带错误处理的图片预览组件
-const ImagePreviewWithFallback = ({ src }: { src: string }) => {
+// 预览壁纸：加载失败时静默隐藏，露出主题底色
+const PreviewWallpaper = ({ src }: { src: string }) => {
   const [hasError, setHasError] = useState(false)
 
-  // 当 src 变化时重置错误状态
   useEffect(() => {
     setHasError(false)
   }, [src])
 
+  if (!src || hasError) return null
   return (
-    <ImagePreviewWrapper>
-      {hasError ? (
-        <ImageFallback>图片加载失败</ImageFallback>
-      ) : (
-        <ImagePreview src={src} onError={() => setHasError(true)} />
-      )}
-    </ImagePreviewWrapper>
+    <WallpaperImg src={src} alt="" aria-hidden onError={() => setHasError(true)} />
   )
 }
 
-const StyledAccordionPreview = styled.div<{ colorVar: string }>`
-  border: 4px solid ${({ colorVar }) => `var(${colorVar})`};
-  height: 300px;
-  width: 80px;
+const PreviewScrim = styled.div`
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(rgba(0, 0, 0, 0.14), rgba(0, 0, 0, 0.34));
+`
+
+const SettingHint = styled.p`
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+`
+
+const PreviewBadge = styled.span<{ side: "left" | "right" }>`
+  position: absolute;
+  top: 12px;
+  ${({ side }) => side}: 16px;
+  z-index: 1;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+`
+
+const PreviewStack = styled.div`
+  position: relative;
+  z-index: 1;
+  width: min(340px, 88%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+`
+
+const PreviewGreeting = styled.div`
+  font-size: 1.25rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+`
+
+const PreviewSearchPill = styled.div`
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-primary) 62%, transparent);
+  border: 1px solid var(--border-default);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+`
+
+const PreviewRow = styled.div`
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+`
+
+const PreviewWidgetCard = styled.div`
+  flex: 1;
+  max-width: 170px;
+  padding: 12px 14px;
+  box-sizing: border-box;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-primary) 72%, transparent);
+  border: 1px solid var(--border-default);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`
+
+const PreviewWidgetTitle = styled.div`
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+`
+
+const PreviewWidgetValue = styled.div`
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+`
+
+const PreviewBars = styled.div`
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 30px;
+`
+
+const PreviewBar = styled.span<{ h: number; today?: boolean }>`
+  flex: 1;
+  height: ${({ h }) => h}%;
+  border-radius: 3px;
+  background: ${({ today }) =>
+    today
+      ? "var(--accent)"
+      : "color-mix(in srgb, var(--accent) 45%, transparent)"};
+`
+
+const PreviewApps = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, 56px);
+  gap: 10px 14px;
+`
+
+const PreviewApp = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+`
+
+const PreviewAppIcon = styled.span`
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+  border: 1px solid var(--border-default);
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
-  ::before {
-    content: "";
-    position: absolute;
-    bottom: 0px;
-    width: 100%;
-    height: 100%;
-    background-color: ${({ colorVar }) => `var(${colorVar})`};
-  }
-
-  > .wave {
-    width: 80px;
-    height: 50px;
-    position: absolute;
-    top: 0px;
-    overflow: hidden;
-    ::before {
-      content: "";
-      width: 180px;
-      height: 185px;
-      position: absolute;
-      top: -25%;
-      left: 50%;
-      margin-left: -90px;
-      margin-top: -140px;
-      border-radius: 37%;
-      background: var(--bg-color);
-      animation: wave 12s infinite cubic-bezier(0.71, 0.33, 0.33, 0.68);
-    }
-    @keyframes wave {
-      from {
-        transform: rotate(0deg);
-      }
-      from {
-        transform: rotate(360deg);
-      }
-    }
-  }
+  font-size: 0.82rem;
+  color: var(--text-primary);
 `
+
+const PreviewAppLabel = styled.span`
+  font-size: 0.6rem;
+  color: var(--text-primary);
+  opacity: 0.85;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+`
+
+const PreviewActions = styled.div`
+  display: flex;
+  gap: 10px;
+`
+
+const PreviewChip = styled.span<{ filled?: boolean }>`
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: ${({ filled }) => (filled ? "var(--accent)" : "transparent")};
+  color: ${({ filled }) => (filled ? "var(--accent-text)" : "var(--text-secondary)")};
+  border: 1px solid
+    ${({ filled }) => (filled ? "var(--accent)" : "var(--border-active)")};
+`
+
+const PREVIEW_APPS = [
+  { glyph: "G", label: "搜索" },
+  { glyph: "知", label: "知乎" },
+  { glyph: "B", label: "哔哩" },
+  { glyph: "邮", label: "邮箱" },
+]
+
+const PREVIEW_BAR_HEIGHTS = [45, 70, 30, 85, 55, 40, 100]
+
 const SectionDivider = styled.div`
   width: calc(100% - 80px);
   padding: 20px 40px;
@@ -195,117 +253,10 @@ const SectionDivider = styled.div`
     position: absolute;
   }
 `
-const AccordionPreviewTitle = styled.h2`
-  transform: rotate(90deg);
-  min-width: max-content;
-  color: var(--bg-color);
-  transition: 0.5s;
-  letter-spacing: 5px;
-`
-const AccordionPreviewContainer = styled.div`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin: 10px;
-  > * {
-    margin-left: 30px;
-  }
-`
 
 export const SettingButtonRow = styled.div`
   display: flex;
   justify-content: space-between;
-`
-
-const AccordionPreview = ({
-  title,
-  colorVar,
-}: {
-  title: string
-  colorVar: string
-}) => {
-  return (
-    <StyledAccordionPreview colorVar={colorVar}>
-      <div className={"wave"} />
-      <AccordionPreviewTitle>{title}</AccordionPreviewTitle>
-    </StyledAccordionPreview>
-  )
-}
-
-// CSS 变量常量
-const CSS_BG_COLOR = "var(--bg-color)"
-const CSS_ACCENT_COLOR = "var(--accent-color)"
-const CSS_DEFAULT_COLOR = "var(--default-color)"
-
-// 链接展示模式选择按钮
-const ModeSelector = styled.div`
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-`
-
-const ModeButton = styled.button<{ active: boolean }>`
-  flex: 1;
-  min-width: 100px;
-  padding: 12px 8px;
-  border: 2px solid ${CSS_DEFAULT_COLOR};
-  background: ${({ active }) => (active ? CSS_ACCENT_COLOR : "transparent")};
-  color: ${({ active }) => (active ? CSS_BG_COLOR : CSS_DEFAULT_COLOR)};
-  cursor: pointer;
-  transition: 0.2s;
-  font-size: 0.85rem;
-  font-weight: 500;
-
-  &:hover {
-    background: ${({ active }) =>
-      active ? CSS_ACCENT_COLOR : CSS_DEFAULT_COLOR};
-    color: ${CSS_BG_COLOR};
-  }
-`
-
-const ModeDescription = styled.p`
-  font-size: 0.8rem;
-  opacity: 0.6;
-  margin-top: 8px;
-  line-height: 1.4;
-`
-
-// 开关组件
-const ToggleRow = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-`
-
-const ToggleLabel = styled.span`
-  font-size: 14px;
-  color: var(--default-color);
-`
-
-const ToggleSwitch = styled.button<{ checked: boolean }>`
-  width: 44px;
-  height: 24px;
-  border-radius: 12px;
-  border: none;
-  background: ${({ checked }) =>
-    checked ? CSS_ACCENT_COLOR : CSS_DEFAULT_COLOR};
-  opacity: ${({ checked }) => (checked ? 1 : 0.3)};
-  position: relative;
-  cursor: pointer;
-  transition: background 0.2s, opacity 0.2s;
-
-  &::after {
-    content: "";
-    position: absolute;
-    top: 2px;
-    left: ${({ checked }) => (checked ? "22px" : "2px")};
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: ${CSS_BG_COLOR};
-    transition: left 0.2s;
-  }
 `
 
 interface props {
@@ -327,12 +278,6 @@ const themeEquals = (theme1: Theme, theme2: Theme) => {
   return isEqual
 }
 
-const modeOptions: { value: LinkDisplayMode; label: string; desc: string }[] = [
-  { value: "accordion", label: "手风琴", desc: "经典水平展开模式" },
-  { value: "hover-card", label: "悬浮卡片", desc: "悬停显示链接卡片" },
-  { value: "command-palette", label: "命令面板", desc: "按 / 键快速搜索" },
-]
-
 export const DesignSettings = ({
   design,
   setDesign,
@@ -342,10 +287,10 @@ export const DesignSettings = ({
   setLinkDisplaySettings,
 }: props) => {
   const [isNewDesign, setIsNewDesign] = useState(false)
-
-  const handleModeChange = (mode: LinkDisplayMode) => {
-    setLinkDisplaySettings({ ...linkDisplaySettings, mode })
-  }
+  const [pageShortcutModifier, setPageShortcutModifier] =
+    useState<HomePageShortcutModifier>(
+      () => readHomeLayout().pageShortcutModifier
+    )
 
   const setName = (name: string) => setDesign({ ...design, name: name })
   const setColors = (colors: colorsType) =>
@@ -384,40 +329,66 @@ export const DesignSettings = ({
     <>
       <div>
         <StyledSettingsContent>
-          <SettingsLabel>链接展示模式</SettingsLabel>
+          <SettingsLabel>主屏</SettingsLabel>
           <SettingElement>
-            <ModeSelector>
-              {modeOptions.map(option => (
-                <ModeButton
-                  key={option.value}
-                  active={linkDisplaySettings.mode === option.value}
-                  onClick={() => handleModeChange(option.value)}
-                >
-                  {option.label}
-                </ModeButton>
-              ))}
-            </ModeSelector>
-            <ModeDescription>
-              {
-                modeOptions.find(o => o.value === linkDisplaySettings.mode)
-                  ?.desc
-              }
-            </ModeDescription>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                localStorage.removeItem("fluidity.homeLayout.v1")
+                setPageShortcutModifier(DEFAULT_HOME_PAGE_SHORTCUT_MODIFIER)
+                window.dispatchEvent(new Event("fluidity-home-layout-changed"))
+                window.dispatchEvent(
+                  new CustomEvent("show-notification", {
+                    detail: {
+                      type: "success",
+                      title: "主屏布局已重置",
+                      message: "小组件已恢复，应用将按使用频率重新排列",
+                    },
+                  })
+                )
+              }}
+            >
+              重置主屏布局（恢复隐藏的小组件）
+            </Button>
           </SettingElement>
 
           <SettingElement>
-            <ToggleRow>
-              <ToggleLabel>在新标签页打开链接</ToggleLabel>
-              <ToggleSwitch
-                checked={linkDisplaySettings.openInNewTab}
-                onChange={() =>
-                  setLinkDisplaySettings({
-                    ...linkDisplaySettings,
-                    openInNewTab: !linkDisplaySettings.openInNewTab,
-                  })
+            <Toggle
+              label="在新标签页打开链接"
+              checked={linkDisplaySettings.openInNewTab}
+              onChange={checked =>
+                setLinkDisplaySettings({
+                  ...linkDisplaySettings,
+                  openInNewTab: checked,
+                })
+              }
+            />
+          </SettingElement>
+
+          <SettingElement>
+            <Dropdown
+              value={pageShortcutModifier}
+              items={[
+                { label: "Option / Alt + 1–9", value: "alt" },
+                { label: "Control + 1–9", value: "control" },
+                { label: "Shift + 1–9", value: "shift" },
+                { label: "关闭数字跳页快捷键", value: "disabled" },
+              ]}
+              onChange={value => {
+                const modifier = value as HomePageShortcutModifier
+                const next = {
+                  ...readHomeLayout(),
+                  pageShortcutModifier: modifier,
                 }
-              />
-            </ToggleRow>
+                setPageShortcutModifier(modifier)
+                saveHomeLayout(next)
+                window.dispatchEvent(new Event("fluidity-home-layout-changed"))
+              }}
+            />
+            <SettingHint>
+              主屏可用左右方向键或横向滑动翻页；数字快捷键会直接跳到对应页。
+            </SettingHint>
           </SettingElement>
 
           <SectionDivider />
@@ -488,13 +459,45 @@ export const DesignSettings = ({
           </SettingElement>
         </StyledSettingsContent>
       </div>
-      <DesignPreview name={design.name} colors={design.colors}>
-        <ImagePreviewWithFallback src={design.image} />
-        <AccordionPreviewContainer>
-          <AccordionPreview title={"链接"} colorVar={"--default-color"} />
-          <AccordionPreview title={"链接"} colorVar={"--accent-color"} />
-          <AccordionPreview title={"链接"} colorVar={"--accent-color2"} />
-        </AccordionPreviewContainer>
+      <DesignPreview colors={design.colors}>
+        <PreviewWallpaper src={design.image} />
+        <PreviewScrim />
+        <PreviewBadge side="left">{design.name}</PreviewBadge>
+        <PreviewBadge side="right">设计预览</PreviewBadge>
+        <PreviewStack>
+          <PreviewGreeting>下午好。</PreviewGreeting>
+          <PreviewSearchPill>
+            <FontAwesomeIcon icon={faSearch} />
+            搜索
+          </PreviewSearchPill>
+          <PreviewRow>
+            <PreviewWidgetCard>
+              <PreviewWidgetTitle>屏幕时间</PreviewWidgetTitle>
+              <PreviewWidgetValue>1 小时 24 分</PreviewWidgetValue>
+              <PreviewBars>
+                {PREVIEW_BAR_HEIGHTS.map((h, i) => (
+                  <PreviewBar
+                    key={i}
+                    h={h}
+                    today={i === PREVIEW_BAR_HEIGHTS.length - 1}
+                  />
+                ))}
+              </PreviewBars>
+            </PreviewWidgetCard>
+            <PreviewApps>
+              {PREVIEW_APPS.map(app => (
+                <PreviewApp key={app.label}>
+                  <PreviewAppIcon>{app.glyph}</PreviewAppIcon>
+                  <PreviewAppLabel>{app.label}</PreviewAppLabel>
+                </PreviewApp>
+              ))}
+            </PreviewApps>
+          </PreviewRow>
+          <PreviewActions>
+            <PreviewChip filled>应用更改</PreviewChip>
+            <PreviewChip>取消</PreviewChip>
+          </PreviewActions>
+        </PreviewStack>
       </DesignPreview>
     </>
   )

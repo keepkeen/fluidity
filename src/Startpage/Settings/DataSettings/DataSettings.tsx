@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react"
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react"
 
-import styled from "@emotion/styled"
 import {
   faDownload,
   faUpload,
@@ -15,272 +14,160 @@ import {
   getDataStats,
   ImportResult,
 } from "../../../services/dataBackup"
+import {
+  BrowserUsageSettings,
+  DEFAULT_BROWSER_USAGE_SETTINGS,
+  getBrowserUsageSettings,
+  hasBrowserUsagePermissions,
+  removeBrowserUsagePermissions,
+  requestBrowserUsagePermissions,
+  setBrowserUsageSettings,
+} from "../../../services/browserUsageSettings"
 import { validateGitHubToken } from "../../../services/gistApi"
 import {
+  ConflictCopy,
   connectOrDiscover,
   disconnectGistSync,
   getGistSyncConfig,
   getTokenPrefillUrl,
+  hasRememberedSyncPassword,
+  hasSessionSyncPassword,
+  listConflictCopies,
   pullNow,
   pushNow,
+  restoreConflictCopy,
   setSyncPasswordForSession,
 } from "../../../services/gistSync"
+import { ensureSyncPermissions } from "../../../services/optionalPermissions"
+import { Toggle } from "../../../components/Toggle"
+import { emitSettingsApplied } from "../../../services/settingsEvents"
 import {
   getSyncRuntimeStatus,
   subscribeSyncRuntimeStatus,
   SyncRuntimeStatus,
 } from "../../../services/syncRuntime"
+import {
+  Advanced,
+  Button,
+  Container,
+  Description,
+  HiddenInput,
+  Link,
+  ResultDetails,
+  ResultIcon,
+  ResultMessage,
+  ScrollContainer,
+  Section,
+  SectionTitle,
+  SettingsColumn,
+  StatsCard,
+  StatsLabel,
+  StatsRow,
+  StatsSummary,
+  StatsValue,
+  StatusDetail,
+  StatusHeadline,
+  StatusLabel,
+  StatusRow,
+  StatusValue,
+  TextInput,
+  WarningBox,
+  WarningIcon,
+} from "./DataSettings.styles"
 
-// CSS 变量常量
-const ACCENT_COLOR = "var(--accent-color)"
-const ACCENT_COLOR2 = "var(--accent-color2)"
-const BG_COLOR = "var(--bg-color)"
-const VARIANT_PRIMARY = "primary"
+const Changelog = React.lazy(() =>
+  import("../Changelog/Changelog").then(module => ({
+    default: module.Changelog,
+  }))
+)
 
-const isPrimary = (variant?: string) => variant === VARIANT_PRIMARY
+const formatSyncError = (error: unknown, fallback: string): string => {
+  const message = error instanceof Error ? error.message : ""
+  const lower = message.toLowerCase()
 
-const ScrollContainer = styled.div`
-  width: 100%;
-  height: 100%;
-  overflow-y: auto;
-  padding-right: 10px;
-`
-
-const Container = styled.div`
-  width: 100%;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 30px;
-  padding-bottom: 20px;
-`
-
-const SettingsColumn = styled.div`
-  flex: 1;
-  min-width: 280px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-`
-
-const Section = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-`
-
-const SectionTitle = styled.h3`
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin: 0;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color);
-  opacity: 0.9;
-`
-
-const Description = styled.p`
-  font-size: 0.85rem;
-  opacity: 0.7;
-  margin: 0;
-  line-height: 1.5;
-`
-
-const StatsCard = styled.div`
-  padding: 16px;
-  border: 2px solid var(--border-color);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-`
-
-const StatsRow = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 0;
-  border-bottom: 1px dashed var(--border-color);
-  opacity: 0.8;
-
-  &:last-child {
-    border-bottom: none;
+  if (message.includes("401") || lower.includes("bad credentials")) {
+    return "GitHub Token 无效或已过期，请重新生成带 gist 权限的 Token。"
   }
-`
-
-const StatsLabel = styled.span`
-  font-size: 0.85rem;
-`
-
-const StatsValue = styled.span`
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: ${ACCENT_COLOR};
-`
-
-const StatsSummary = styled.div`
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.1);
-  font-weight: 600;
-`
-
-const Button = styled.button<{
-  variant?: "primary" | "secondary"
-}>`
-  flex: 1;
-  min-width: 140px;
-  padding: 12px 16px;
-  border: 2px solid var(--default-color);
-  background: ${({ variant }) =>
-    isPrimary(variant) ? ACCENT_COLOR : "transparent"};
-  color: ${({ variant }) =>
-    isPrimary(variant) ? BG_COLOR : "var(--default-color)"};
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-
-  &:hover {
-    background: ${({ variant }) =>
-      isPrimary(variant) ? ACCENT_COLOR2 : ACCENT_COLOR};
-    color: ${BG_COLOR};
+  if (message.includes("403")) {
+    return "GitHub Token 权限不足或请求受限，请确认已授予 gist 权限。"
+  }
+  if (message.includes("404") || message === "GIST_NOT_FOUND") {
+    return "未找到云端备份，请确认 Gist 是否仍存在。"
+  }
+  if (message === "DECRYPT_FAILED" || message.includes("解密失败")) {
+    return "解密失败：同步密码不正确，无法拉取云端备份。"
+  }
+  if (message === "NEED_PASSWORD") {
+    return "请输入同步密码后再推送云端备份。"
+  }
+  if (message === "CONFLICT") {
+    return "检测到云端冲突，已避免覆盖主备份。"
+  }
+  if (message.includes("Missing password")) {
+    return "未发现云端备份，请输入同步密码后创建新的加密备份。"
+  }
+  if (message.includes("请求超时") || lower.includes("network")) {
+    return "网络请求失败，请检查连接后重试。"
   }
 
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-`
+  return fallback
+}
 
-const HiddenInput = styled.input`
-  display: none;
-`
-
-const TextInput = styled.input`
-  width: 100%;
-  padding: 10px 12px;
-  border: 2px solid var(--default-color);
-  background: transparent;
-  color: var(--default-color);
-  font-size: 0.9rem;
-
-  &:focus {
-    outline: none;
-    border-color: ${ACCENT_COLOR};
-  }
-`
-
-const Link = styled.a`
-  color: ${ACCENT_COLOR};
-  text-decoration: none;
-  font-size: 0.9rem;
-
-  &:hover {
-    text-decoration: underline;
-  }
-`
-
-const StatusRow = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 2px solid var(--border-color);
-`
-
-const StatusLabel = styled.span`
-  font-size: 0.9rem;
-  opacity: 0.9;
-`
-
-const StatusValue = styled.span`
-  font-size: 0.85rem;
-  opacity: 0.8;
-  text-align: right;
-`
-
-const CheckboxRow = styled.label`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  padding: 8px 0;
-
-  &:hover {
-    opacity: 0.8;
-  }
-`
-
-const Checkbox = styled.input`
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  border: 2px solid var(--default-color);
-  border-radius: 4px;
-  cursor: pointer;
-  position: relative;
-  transition: 0.2s;
-
-  &:checked {
-    background: ${ACCENT_COLOR};
-    border-color: ${ACCENT_COLOR};
+const getSyncStatusCopy = (options: {
+  hasToken: boolean
+  syncEnabled: boolean
+  hasGist: boolean
+  hasPassword: boolean
+  runtimeStatus: SyncRuntimeStatus
+  isSyncBusy: boolean
+}): { headline: string; detail: string } => {
+  if (options.isSyncBusy) {
+    return {
+      headline: "正在处理云同步",
+      detail: options.runtimeStatus.message ?? "正在连接 GitHub Gist…",
+    }
   }
 
-  &:checked::after {
-    content: "✓";
-    position: absolute;
-    top: -2px;
-    left: 3px;
-    color: ${BG_COLOR};
-    font-size: 14px;
-    font-weight: 700;
+  if (!options.hasToken && !options.syncEnabled) {
+    return {
+      headline: "未配置 Token",
+      detail: "先粘贴带 gist 权限的 GitHub Token，然后连接或创建加密备份。",
+    }
   }
-`
 
-const CheckboxLabel = styled.span`
-  font-size: 0.9rem;
-`
+  if (options.hasToken && !options.syncEnabled) {
+    return {
+      headline: "Token 待连接",
+      detail: "Token 已输入但尚未连接；点击连接后会查找已有备份或创建新的私有 Gist。",
+    }
+  }
 
-const ResultMessage = styled.div<{ success: boolean }>`
-  padding: 12px 16px;
-  border: 2px solid ${({ success }) => (success ? "#39d353" : ACCENT_COLOR2)};
-  background: ${({ success }) =>
-    success ? "rgba(57, 211, 83, 0.1)" : "rgba(255, 100, 100, 0.1)"};
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  font-size: 0.85rem;
-  line-height: 1.5;
-`
+  if (options.syncEnabled && !options.hasGist) {
+    return {
+      headline: "等待创建云端备份",
+      detail: "Token 已保存，但还没有 Gist；输入同步密码后会创建新的加密备份。",
+    }
+  }
 
-const ResultIcon = styled.span<{ success: boolean }>`
-  color: ${({ success }) => (success ? "#39d353" : ACCENT_COLOR2)};
-`
+  if (options.hasGist && !options.hasPassword) {
+    return {
+      headline: "已找到云端备份，等待同步密码",
+      detail: "已有加密 Gist；必须输入创建备份时的同步密码后才能解锁和拉取。",
+    }
+  }
 
-const ResultDetails = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-`
+  if (options.runtimeStatus.state === "error") {
+    return {
+      headline: "云同步需要处理",
+      detail: options.runtimeStatus.message ?? "请检查 Token、Gist 或同步密码。",
+    }
+  }
 
-const WarningBox = styled.div`
-  padding: 12px 16px;
-  border: 2px solid ${ACCENT_COLOR2};
-  background: rgba(255, 100, 100, 0.1);
-  font-size: 0.85rem;
-  line-height: 1.5;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-`
-
-const WarningIcon = styled.span`
-  color: ${ACCENT_COLOR2};
-`
+  return {
+    headline: "云同步已连接",
+    detail: options.runtimeStatus.message ?? "Token、Gist 和同步密码已就绪。",
+  }
+}
 
 export const DataSettings: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -288,14 +175,28 @@ export const DataSettings: React.FC = () => {
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [isExporting, setIsExporting] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
+  const [usageSettings, setUsageSettingsState] =
+    useState<BrowserUsageSettings>(DEFAULT_BROWSER_USAGE_SETTINGS)
+  const [usageBusy, setUsageBusy] = useState(false)
+  const [usageError, setUsageError] = useState<string | null>(null)
+  const [usageSuccess, setUsageSuccess] = useState<string | null>(null)
 
   const [token, setToken] = useState("")
   const [syncPassword, setSyncPassword] = useState("")
   const [rememberPassword, setRememberPassword] = useState(false)
   const [isSyncBusy, setIsSyncBusy] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
+  const [syncSuccess, setSyncSuccess] = useState<string | null>(null)
   const [syncEnabled, setSyncEnabled] = useState(false)
   const [hasGist, setHasGist] = useState(false)
+  const [hasRememberedPassword, setHasRememberedPassword] = useState(false)
+  const [unlockedThisSession, setUnlockedThisSession] = useState(() =>
+    hasSessionSyncPassword()
+  )
+  const [conflictCopies, setConflictCopies] = useState<ConflictCopy[] | null>(
+    null
+  )
+  const [showChangelog, setShowChangelog] = useState(false)
   const [runtimeStatus, setRuntimeStatus] = useState<SyncRuntimeStatus>(() =>
     getSyncRuntimeStatus()
   )
@@ -311,8 +212,15 @@ export const DataSettings: React.FC = () => {
       setHasGist(Boolean(config.gistId))
       setToken(config.token ?? "")
       setRememberPassword(Boolean(config.rememberPassword))
+      setHasRememberedPassword(
+        Boolean(config.rememberPassword && (await hasRememberedSyncPassword()))
+      )
     }
     void load()
+  }, [])
+
+  useEffect(() => {
+    void getBrowserUsageSettings().then(setUsageSettingsState)
   }, [])
 
   useEffect(() => {
@@ -320,11 +228,102 @@ export const DataSettings: React.FC = () => {
     return subscribeSyncRuntimeStatus(setRuntimeStatus)
   }, [])
 
+  const syncStatusCopy = useMemo(
+    () =>
+      getSyncStatusCopy({
+        hasToken: Boolean(token.trim()),
+        syncEnabled,
+        hasGist,
+        hasPassword: Boolean(syncPassword.trim()) || hasRememberedPassword,
+        runtimeStatus,
+        isSyncBusy,
+      }),
+    [
+      hasGist,
+      hasRememberedPassword,
+      isSyncBusy,
+      runtimeStatus,
+      syncEnabled,
+      syncPassword,
+      token,
+    ]
+  )
+
+  const syncStage: "setup" | "locked" | "ready" =
+    !syncEnabled || !hasGist
+      ? "setup"
+      : hasRememberedPassword || unlockedThisSession
+        ? "ready"
+        : "locked"
+
   const handleExport = () => {
     setIsExporting(true)
     void downloadBackup({ includeApiKey }).finally(() => {
       setTimeout(() => setIsExporting(false), 500)
     })
+  }
+
+  const persistUsageSettings = async (
+    nextSettings: BrowserUsageSettings
+  ): Promise<boolean> => {
+    setUsageBusy(true)
+    setUsageError(null)
+    setUsageSuccess(null)
+    try {
+      await setBrowserUsageSettings(nextSettings)
+      setUsageSettingsState(nextSettings)
+      return true
+    } catch (error) {
+      setUsageError(
+        error instanceof Error ? error.message : "浏览统计设置保存失败"
+      )
+      return false
+    } finally {
+      setUsageBusy(false)
+    }
+  }
+
+  const handleUsageEnabledChange = async (enabled: boolean): Promise<void> => {
+    if (enabled) {
+      const alreadyGranted = await hasBrowserUsagePermissions()
+      const granted = await requestBrowserUsagePermissions()
+      if (!granted) {
+        setUsageError("需要授予网站访问权限后才能统计浏览时长")
+        return
+      }
+      const saved = await persistUsageSettings({
+        ...usageSettings,
+        enabled: true,
+      })
+      if (!saved) {
+        if (!alreadyGranted) await removeBrowserUsagePermissions()
+        return
+      }
+      setUsageSuccess(
+        "浏览统计已启动，当前打开的普通网页会立即接入；新标签页本身不计入时长。"
+      )
+      return
+    }
+
+    const saved = await persistUsageSettings({
+      ...usageSettings,
+      enabled: false,
+    })
+    if (!saved) return
+
+    const removed = await removeBrowserUsagePermissions()
+    setUsageSuccess(
+      removed
+        ? "浏览统计已关闭，网站访问权限已移除。"
+        : "浏览统计已关闭；网站访问权限可在扩展详情页中检查。"
+    )
+  }
+
+  const handleUsagePrivacyChange = async (
+    key: "includePagePath" | "includePageTitle",
+    checked: boolean
+  ): Promise<void> => {
+    await persistUsageSettings({ ...usageSettings, [key]: checked })
   }
 
   const handleImportClick = () => {
@@ -343,9 +342,9 @@ export const DataSettings: React.FC = () => {
       setImportResult(result)
 
       if (result.success) {
-        // 延迟刷新页面以显示结果
+        // 延迟刷新以显示结果
         setTimeout(() => {
-          window.location.reload()
+          emitSettingsApplied()
         }, 2000)
       }
     } finally {
@@ -360,10 +359,18 @@ export const DataSettings: React.FC = () => {
   const handleValidateToken = async () => {
     setIsSyncBusy(true)
     setSyncError(null)
+    setSyncSuccess(null)
     try {
+      if (!(await ensureSyncPermissions())) {
+        setSyncError("未授予 GitHub API 访问权限，无法使用云同步")
+        return
+      }
       await validateGitHubToken(token.trim())
+      setSyncSuccess(
+        "Token 验证成功。下一步点击连接并自动发现；有旧备份会提示输入同步密码，没有旧备份会创建新的私有加密 Gist。"
+      )
     } catch (error) {
-      setSyncError(error instanceof Error ? error.message : "Token 验证失败")
+      setSyncError(formatSyncError(error, "Token 验证失败"))
     } finally {
       setIsSyncBusy(false)
     }
@@ -372,10 +379,15 @@ export const DataSettings: React.FC = () => {
   const handleConnect = async () => {
     setIsSyncBusy(true)
     setSyncError(null)
+    setSyncSuccess(null)
     try {
       const t = token.trim()
       if (!t) {
         setSyncError("请先输入 GitHub Token")
+        return
+      }
+      if (!(await ensureSyncPermissions())) {
+        setSyncError("未授予 GitHub API 访问权限，无法使用云同步")
         return
       }
 
@@ -388,14 +400,21 @@ export const DataSettings: React.FC = () => {
 
       setHasGist(Boolean(result.gistId))
       setSyncEnabled(true)
+      setSyncSuccess(
+        result.foundExisting
+          ? "已找到已有加密备份。输入创建备份时的同步密码后，点击解锁并拉取。"
+          : "未发现旧备份，已创建新的私有加密 Gist。后续会使用同一个同步密码加密推送。"
+      )
+      setHasRememberedPassword(Boolean(rememberPassword && pwd))
 
       if (pwd) {
         setSyncPasswordForSession(pwd)
+        setUnlockedThisSession(true)
         await pullNow()
-        window.location.reload()
+        emitSettingsApplied()
       }
     } catch (error) {
-      setSyncError(error instanceof Error ? error.message : "连接失败")
+      setSyncError(formatSyncError(error, "连接失败"))
     } finally {
       setIsSyncBusy(false)
     }
@@ -404,12 +423,64 @@ export const DataSettings: React.FC = () => {
   const handleDisconnect = async () => {
     setIsSyncBusy(true)
     setSyncError(null)
+    setSyncSuccess(null)
     try {
       await disconnectGistSync()
       setSyncEnabled(false)
       setHasGist(false)
+      setHasRememberedPassword(false)
     } catch (error) {
-      setSyncError(error instanceof Error ? error.message : "断开失败")
+      setSyncError(formatSyncError(error, "断开失败"))
+    } finally {
+      setIsSyncBusy(false)
+    }
+  }
+
+  const handlePullNow = async () => {
+    setIsSyncBusy(true)
+    setSyncError(null)
+    setSyncSuccess(null)
+    try {
+      await pullNow()
+      emitSettingsApplied()
+    } catch (error) {
+      setSyncError(formatSyncError(error, "拉取失败"))
+    } finally {
+      setIsSyncBusy(false)
+    }
+  }
+
+  const handleListConflicts = async () => {
+    setIsSyncBusy(true)
+    setSyncError(null)
+    setSyncSuccess(null)
+    try {
+      const copies = await listConflictCopies()
+      setConflictCopies(copies)
+      if (copies.length === 0) setSyncSuccess("云端没有冲突副本")
+    } catch (error) {
+      setSyncError(formatSyncError(error, "获取冲突副本失败"))
+    } finally {
+      setIsSyncBusy(false)
+    }
+  }
+
+  const handleRestoreConflict = async (filename: string) => {
+    const confirmed = window.confirm(
+      "用该冲突副本覆盖本地数据？当前本地数据将被替换，且无法撤销。"
+    )
+    if (!confirmed) return
+    setIsSyncBusy(true)
+    setSyncError(null)
+    try {
+      await restoreConflictCopy(filename)
+      emitSettingsApplied()
+    } catch (error) {
+      setSyncError(
+        error instanceof Error && error.message === "NEED_PASSWORD"
+          ? "需要先输入同步密码（解锁并拉取一次）"
+          : formatSyncError(error, "恢复冲突副本失败")
+      )
     } finally {
       setIsSyncBusy(false)
     }
@@ -418,6 +489,7 @@ export const DataSettings: React.FC = () => {
   const handleUnlockAndPull = async () => {
     setIsSyncBusy(true)
     setSyncError(null)
+    setSyncSuccess(null)
     try {
       const pwd = syncPassword.trim()
       if (!pwd) {
@@ -425,10 +497,12 @@ export const DataSettings: React.FC = () => {
         return
       }
       setSyncPasswordForSession(pwd)
+      setUnlockedThisSession(true)
+      setHasRememberedPassword(Boolean(rememberPassword))
       await pullNow()
-      window.location.reload()
+      emitSettingsApplied()
     } catch (error) {
-      setSyncError(error instanceof Error ? error.message : "拉取失败")
+      setSyncError(formatSyncError(error, "拉取失败"))
     } finally {
       setIsSyncBusy(false)
     }
@@ -437,12 +511,14 @@ export const DataSettings: React.FC = () => {
   const handleForcePush = async () => {
     setIsSyncBusy(true)
     setSyncError(null)
+    setSyncSuccess(null)
     try {
       const pwd = syncPassword.trim()
       if (pwd) setSyncPasswordForSession(pwd)
       await pushNow({ force: true })
+      setSyncSuccess("已强制推送到云端备份。")
     } catch (error) {
-      setSyncError(error instanceof Error ? error.message : "推送失败")
+      setSyncError(formatSyncError(error, "推送失败"))
     } finally {
       setIsSyncBusy(false)
     }
@@ -476,6 +552,75 @@ export const DataSettings: React.FC = () => {
             </StatsCard>
           </Section>
 
+          <Section>
+            <SectionTitle>浏览时长统计</SectionTitle>
+            <Description>
+              默认关闭。启用后扩展会在已授权的网站上统计浏览时长；默认仅保存域名，不保存路径或标题。
+            </Description>
+
+            <Toggle
+              label="启用浏览时长统计"
+              checked={usageSettings.enabled}
+              disabled={usageBusy}
+              onChange={checked => void handleUsageEnabledChange(checked)}
+            />
+
+            <Toggle
+              label="记录页面路径（默认仅记录域名）"
+              checked={usageSettings.includePagePath}
+              disabled={usageBusy || !usageSettings.enabled}
+              onChange={checked =>
+                void handleUsagePrivacyChange("includePagePath", checked)
+              }
+            />
+
+            <Toggle
+              label="记录页面标题（可能包含敏感信息）"
+              checked={usageSettings.includePageTitle}
+              disabled={usageBusy || !usageSettings.enabled}
+              onChange={checked =>
+                void handleUsagePrivacyChange("includePageTitle", checked)
+              }
+            />
+
+            {(usageSettings.includePagePath ||
+              usageSettings.includePageTitle) &&
+              usageSettings.enabled && (
+                <WarningBox>
+                  <WarningIcon>
+                    <FontAwesomeIcon icon={faExclamationTriangle} />
+                  </WarningIcon>
+                  <span>
+                    路径和标题可能包含搜索词、文档名或私密上下文；只在确实需要更精细报告时启用。
+                  </span>
+                </WarningBox>
+              )}
+
+            {usageError && (
+              <ResultMessage success={false}>
+                <ResultIcon success={false}>
+                  <FontAwesomeIcon icon={faExclamationTriangle} />
+                </ResultIcon>
+                <ResultDetails>
+                  <strong>浏览统计设置错误</strong>
+                  <span>{usageError}</span>
+                </ResultDetails>
+              </ResultMessage>
+            )}
+
+            {usageSuccess && (
+              <ResultMessage success>
+                <ResultIcon success>
+                  <FontAwesomeIcon icon={faCheck} />
+                </ResultIcon>
+                <ResultDetails>
+                  <strong>浏览统计状态</strong>
+                  <span>{usageSuccess}</span>
+                </ResultDetails>
+              </ResultMessage>
+            )}
+          </Section>
+
           {/* 导出数据 */}
           <Section>
             <SectionTitle>导出数据</SectionTitle>
@@ -483,16 +628,11 @@ export const DataSettings: React.FC = () => {
               将所有设置和数据导出为 JSON 文件，可用于备份或迁移到其他设备
             </Description>
 
-            <CheckboxRow>
-              <Checkbox
-                type="checkbox"
-                checked={includeApiKey}
-                onChange={e => setIncludeApiKey(e.target.checked)}
-              />
-              <CheckboxLabel>
-                包含 API Key（不推荐，存在安全风险）
-              </CheckboxLabel>
-            </CheckboxRow>
+            <Toggle
+              label="包含 API Key（不推荐，存在安全风险）"
+              checked={includeApiKey}
+              onChange={setIncludeApiKey}
+            />
 
             {includeApiKey && (
               <WarningBox>
@@ -508,6 +648,7 @@ export const DataSettings: React.FC = () => {
 
             <Button
               variant="primary"
+              type="button"
               onClick={handleExport}
               disabled={isExporting}
             >
@@ -543,6 +684,7 @@ export const DataSettings: React.FC = () => {
 
             <Button
               variant="secondary"
+              type="button"
               onClick={handleImportClick}
               disabled={isImporting}
             >
@@ -597,97 +739,206 @@ export const DataSettings: React.FC = () => {
             <StatusRow>
               <StatusLabel>当前状态</StatusLabel>
               <StatusValue>
-                {runtimeStatus.message ?? runtimeStatus.state}
+                <StatusHeadline>{syncStatusCopy.headline}</StatusHeadline>
+                <StatusDetail>{syncStatusCopy.detail}</StatusDetail>
               </StatusValue>
             </StatusRow>
 
-            <Description>
-              第一步：生成 Token（勾选 gist 权限）{" "}
-              <Link href={tokenPrefillUrl} target="_blank" rel="noreferrer">
-                Generate GitHub Token
-              </Link>
-            </Description>
+            {syncStage === "setup" && (
+              <>
+                <Description>
+                  第一步：生成 Token（勾选 gist 权限）{" "}
+                  <Link href={tokenPrefillUrl} target="_blank" rel="noreferrer">
+                    Generate GitHub Token
+                  </Link>
+                </Description>
 
-            <TextInput
-              value={token}
-              onChange={e => setToken(e.target.value)}
-              placeholder="粘贴 GitHub Personal Access Token (classic)"
-              type="password"
-              autoComplete="off"
-            />
+                <TextInput
+                  value={token}
+                  onChange={e => setToken(e.target.value)}
+                  placeholder="粘贴 GitHub Personal Access Token (classic)"
+                  type="password"
+                  autoComplete="off"
+                />
 
-            <Button
-              variant="secondary"
-              onClick={() => void handleValidateToken()}
-              disabled={isSyncBusy || !token.trim()}
-            >
-              验证 Token
-            </Button>
+                <WarningBox>
+                  <WarningIcon>
+                    <FontAwesomeIcon icon={faExclamationTriangle} />
+                  </WarningIcon>
+                  <span>
+                    Token 会保存在浏览器本地扩展存储中，用于自动同步；云端备份内容会加密，但
+                    Token 本身不会写入云端备份文件。
+                  </span>
+                </WarningBox>
 
-            <Description>
-              第二步：设置同步密码（PBKDF2 派生 AES-256 密钥；云端只保存 salt/iv
-              和密文）
-            </Description>
+                <Button
+                  variant="secondary"
+                  type="button"
+                  onClick={() => void handleValidateToken()}
+                  disabled={isSyncBusy || !token.trim()}
+                >
+                  验证 Token
+                </Button>
 
-            <TextInput
-              value={syncPassword}
-              onChange={e => setSyncPassword(e.target.value)}
-              placeholder="同步密码（建议强密码）"
-              type="password"
-              autoComplete="off"
-            />
+                <Description>
+                  第二步：设置同步密码（PBKDF2 派生 AES-256 密钥；云端只保存
+                  salt/iv 和密文）
+                </Description>
 
-            <CheckboxRow>
-              <Checkbox
-                type="checkbox"
-                checked={rememberPassword}
-                onChange={e => setRememberPassword(e.target.checked)}
-              />
-              <CheckboxLabel>记住同步密码（不推荐）</CheckboxLabel>
-            </CheckboxRow>
+                <TextInput
+                  value={syncPassword}
+                  onChange={e => setSyncPassword(e.target.value)}
+                  placeholder="同步密码（建议强密码）"
+                  type="password"
+                  autoComplete="off"
+                />
 
-            {rememberPassword && (
-              <WarningBox>
-                <WarningIcon>
-                  <FontAwesomeIcon icon={faExclamationTriangle} />
-                </WarningIcon>
-                <span>
-                  同步密码将保存在浏览器本地存储中，可能被同机其他人获取。建议仅在个人设备启用。
-                </span>
-              </WarningBox>
+                <Toggle
+                  label="记住同步密码（不推荐）"
+                  checked={rememberPassword}
+                  onChange={setRememberPassword}
+                />
+
+                <Button
+                  variant="primary"
+                  type="button"
+                  onClick={() => void handleConnect()}
+                  disabled={isSyncBusy || !token.trim()}
+                >
+                  连接并自动发现
+                </Button>
+              </>
             )}
 
-            <Button
-              variant="primary"
-              onClick={() => void handleConnect()}
-              disabled={isSyncBusy || !token.trim()}
-            >
-              {syncEnabled ? "重新发现/连接" : "连接并自动发现"}
-            </Button>
+            {syncStage === "locked" && (
+              <>
+                <TextInput
+                  value={syncPassword}
+                  onChange={e => setSyncPassword(e.target.value)}
+                  placeholder="输入创建备份时的同步密码"
+                  type="password"
+                  autoComplete="off"
+                />
 
-            <Button
-              variant="secondary"
-              onClick={() => void handleUnlockAndPull()}
-              disabled={isSyncBusy || !hasGist}
-            >
-              解锁并拉取
-            </Button>
+                <Toggle
+                  label="记住同步密码（不推荐）"
+                  checked={rememberPassword}
+                  onChange={setRememberPassword}
+                />
 
-            <Button
-              variant="secondary"
-              onClick={() => void handleForcePush()}
-              disabled={isSyncBusy || !hasGist}
-            >
-              强制覆盖云端（推送）
-            </Button>
+                <Button
+                  variant="primary"
+                  type="button"
+                  onClick={() => void handleUnlockAndPull()}
+                  disabled={isSyncBusy || !syncPassword.trim()}
+                >
+                  解锁并拉取
+                </Button>
 
-            <Button
-              variant="secondary"
-              onClick={() => void handleDisconnect()}
-              disabled={isSyncBusy}
-            >
-              断开云同步
-            </Button>
+                <Advanced>
+                  <summary>高级操作</summary>
+                  <Button
+                    variant="secondary"
+                    type="button"
+                    onClick={() => void handleConnect()}
+                    disabled={isSyncBusy || !token.trim()}
+                  >
+                    重新发现/连接
+                  </Button>
+                  <Button
+                    variant="danger"
+                    type="button"
+                    onClick={() => void handleDisconnect()}
+                    disabled={isSyncBusy}
+                  >
+                    断开云同步
+                  </Button>
+                </Advanced>
+              </>
+            )}
+
+            {syncStage === "ready" && (
+              <>
+                <Button
+                  variant="primary"
+                  type="button"
+                  onClick={() => void handlePullNow()}
+                  disabled={isSyncBusy}
+                >
+                  立即拉取云端数据
+                </Button>
+
+                <Advanced>
+                  <summary>高级操作</summary>
+                  <Button
+                    variant="secondary"
+                    type="button"
+                    onClick={() => void handleForcePush()}
+                    disabled={isSyncBusy}
+                  >
+                    强制覆盖云端（推送）
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    type="button"
+                    onClick={() => void handleListConflicts()}
+                    disabled={isSyncBusy}
+                  >
+                    查看云端冲突副本
+                  </Button>
+                  {conflictCopies && conflictCopies.length > 0 && (
+                    <>
+                      <Description>
+                        推送冲突时另存的加密快照（最多保留 3
+                        份），可用其覆盖本地数据：
+                      </Description>
+                      {conflictCopies.map(copy => (
+                        <Button
+                          key={copy.filename}
+                          variant="secondary"
+                          type="button"
+                          onClick={() =>
+                            void handleRestoreConflict(copy.filename)
+                          }
+                          disabled={isSyncBusy}
+                        >
+                          恢复 {new Date(copy.timestamp).toLocaleString()}
+                          （设备 {copy.deviceId.slice(0, 8)}）
+                        </Button>
+                      ))}
+                    </>
+                  )}
+                  <Button
+                    variant="secondary"
+                    type="button"
+                    onClick={() => void handleConnect()}
+                    disabled={isSyncBusy || !token.trim()}
+                  >
+                    重新发现/连接
+                  </Button>
+                  <Button
+                    variant="danger"
+                    type="button"
+                    onClick={() => void handleDisconnect()}
+                    disabled={isSyncBusy}
+                  >
+                    断开云同步
+                  </Button>
+                </Advanced>
+              </>
+            )}
+
+            {syncSuccess && (
+              <ResultMessage success>
+                <ResultIcon success>
+                  <FontAwesomeIcon icon={faCheck} />
+                </ResultIcon>
+                <ResultDetails>
+                  <strong>云同步状态</strong>
+                  <span>{syncSuccess}</span>
+                </ResultDetails>
+              </ResultMessage>
+            )}
 
             {syncError && (
               <ResultMessage success={false}>
@@ -699,6 +950,43 @@ export const DataSettings: React.FC = () => {
                   <span>{syncError}</span>
                 </ResultDetails>
               </ResultMessage>
+            )}
+          </Section>
+
+          <Section>
+            <SectionTitle>危险操作</SectionTitle>
+            <Description>
+              删除本机的全部设置与数据（链接、主题、统计、同步配置），且无法恢复。
+            </Description>
+            <Button
+              variant="danger"
+              type="button"
+              onClick={() => {
+                const confirmed = window.confirm(
+                  "确定要清除全部设置吗？链接、主题和统计数据都会被删除，且无法恢复。"
+                )
+                if (!confirmed) return
+                localStorage.clear()
+                window.location.reload()
+              }}
+            >
+              清除全部设置
+            </Button>
+          </Section>
+
+          <Section>
+            <SectionTitle>更新日志</SectionTitle>
+            <Button
+              variant="secondary"
+              type="button"
+              onClick={() => setShowChangelog(prev => !prev)}
+            >
+              {showChangelog ? "收起更新日志" : "查看更新日志"}
+            </Button>
+            {showChangelog && (
+              <Suspense fallback={<Description>正在加载...</Description>}>
+                <Changelog />
+              </Suspense>
             )}
           </Section>
         </SettingsColumn>

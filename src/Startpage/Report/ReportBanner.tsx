@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react"
+import React, { Suspense, lazy, useCallback, useEffect, useState } from "react"
 
 import { css, keyframes } from "@emotion/react"
 import styled from "@emotion/styled"
@@ -6,9 +6,19 @@ import { faTimes } from "@fortawesome/free-solid-svg-icons"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
 import { Ribbon } from "./components/Ribbon"
-import { MonthlyReport } from "./MonthlyReport"
-import { WeeklyReport } from "./WeeklyReport"
 import { ReportState } from "../../services/reportState"
+
+const MonthlyReport = lazy(() =>
+  import("./MonthlyReport").then(module => ({
+    default: module.MonthlyReport,
+  }))
+)
+
+const WeeklyReport = lazy(() =>
+  import("./WeeklyReport").then(module => ({
+    default: module.WeeklyReport,
+  }))
+)
 
 const fadeIn = keyframes`
   from {
@@ -97,10 +107,11 @@ const ModalContainer = styled.div<{ closing: boolean }>`
 const ModalContent = styled.div`
   position: relative;
   padding: 20px;
-  border: 2px solid var(--default-color);
-  background: var(--bg-color);
-  color: var(--default-color);
-  box-shadow: 10px 10px 0px var(--accent-color);
+  border: 1px solid var(--surface-border-strong);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-pop);
+  border-radius: var(--radius-main);
   max-height: calc(100vh - 60px);
   display: flex;
   flex-direction: column;
@@ -108,7 +119,6 @@ const ModalContent = styled.div`
   @media screen and (max-width: 600px) {
     padding: 12px;
     max-height: calc(100vh - 20px);
-    box-shadow: 5px 5px 0px var(--accent-color);
   }
 `
 
@@ -118,7 +128,7 @@ const Header = styled.div`
   justify-content: space-between;
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 2px solid var(--default-color);
+  border-bottom: 1px solid var(--text-primary);
   flex-shrink: 0;
 `
 
@@ -140,7 +150,7 @@ const TitleIcon = styled.span`
 `
 
 const TitleText = styled.span`
-  background: linear-gradient(90deg, var(--accent-color), var(--accent-color2));
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -148,8 +158,8 @@ const TitleText = styled.span`
 
 const CloseButton = styled.button`
   background: transparent;
-  border: 2px solid var(--default-color);
-  color: var(--default-color);
+  border: 1px solid var(--surface-border-strong);
+  color: var(--text-primary);
   width: 36px;
   height: 36px;
   display: flex;
@@ -159,9 +169,9 @@ const CloseButton = styled.button`
   transition: 0.2s;
 
   &:hover {
-    background: var(--accent-color2);
-    color: var(--bg-color);
-    border-color: var(--accent-color2);
+    background: var(--accent-hover);
+    color: var(--bg-primary);
+    border-color: var(--accent-hover);
   }
 `
 
@@ -179,7 +189,7 @@ const Content = styled.div`
   }
 
   &::-webkit-scrollbar-thumb {
-    background: var(--default-color);
+    background: var(--text-primary);
     border-radius: 3px;
   }
 `
@@ -263,7 +273,11 @@ export const ReportBanner: React.FC = () => {
             </CloseButton>
           </Header>
 
-          <Content>{isWeekly ? <WeeklyReport /> : <MonthlyReport />}</Content>
+          <Content>
+            <Suspense fallback={null}>
+              {isWeekly ? <WeeklyReport /> : <MonthlyReport />}
+            </Suspense>
+          </Content>
         </ModalContent>
       </ModalContainer>
     </>

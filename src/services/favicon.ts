@@ -11,6 +11,7 @@ const MAX_CACHE_ENTRIES = 500
 interface FaviconCacheEntry {
   url: string | null // null 表示获取失败
   timestamp: number
+  sourceSize?: number
 }
 
 type FaviconCache = Record<string, FaviconCacheEntry>
@@ -31,24 +32,55 @@ const extractDomain = (url: string): string | null => {
 const buildChromeFavicon2Url = (pageUrl: string, size: number): string =>
   `chrome://favicon2/?page_url=${encodeURIComponent(
     pageUrl
-  )}&size=${size}&scale_factor=1x`
+  )}&size=${size}&scale_factor=2x`
+
+const normalizedSourceSize = (size: number): number =>
+  Math.min(256, Math.max(32, Math.ceil(size)))
+
+const inferSourceSize = (faviconUrl: string | null): number => {
+  if (!faviconUrl) return 0
+  try {
+    const parsed = new URL(faviconUrl)
+    const size = Number(parsed.searchParams.get("sz") ?? parsed.searchParams.get("size"))
+    return Number.isFinite(size) ? size : 0
+  } catch {
+    return 0
+  }
+}
 
 const getFaviconCandidateUrls = (url: string, size: number): string[] => {
   const domain = extractDomain(url)
   if (!domain) return []
+
+  const targetOrigin = (() => {
+    try {
+      return new URL(url).origin
+    } catch {
+      return null
+    }
+  })()
+  const siteFaviconUrl = `https://${domain}/favicon.ico`
+  const duckDuckGoFaviconUrl = `https://icons.duckduckgo.com/ip3/${domain}.ico`
+  const sourceSize = normalizedSourceSize(size)
+  const googleFaviconUrl = `https://www.google.com/s2/favicons?domain_url=${encodeURIComponent(
+    targetOrigin ?? `https://${domain}`
+  )}&sz=${sourceSize}`
+
+  // The startpage usually renders links from other origins. Some sites block
+  // direct favicon loads with CORP, and some icon services return noisy 404s.
+  const isCrossOriginPage =
+    Boolean(targetOrigin) && window.location.origin !== targetOrigin
 
   // Keep original preference order from the UI component:
   // 1) site favicon.ico
   // 2) DuckDuckGo
   // 3) Google
   // 4) Chromium internal favicon cache (as a last-resort fallback)
-  const candidates = [
-    `https://${domain}/favicon.ico`,
-    `https://icons.duckduckgo.com/ip3/${domain}.ico`,
-    `https://www.google.com/s2/favicons?domain=${domain}&sz=${size * 2}`,
-  ]
+  const candidates = isCrossOriginPage
+    ? [googleFaviconUrl]
+    : [siteFaviconUrl, duckDuckGoFaviconUrl, googleFaviconUrl]
 
-  candidates.push(buildChromeFavicon2Url(url, size))
+  candidates.push(buildChromeFavicon2Url(url, sourceSize))
 
   return candidates
 }
@@ -164,11 +196,20 @@ const cleanupCache = (): void => {
  * Favicon 服务
  */
 export const FaviconService = {
+  isSufficientSource(faviconUrl: string, minimumSize: number): boolean {
+    const inferred = inferSourceSize(faviconUrl)
+    // Unknown URLs may be user-provided/custom and must not be discarded.
+    return inferred === 0 || inferred >= normalizedSourceSize(minimumSize)
+  },
+
   /**
    * 从缓存获取 favicon
    * 返回 undefined 表示未缓存，null 表示缓存了失败状态
    */
-  getFromCache(url: string): string | null | undefined {
+  getFromCache(
+    url: string,
+    minimumSize = 0
+  ): string | null | undefined {
     const domain = extractDomain(url)
     if (!domain) return null
 
@@ -178,8 +219,18 @@ export const FaviconService = {
     if (entry === undefined) return undefined
 
     // 检查是否过期
-    const expiryTime = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000
+    const expiryDays = entry.url === null ? 1 : CACHE_EXPIRY_DAYS
+    const expiryTime = expiryDays * 24 * 60 * 60 * 1000
     if (Date.now() - entry.timestamp > expiryTime) {
+      return undefined
+    }
+
+    const storedSize = entry.sourceSize ?? inferSourceSize(entry.url)
+    if (
+      entry.url &&
+      storedSize > 0 &&
+      storedSize < normalizedSourceSize(minimumSize)
+    ) {
       return undefined
     }
 
@@ -189,7 +240,11 @@ export const FaviconService = {
   /**
    * 保存到缓存
    */
-  saveToCache(url: string, faviconUrl: string | null): void {
+  saveToCache(
+    url: string,
+    faviconUrl: string | null,
+    sourceSize = 0
+  ): void {
     const domain = extractDomain(url)
     if (!domain) return
 
@@ -197,6 +252,10 @@ export const FaviconService = {
     cache[domain] = {
       url: faviconUrl,
       timestamp: Date.now(),
+      sourceSize:
+        faviconUrl === null
+          ? normalizedSourceSize(sourceSize)
+          : Math.max(sourceSize, inferSourceSize(faviconUrl)),
     }
 
     // 检查是否需要清理
@@ -226,27 +285,28 @@ export const FaviconService = {
    * 获取 favicon（带缓存）
    */
   async getFavicon(url: string, size = 32): Promise<string | null> {
+    const sourceSize = normalizedSourceSize(size)
     // 先检查缓存
-    const cached = this.getFromCache(url)
+    const cached = this.getFromCache(url, sourceSize)
     if (cached !== undefined) {
       return cached
     }
 
-    const candidates = getFaviconCandidateUrls(url, size)
+    const candidates = getFaviconCandidateUrls(url, sourceSize)
     if (candidates.length === 0) {
-      this.saveToCache(url, null)
+      this.saveToCache(url, null, sourceSize)
       return null
     }
 
     for (const candidate of candidates) {
       const ok = await this.checkFaviconAvailable(candidate)
       if (ok) {
-        this.saveToCache(url, candidate)
+        this.saveToCache(url, candidate, sourceSize)
         return candidate
       }
     }
 
-    this.saveToCache(url, null)
+    this.saveToCache(url, null, sourceSize)
     return null
   },
 

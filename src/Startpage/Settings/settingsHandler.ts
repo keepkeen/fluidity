@@ -13,7 +13,14 @@ import {
   themes,
   colorsType,
 } from "../../data/data"
-import { normalizeToHex, hexToHsl, hslToHex } from "../../utils/colorUtils"
+import {
+  calculateAccentHover,
+  calculateBgSecondary,
+  calculateHoverBg,
+  calculateTextMuted,
+  calculateTextOnAccent,
+  normalizeToHex,
+} from "../../utils/colorUtils"
 import { settingsLogger } from "../../utils/logger"
 
 // 新版 CSS 变量名常量（13 色系统）
@@ -31,6 +38,108 @@ const CSS_ACCENT_TEXT = "--accent-text"
 const CSS_SUCCESS = "--success"
 const CSS_GLOW = "--glow"
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
+const isStringRecord = (value: unknown): value is Record<string, string> =>
+  isRecord(value) && Object.values(value).every(v => typeof v === "string")
+
+const isTheme = (value: unknown): value is Theme =>
+  isRecord(value) &&
+  typeof value.name === "string" &&
+  isStringRecord(value.colors) &&
+  typeof value.image === "string"
+
+const isThemeArray = (value: unknown): value is Theme[] =>
+  Array.isArray(value) && value.every(isTheme)
+
+const isLinkGroups = (value: unknown): value is linkGroup[] =>
+  Array.isArray(value) &&
+  value.every(
+    group =>
+      isRecord(group) &&
+      typeof group.title === "string" &&
+      Array.isArray(group.links) &&
+      group.links.every(
+        link =>
+          isRecord(link) &&
+          typeof link.label === "string" &&
+          typeof link.value === "string"
+      )
+  )
+
+const isSearchSettings = (value: unknown): value is SearchType =>
+  isRecord(value) &&
+  typeof value.engine === "string" &&
+  isRecord(value.fastForward)
+
+// "hover-card" 是已移除的历史模式，读到时按 accordion 处理（见 getWithFallback）
+const isLinkDisplaySettings = (
+  value: unknown
+): value is LinkDisplaySettings =>
+  isRecord(value) &&
+  ["accordion", "grid", "hover-card", "command-palette"].includes(
+    String(value.mode)
+  )
+
+const isWallpaperSettings = (value: unknown): value is WallpaperSettings =>
+  isRecord(value)
+
+const isCardAreaSettings = (value: unknown): value is CardAreaSettings =>
+  isRecord(value)
+
+const removeCorruptBackups = (key: string) => {
+  const prefix = `${key}.corrupt.`
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const existing = localStorage.key(i)
+    if (existing?.startsWith(prefix)) localStorage.removeItem(existing)
+  }
+}
+
+const readLocalJson = <T>(
+  key: string,
+  validator: (value: unknown) => value is T
+): T | undefined => {
+  const raw = localStorage.getItem(key)
+  if (!raw) return undefined
+
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (validator(parsed)) return parsed
+    throw new Error("schema mismatch")
+  } catch (error) {
+    const corruptKey = `${key}.corrupt.${Date.now()}`
+    try {
+      // 每个 key 只保留最新一份损坏备份，避免反复加载时备份无限累积占满配额
+      removeCorruptBackups(key)
+      localStorage.setItem(corruptKey, raw)
+      localStorage.removeItem(key)
+    } catch {
+      // ignore storage recovery errors
+    }
+    settingsLogger.error(`Stored ${key} is invalid; moved to ${corruptKey}.`, error)
+    return undefined
+  }
+}
+
+const writeLocalJson = (key: string, value: unknown) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch (error) {
+    settingsLogger.error(`Failed to persist ${key}`, error)
+    window.dispatchEvent(
+      new CustomEvent("show-notification", {
+        detail: {
+          type: "error",
+          title: "保存失败",
+          message: "本地存储空间不足，设置未能保存。请清理自定义图片后重试。",
+        },
+      })
+    )
+    throw error
+  }
+}
+
 // 旧版 CSS 变量名（用于迁移）
 const OLD_BG_COLOR = "--bg-color"
 const OLD_DEFAULT_COLOR = "--default-color"
@@ -45,47 +154,6 @@ const OLD_HOVER_BG = "--hover-bg"
 const OLD_TEXT_ON_ACCENT = "--text-on-accent"
 const OLD_SUCCESS_COLOR = "--success-color"
 const OLD_SHADOW_COLOR = "--shadow-color"
-
-/**
- * 计算悬停背景色
- */
-const calcBgHover = (bgPrimary: string): string => {
-  const hsl = hexToHsl(bgPrimary)
-  const newL = Math.min(hsl.l + 8, 100)
-  return hslToHex(hsl.h, hsl.s, newL)
-}
-
-/**
- * 计算弱化文字色
- */
-const calcTextMuted = (textPrimary: string, bgPrimary: string): string => {
-  const textHsl = hexToHsl(textPrimary)
-  const bgHsl = hexToHsl(bgPrimary)
-  // 向背景色方向偏移 50%
-  const newL = textHsl.l + (bgHsl.l - textHsl.l) * 0.5
-  return hslToHex(textHsl.h, textHsl.s * 0.5, newL)
-}
-
-/**
- * 计算强调色悬停状态
- */
-const calcAccentHover = (accent: string): string => {
-  const hsl = hexToHsl(accent)
-  const newL = Math.max(hsl.l - 8, 0)
-  return hslToHex(hsl.h, hsl.s, newL)
-}
-
-/**
- * 计算强调色上的文字颜色
- */
-const calcAccentText = (
-  accent: string,
-  bgPrimary: string,
-  textPrimary: string
-): string => {
-  const accentHsl = hexToHsl(accent)
-  return accentHsl.l > 50 ? bgPrimary : textPrimary
-}
 
 /**
  * 从旧版主题迁移到新版 13 色系统
@@ -109,22 +177,22 @@ const migrateFromOldTheme = (
     [CSS_BG_PRIMARY]: bgPrimary,
     [CSS_BG_SECONDARY]:
       oldColors[CSS_BG_SECONDARY] || oldColors[OLD_BG_COLOR]
-        ? calcBgHover(bgPrimary)
+        ? calculateBgSecondary(bgPrimary)
         : "#252525",
-    [CSS_BG_HOVER]: oldColors[OLD_HOVER_BG] || calcBgHover(bgPrimary),
+    [CSS_BG_HOVER]: oldColors[OLD_HOVER_BG] || calculateHoverBg(textPrimary, bgPrimary),
     [CSS_TEXT_PRIMARY]: textPrimary,
     [CSS_TEXT_SECONDARY]: textSecondary,
-    [CSS_TEXT_MUTED]: calcTextMuted(textPrimary, bgPrimary),
+    [CSS_TEXT_MUTED]: calculateTextMuted(textPrimary, bgPrimary),
     [CSS_BORDER_DEFAULT]: oldColors[OLD_BORDER_COLOR] || "#4A4A4A",
     [CSS_BORDER_ACTIVE]: oldColors[OLD_BORDER_FOCUS] || accent,
     [CSS_ACCENT]: accent,
     [CSS_ACCENT_HOVER]:
       oldColors[OLD_ACCENT_COLOR2] ||
       oldColors[OLD_ACCENT_SECONDARY] ||
-      calcAccentHover(accent),
+      calculateAccentHover(accent, bgPrimary),
     [CSS_ACCENT_TEXT]:
       oldColors[OLD_TEXT_ON_ACCENT] ||
-      calcAccentText(accent, bgPrimary, textPrimary),
+      calculateTextOnAccent(accent, bgPrimary, textPrimary),
     [CSS_SUCCESS]: oldColors[OLD_SUCCESS_COLOR] || "#B4FFE6",
     [CSS_GLOW]: oldColors[OLD_SHADOW_COLOR] || accent,
   }
@@ -148,19 +216,19 @@ const fillMissingColors = (
   return {
     [CSS_BG_PRIMARY]: bgPrimary,
     [CSS_BG_SECONDARY]: colors[CSS_BG_SECONDARY] || defaults[CSS_BG_SECONDARY],
-    [CSS_BG_HOVER]: colors[CSS_BG_HOVER] || calcBgHover(bgPrimary),
+    [CSS_BG_HOVER]: colors[CSS_BG_HOVER] || calculateHoverBg(textPrimary, bgPrimary),
     [CSS_TEXT_PRIMARY]: textPrimary,
     [CSS_TEXT_SECONDARY]:
       colors[CSS_TEXT_SECONDARY] || defaults[CSS_TEXT_SECONDARY],
     [CSS_TEXT_MUTED]:
-      colors[CSS_TEXT_MUTED] || calcTextMuted(textPrimary, bgPrimary),
+      colors[CSS_TEXT_MUTED] || calculateTextMuted(textPrimary, bgPrimary),
     [CSS_BORDER_DEFAULT]:
       colors[CSS_BORDER_DEFAULT] || defaults[CSS_BORDER_DEFAULT],
     [CSS_BORDER_ACTIVE]: colors[CSS_BORDER_ACTIVE] || accent,
     [CSS_ACCENT]: accent,
-    [CSS_ACCENT_HOVER]: colors[CSS_ACCENT_HOVER] || calcAccentHover(accent),
+    [CSS_ACCENT_HOVER]: colors[CSS_ACCENT_HOVER] || calculateAccentHover(accent, bgPrimary),
     [CSS_ACCENT_TEXT]:
-      colors[CSS_ACCENT_TEXT] || calcAccentText(accent, bgPrimary, textPrimary),
+      colors[CSS_ACCENT_TEXT] || calculateTextOnAccent(accent, bgPrimary, textPrimary),
     [CSS_SUCCESS]: colors[CSS_SUCCESS] || defaults[CSS_SUCCESS],
     [CSS_GLOW]: colors[CSS_GLOW] || accent,
   }
@@ -196,9 +264,7 @@ export const migrateThemeColors = (theme: Theme): Theme => {
 
 export const Search = {
   get: () => {
-    const lsSearch = localStorage.getItem("search-settings")
-    if (lsSearch) return Search.parse(lsSearch)
-    return undefined
+    return readLocalJson("search-settings", isSearchSettings)
   },
   getWithFallback: () => {
     try {
@@ -212,23 +278,25 @@ export const Search = {
   },
 
   set: (searchSettings: SearchType) =>
-    localStorage.setItem("search-settings", JSON.stringify(searchSettings)),
+    writeLocalJson("search-settings", searchSettings),
 
   parse: (searchSettings: string) => JSON.parse(searchSettings) as SearchType,
 }
 
 export const Themes = {
   get: () => {
-    const lsThemes = localStorage.getItem("themes")
-    if (lsThemes) return JSON.parse(lsThemes) as Theme[]
-    return undefined
+    return readLocalJson("themes", isThemeArray)
   },
   getWithFallback: () => {
     try {
       const userThemes = Themes.get()
       if (userThemes) {
-        // 迁移旧版主题数据
-        return userThemes.map(migrateThemeColors)
+        // 迁移旧版主题数据；内置预设按名称补齐，老用户也能看到新预设
+        const migrated = userThemes.map(migrateThemeColors)
+        const presets = themes.filter(
+          preset => !migrated.some(t => t.name === preset.name)
+        )
+        return [...migrated, ...presets]
       }
       return themes
     } catch {
@@ -239,8 +307,7 @@ export const Themes = {
     }
   },
 
-  set: (themes: Theme[]) =>
-    localStorage.setItem("themes", JSON.stringify(themes)),
+  set: (themes: Theme[]) => writeLocalJson("themes", themes),
 
   add: (theme: Theme) => {
     const lsThemes = Themes.get()
@@ -260,9 +327,7 @@ const linkGroupsKey = "link-groups"
 export const Links = {
   getRaw: () => localStorage.getItem(linkGroupsKey),
   get: () => {
-    const lsLinks = localStorage.getItem(linkGroupsKey)
-    if (lsLinks) return Links.parse(lsLinks)
-    return undefined
+    return readLocalJson(linkGroupsKey, isLinkGroups)
   },
   getWithFallback: () => {
     try {
@@ -275,17 +340,14 @@ export const Links = {
     }
   },
 
-  set: (themes: linkGroup[]) =>
-    localStorage.setItem(linkGroupsKey, JSON.stringify(themes)),
+  set: (themes: linkGroup[]) => writeLocalJson(linkGroupsKey, themes),
 
   parse: (linkGroups: string) => JSON.parse(linkGroups) as linkGroup[],
 }
 
 export const Design = {
   get: () => {
-    const lsDesign = localStorage.getItem("design")
-    if (lsDesign) return Themes.parse(lsDesign)
-    return undefined
+    return readLocalJson("design", isTheme)
   },
   getWithFallback: () => {
     try {
@@ -303,20 +365,21 @@ export const Design = {
     }
   },
 
-  set: (design: Theme) =>
-    localStorage.setItem("design", JSON.stringify(design)),
+  set: (design: Theme) => writeLocalJson("design", design),
 }
 
 const linkDisplayKey = "link-display-settings"
 export const LinkDisplay = {
   get: () => {
-    const lsLinkDisplay = localStorage.getItem(linkDisplayKey)
-    if (lsLinkDisplay) return JSON.parse(lsLinkDisplay) as LinkDisplaySettings
-    return undefined
+    return readLocalJson(linkDisplayKey, isLinkDisplaySettings)
   },
   getWithFallback: () => {
     try {
-      return LinkDisplay.get() ?? linkDisplaySettings
+      const stored = LinkDisplay.get() ?? linkDisplaySettings
+      if ((stored.mode as string) === "hover-card") {
+        return { ...stored, mode: "accordion" as const }
+      }
+      return stored
     } catch {
       settingsLogger.error(
         "Your currently applied link display settings appear to be corrupted."
@@ -326,20 +389,27 @@ export const LinkDisplay = {
   },
 
   set: (settings: LinkDisplaySettings) =>
-    localStorage.setItem(linkDisplayKey, JSON.stringify(settings)),
+    writeLocalJson(linkDisplayKey, settings),
 }
 
 const wallpaperKey = "wallpaper-settings"
 export const Wallpaper = {
   get: () => {
-    const data = localStorage.getItem(wallpaperKey)
-    if (data) return JSON.parse(data) as WallpaperSettings
-    return undefined
+    return readLocalJson(wallpaperKey, isWallpaperSettings)
   },
   getWithFallback: () => {
     try {
       const settings = Wallpaper.get()
-      if (settings) return { ...defaultWallpaperSettings, ...settings }
+      if (settings) {
+        const followTheme =
+          typeof settings.followTheme === "boolean"
+            ? settings.followTheme
+            : !(
+                typeof settings.presetImage === "string" &&
+                settings.presetImage.trim()
+              )
+        return { ...defaultWallpaperSettings, ...settings, followTheme }
+      }
       return defaultWallpaperSettings
     } catch {
       settingsLogger.error("Wallpaper settings appear to be corrupted.")
@@ -347,16 +417,14 @@ export const Wallpaper = {
     }
   },
   set: (settings: WallpaperSettings) => {
-    localStorage.setItem(wallpaperKey, JSON.stringify(settings))
+    writeLocalJson(wallpaperKey, settings)
   },
 }
 
 const cardAreaKey = "card-area-settings"
 export const CardArea = {
   get: () => {
-    const data = localStorage.getItem(cardAreaKey)
-    if (data) return JSON.parse(data) as CardAreaSettings
-    return undefined
+    return readLocalJson(cardAreaKey, isCardAreaSettings)
   },
   getWithFallback: () => {
     try {
@@ -369,6 +437,6 @@ export const CardArea = {
     }
   },
   set: (settings: CardAreaSettings) => {
-    localStorage.setItem(cardAreaKey, JSON.stringify(settings))
+    writeLocalJson(cardAreaKey, settings)
   },
 }

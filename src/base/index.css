@@ -1,5 +1,5 @@
-@import "./variables.css"; 
-@import "./animations.css"; 
+@import "./variables.css";
+@import "./animations.css";
 
 /***********************
  * Idk what this does. *
@@ -25,9 +25,16 @@ body {
 	font-weight: 500;
 	src: local('Fira Code'), url('./FiraCode-Regular.woff') format('woff');
 }
-body * {
-	font-family: "Fira Code";
-	font-weight: 300;
+
+/* Base Font Settings - Controlled by Theme Mode */
+body, button, input, textarea, select {
+	font-family: var(--font-main, "Fira Code");
+	font-weight: 400;
+}
+
+/* Utility class for forcing monospace */
+.font-mono {
+    font-family: var(--font-mono, "Fira Code", monospace) !important;
 }
 
 /********************
@@ -39,10 +46,17 @@ html, body {
 	width:100%;
 	margin: 0;
 }
+
+/* 分辨率自适应：根字号随视口宽度流式缩放（~14px @1366 → 16px @1920，上限 17px）。
+   rem 尺寸的文字与图标随之整体缩放，低分辨率外接屏无需手动缩放页面。 */
+html {
+	font-size: clamp(13px, 0.365vw + 9px, 17px);
+}
 body {
-	background-color: var(--bg-color);
-	color: var(--default-color);
+	background-color: var(--bg-primary);
+	color: var(--text-primary);
 	overflow: hidden;
+    transition: background-color 0.3s ease, color 0.3s ease;
 }
 #root {
 	height: 100%;
@@ -50,12 +64,33 @@ body {
 	overflow-y: auto;
 	overflow-x: hidden;
 }
+
+/* 清雅细滚动条 */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: color-mix(in srgb, var(--text-primary) 22%, transparent) transparent;
+}
+*::-webkit-scrollbar {
+	width: 6px;
+	height: 6px;
+}
+*::-webkit-scrollbar-track {
+	background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+	background: color-mix(in srgb, var(--text-primary) 22%, transparent);
+	border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+	background: color-mix(in srgb, var(--text-primary) 38%, transparent);
+}
 p {
 	margin:0px
 }
 a, a:visited, a:active {
-	color: var(--default-color);
+	color: var(--text-primary);
 	text-decoration: none;
+    transition: color 0.2s ease;
 }
 
 /********************
@@ -68,15 +103,20 @@ a, a:visited, a:active {
 
 ::-webkit-scrollbar-thumb {
     /* Handle */
-    background: var(--default-color);
+    background: var(--text-primary);
 }
 
 ::-webkit-scrollbar-thumb:hover {
 	/* Handle on hover */
-    background: var(--default-color);
+    background: var(--text-primary);
 }
 
 ::-webkit-scrollbar-track-piece {
     /* not handle on */
     background: transparent;
+}
+
+
+::selection {
+	background: color-mix(in srgb, var(--accent) 35%, transparent);
 }

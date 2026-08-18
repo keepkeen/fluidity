@@ -1,12 +1,17 @@
 import React, { useState, useCallback, useEffect } from "react"
 
 import styled from "@emotion/styled"
-import { faMagic, faSpinner } from "@fortawesome/free-solid-svg-icons"
+import { faBookmark, faMagic, faSpinner } from "@fortawesome/free-solid-svg-icons"
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
+import { LinkGroupEditor } from "./LinkGroupEditor"
 import { OptionTextArea } from "./OptionTextArea"
 import { linkGroup } from "../../../data/data"
 import { AISettingsManager } from "../../../services/ai"
+import {
+  importBookmarksAsLinkGroups,
+  isBookmarkImportSupported,
+} from "../../../services/bookmarkImport"
 import {
   organizeLinksWithAI,
   getOrganizeStatus,
@@ -21,7 +26,12 @@ interface props {
 
 export const GeneralSettingsContent = styled.div`
   width: 100%;
+  height: 100%;
   position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 8px;
+  box-sizing: border-box;
 `
 
 const HeaderRow = styled.div`
@@ -31,22 +41,44 @@ const HeaderRow = styled.div`
   margin-bottom: 10px;
 `
 
-const AIButton = styled.button<{ loading?: boolean }>`
+const JsonModeToggle = styled.button`
+  align-self: flex-start;
+  margin-top: 8px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 4px 0;
+
+  :hover {
+    color: var(--accent);
+  }
+`
+
+const HeaderButtons = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`
+
+const AIButton = styled.button<{ $loading?: boolean }>`
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
   background: transparent;
-  border: 2px solid var(--accent-color);
-  color: var(--accent-color);
-  cursor: ${({ loading }) => (loading ? "wait" : "pointer")};
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  cursor: ${({ $loading }) => ($loading ? "wait" : "pointer")};
   font-size: 0.85rem;
   transition: 0.2s;
-  opacity: ${({ loading }) => (loading ? 0.7 : 1)};
+  opacity: ${({ $loading }) => ($loading ? 0.7 : 1)};
 
   &:hover:not(:disabled) {
-    background: var(--accent-color);
-    color: var(--bg-color);
+    background: var(--accent);
+    color: var(--bg-primary);
   }
 
   &:disabled {
@@ -55,7 +87,7 @@ const AIButton = styled.button<{ loading?: boolean }>`
   }
 
   svg {
-    ${({ loading }) => loading && "animation: spin 1s linear infinite;"}
+    ${({ $loading }) => $loading && "animation: spin 1s linear infinite;"}
   }
 
   @keyframes spin {
@@ -82,8 +114,8 @@ const CustomPromptOverlay = styled.div`
 `
 
 const CustomPromptDialog = styled.div`
-  background: var(--bg-color);
-  border: 2px solid var(--default-color);
+  background: var(--bg-primary);
+  border: 1px solid var(--surface-border-strong);
   padding: 24px;
   max-width: 500px;
   width: 90%;
@@ -91,13 +123,13 @@ const CustomPromptDialog = styled.div`
 
 const DialogTitle = styled.h3`
   margin: 0 0 16px 0;
-  color: var(--accent-color);
+  color: var(--accent);
   font-size: 1.1rem;
 `
 
 const DialogDescription = styled.p`
   margin: 0 0 16px 0;
-  color: var(--default-color);
+  color: var(--text-primary);
   font-size: 0.85rem;
   opacity: 0.8;
   line-height: 1.5;
@@ -108,20 +140,20 @@ const CustomPromptInput = styled.textarea`
   min-height: 100px;
   padding: 12px;
   background: transparent;
-  border: 2px solid var(--default-color);
-  color: var(--default-color);
+  border: 1px solid var(--surface-border-strong);
+  color: var(--text-primary);
   font-size: 0.9rem;
   resize: vertical;
   margin-bottom: 16px;
 
   &::placeholder {
-    color: var(--default-color);
+    color: var(--text-primary);
     opacity: 0.4;
   }
 
   &:focus {
     outline: none;
-    border-color: var(--accent-color);
+    border-color: var(--accent);
   }
 `
 
@@ -131,14 +163,14 @@ const DialogButtons = styled.div`
   justify-content: flex-end;
 `
 
-const ACCENT_COLOR = "var(--accent-color)"
-const DEFAULT_COLOR = "var(--default-color)"
+const ACCENT_COLOR = "var(--accent)"
+const DEFAULT_COLOR = "var(--text-primary)"
 
 const DialogButton = styled.button<{ primary?: boolean }>`
   padding: 8px 20px;
-  border: 2px solid ${({ primary }) => (primary ? ACCENT_COLOR : DEFAULT_COLOR)};
+  border: 1px solid ${({ primary }) => (primary ? ACCENT_COLOR : DEFAULT_COLOR)};
   background: ${({ primary }) => (primary ? ACCENT_COLOR : "transparent")};
-  color: ${({ primary }) => (primary ? "var(--bg-color)" : DEFAULT_COLOR)};
+  color: ${({ primary }) => (primary ? "var(--bg-primary)" : DEFAULT_COLOR)};
   cursor: pointer;
   font-size: 0.9rem;
   transition: 0.2s;
@@ -164,6 +196,7 @@ const showNotification = (
 
 export const LinkSettings = ({ linkGroups, setLinkGroups }: props) => {
   const [isLoading, setIsLoading] = useState(getOrganizeStatus() === "loading")
+  const [jsonMode, setJsonMode] = useState(false)
   const [showPromptDialog, setShowPromptDialog] = useState(false)
   const [customPrompt, setCustomPrompt] = useState("")
 
@@ -212,21 +245,75 @@ export const LinkSettings = ({ linkGroups, setLinkGroups }: props) => {
     }
   }, [linkGroups, customPrompt])
 
+  const handleImportBookmarks = useCallback(async () => {
+    if (!isBookmarkImportSupported()) {
+      showNotification("error", "无法导入", "仅扩展环境支持从浏览器书签导入")
+      return
+    }
+    try {
+      const imported = await importBookmarksAsLinkGroups()
+      if (imported === null) {
+        showNotification("error", "未授权", "需要书签读取权限才能导入")
+        return
+      }
+      const existing = new Set(linkGroups.map(g => g.title))
+      const fresh = imported.filter(g => !existing.has(g.title))
+      if (fresh.length === 0) {
+        showNotification(
+          "success",
+          "没有新的分组",
+          "书签夹中没有找到可导入的新分组"
+        )
+        return
+      }
+      setLinkGroups([...linkGroups, ...fresh])
+      showNotification(
+        "success",
+        "书签已导入",
+        `新增 ${fresh.length} 个分组，点击"应用更改"后生效`
+      )
+    } catch {
+      showNotification("error", "导入失败", "读取浏览器书签时出错")
+    }
+  }, [linkGroups, setLinkGroups])
+
   return (
     <GeneralSettingsContent>
       <HeaderRow>
         <SettingsLabel style={{ margin: 0 }}>链接</SettingsLabel>
-        <AIButton
-          onClick={handleAIOrganize}
-          disabled={isLoading}
-          loading={isLoading}
-          title={isAIConfigured ? "AI 智能整理链接" : "请先配置 AI"}
-        >
-          <FontAwesomeIcon icon={isLoading ? faSpinner : faMagic} />
-          {isLoading ? "整理中..." : "AI 整理"}
-        </AIButton>
+        <HeaderButtons>
+          <AIButton
+            onClick={() => void handleImportBookmarks()}
+            disabled={isLoading}
+            $loading={false}
+            title="从浏览器书签导入链接分组"
+          >
+            <FontAwesomeIcon icon={faBookmark} />
+            导入书签
+          </AIButton>
+          <AIButton
+            onClick={handleAIOrganize}
+            disabled={isLoading}
+            $loading={isLoading}
+            title={isAIConfigured ? "AI 智能整理链接" : "请先配置 AI"}
+          >
+            <FontAwesomeIcon icon={isLoading ? faSpinner : faMagic} />
+            {isLoading ? "整理中..." : "AI 整理"}
+          </AIButton>
+        </HeaderButtons>
       </HeaderRow>
-      <OptionTextArea onChange={setLinkGroups} initialValue={linkGroups} />
+      {jsonMode ? (
+        <OptionTextArea onChange={setLinkGroups} initialValue={linkGroups} />
+      ) : (
+        <LinkGroupEditor linkGroups={linkGroups} onChange={setLinkGroups} />
+      )}
+
+      <JsonModeToggle
+        type="button"
+        onClick={() => setJsonMode(prev => !prev)}
+      >
+        {jsonMode ? "返回列表编辑" : "高级：JSON 批量编辑"}
+      </JsonModeToggle>
 
       {showPromptDialog && (
         <CustomPromptOverlay onClick={() => setShowPromptDialog(false)}>

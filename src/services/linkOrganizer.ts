@@ -1,9 +1,10 @@
 /**
- * AI 链接整理服务 - 使用 DeepSeek Reasoner 模型智能整理链接
+ * AI 链接整理服务 - 使用当前配置的 OpenAI 兼容模型智能整理链接
  */
 
-import { AISettingsManager } from "./ai"
+import { AISettingsManager, callDeepSeekAPI } from "./ai"
 import { linkGroup } from "../data/data"
+import { isSafeLinkUrl } from "../utils/urlSafety"
 
 // localStorage key for links
 const LINKS_STORAGE_KEY = "link-groups"
@@ -112,7 +113,7 @@ ${exampleOutput}
 }
 
 /**
- * 调用 DeepSeek Reasoner API 整理链接
+ * 调用当前 AI 设置中的服务商与模型整理链接
  */
 export const organizeLinksWithAI = async (
   linkGroups: linkGroup[],
@@ -130,44 +131,17 @@ export const organizeLinksWithAI = async (
   try {
     const prompt = generateOrganizePrompt(linkGroups, customInstruction)
 
-    const response = await fetch("https://api.deepseek.com/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${settings.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "deepseek-reasoner",
-        messages: [
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        max_tokens: 4000,
+    const content = await callDeepSeekAPI(
+      settings.apiKey,
+      prompt,
+      settings.model,
+      {
+        apiBaseUrl: settings.apiBaseUrl,
+        maxTokens: 4000,
         temperature: 0.3,
-      }),
-    })
-
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`API 请求失败: ${response.status} - ${error}`)
-    }
-
-    interface DeepSeekResponse {
-      choices?: {
-        message?: {
-          content?: string
-        }
-      }[]
-    }
-
-    const data = (await response.json()) as DeepSeekResponse
-    const content = data.choices?.[0]?.message?.content?.trim()
-
-    if (!content) {
-      throw new Error("AI 返回内容为空")
-    }
+        timeoutMs: 60_000,
+      }
+    )
 
     // 尝试解析 JSON
     // 可能返回的内容包含 markdown 代码块，需要提取
@@ -187,6 +161,15 @@ export const organizeLinksWithAI = async (
     for (const group of result) {
       if (!group.title || !Array.isArray(group.links)) {
         throw new Error("AI 返回格式错误：群组结构不正确")
+      }
+      for (const link of group.links) {
+        if (
+          typeof link.label !== "string" ||
+          typeof link.value !== "string" ||
+          !isSafeLinkUrl(link.value)
+        ) {
+          throw new Error("AI 返回格式错误：链接不合法")
+        }
       }
     }
 

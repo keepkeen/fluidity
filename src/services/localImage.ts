@@ -3,7 +3,10 @@
  * 处理图片上传、压缩和存储
  */
 
-const MAX_IMAGE_SIZE = 2 * 1024 * 1024 // 2MB (localStorage 限制约 5MB)
+// localStorage 配额约 5MB 且按 UTF-16 计费（2 字节/字符），
+// dataURL 的实际占用是字符串长度 × 2，必须按这个口径限制，
+// 否则"压缩达标"的图片写入时仍会 QuotaExceeded。
+const MAX_STORAGE_BYTES = 3 * 1024 * 1024 // 单张图片最多占 3MB 配额
 const MAX_DIMENSION = 1920 // 最大宽/高
 const JPEG_QUALITY = 0.85
 
@@ -36,7 +39,7 @@ export const LocalImageService = {
 
     // 如果图片足够小且尺寸合适，直接使用
     if (
-      originalSize <= MAX_IMAGE_SIZE &&
+      this.getStorageCost(dataUrl) <= MAX_STORAGE_BYTES &&
       img.width <= MAX_DIMENSION &&
       img.height <= MAX_DIMENSION
     ) {
@@ -116,13 +119,17 @@ export const LocalImageService = {
     // 绘制图片
     ctx.drawImage(img, 0, 0, width, height)
 
-    // 尝试不同质量级别直到满足大小限制
+    // 尝试不同质量级别直到满足存储配额
     let quality = JPEG_QUALITY
     let dataUrl = canvas.toDataURL("image/jpeg", quality)
 
-    while (this.getDataUrlSize(dataUrl) > MAX_IMAGE_SIZE && quality > 0.3) {
+    while (this.getStorageCost(dataUrl) > MAX_STORAGE_BYTES && quality > 0.3) {
       quality -= 0.1
       dataUrl = canvas.toDataURL("image/jpeg", quality)
+    }
+
+    if (this.getStorageCost(dataUrl) > MAX_STORAGE_BYTES) {
+      throw new Error("图片压缩后仍然过大，请选择更小的图片")
     }
 
     return {
@@ -134,12 +141,19 @@ export const LocalImageService = {
   },
 
   /**
-   * 计算 Data URL 的大小（字节）
+   * 计算 Data URL 的大小（解码后字节，用于向用户展示）
    */
   getDataUrlSize(dataUrl: string): number {
     // Data URL 格式: data:image/jpeg;base64,xxxxx
     const base64 = dataUrl.split(",")[1]
     return Math.round((base64.length * 3) / 4)
+  },
+
+  /**
+   * 计算写入 localStorage 的实际配额占用（UTF-16，2 字节/字符）
+   */
+  getStorageCost(dataUrl: string): number {
+    return dataUrl.length * 2
   },
 
   /**

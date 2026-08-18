@@ -52,8 +52,8 @@ interface RibbonProps {
 
 export const Ribbon: React.FC<RibbonProps> = ({
   position,
-  color1 = "var(--accent-color)",
-  color2 = "var(--accent-color2)",
+  color1 = "var(--accent)",
+  color2 = "var(--accent-hover)",
 }) => {
   const gradientId = `ribbon-gradient-${position}`
 

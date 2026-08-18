@@ -1,4 +1,5 @@
-export type SyncDotState = "ok" | "syncing" | "error"
+// disabled：云同步未启用/已断开，与真正的同步失败（error）在 UI 上必须可区分
+export type SyncDotState = "ok" | "syncing" | "error" | "disabled"
 
 export interface SyncRuntimeStatus {
   state: SyncDotState
@@ -18,7 +19,7 @@ declare global {
 export const getSyncRuntimeStatus = (): SyncRuntimeStatus => {
   const raw = localStorage.getItem(RUNTIME_STATUS_KEY)
   if (!raw)
-    return { state: "error", updatedAt: Date.now(), message: "未配置云同步" }
+    return { state: "disabled", updatedAt: Date.now(), message: "未配置云同步" }
   try {
     return JSON.parse(raw) as SyncRuntimeStatus
   } catch {

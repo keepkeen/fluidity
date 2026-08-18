@@ -15,7 +15,8 @@ const Overlay = styled.div<{ visible: boolean }>`
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: color-mix(in srgb, var(--bg-primary) 58%, transparent);
+  backdrop-filter: blur(6px);
   opacity: ${({ visible }) => (visible ? 1 : 0)};
   pointer-events: ${({ visible }) => (visible ? "auto" : "none")};
   transition: opacity 0.2s;
@@ -31,12 +32,12 @@ const PaletteContainer = styled.div<{ visible: boolean }>`
   width: 90%;
   max-width: 600px;
   max-height: 70vh;
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  background: var(--home-surface);
+  backdrop-filter: var(--surface-blur);
+  -webkit-backdrop-filter: var(--surface-blur);
+  border: 1px solid var(--home-stroke);
+  border-radius: var(--radius-main);
+  box-shadow: var(--home-shadow-pop);
   opacity: ${({ visible }) => (visible ? 1 : 0)};
   pointer-events: ${({ visible }) => (visible ? "auto" : "none")};
   transition: opacity 0.2s, transform 0.2s;
@@ -50,12 +51,12 @@ const SearchHeader = styled.div`
   display: flex;
   align-items: center;
   padding: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--home-stroke);
   gap: 12px;
 `
 
 const SearchIcon = styled.div`
-  color: var(--accent-color);
+  color: var(--accent);
   font-size: 1.2rem;
 `
 
@@ -63,12 +64,12 @@ const SearchInput = styled.input`
   flex: 1;
   background: transparent;
   border: none;
-  color: var(--default-color);
+  color: var(--text-primary);
   font-size: 1.1rem;
   outline: none;
 
   &::placeholder {
-    color: var(--default-color);
+    color: var(--text-primary);
     opacity: 0.5;
   }
 `
@@ -76,7 +77,7 @@ const SearchInput = styled.input`
 const CloseButton = styled.button`
   background: transparent;
   border: none;
-  color: var(--default-color);
+  color: var(--text-primary);
   cursor: pointer;
   padding: 8px;
   opacity: 0.6;
@@ -84,14 +85,14 @@ const CloseButton = styled.button`
 
   &:hover {
     opacity: 1;
-    color: var(--accent-color);
+    color: var(--accent);
   }
 `
 
 const ShortcutHint = styled.span`
   font-size: 0.75rem;
   padding: 4px 8px;
-  border: 1px solid var(--default-color);
+  border: 1px solid var(--text-primary);
   opacity: 0.5;
 `
 
@@ -110,13 +111,13 @@ const ResultsContainer = styled.div`
   }
 
   &::-webkit-scrollbar-thumb {
-    background: var(--default-color);
+    background: var(--text-primary);
     opacity: 0.5;
   }
 `
 
 const GroupSection = styled.div`
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--home-stroke);
 
   &:last-child {
     border-bottom: none;
@@ -127,8 +128,8 @@ const GroupHeader = styled.div`
   padding: 10px 16px;
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--accent-color);
-  background: rgba(255, 255, 255, 0.03);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--home-surface-strong) 72%, transparent);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -143,10 +144,10 @@ const LinkItemWrapper = styled.div<{ selected: boolean }>`
   align-items: center;
   transition: 0.1s;
   background: ${({ selected }) =>
-    selected ? "var(--accent-color)" : "transparent"};
+    selected ? "var(--accent)" : "transparent"};
 
   &:hover {
-    background: var(--accent-color);
+    background: var(--accent);
   }
 `
 
@@ -156,14 +157,14 @@ const LinkItem = styled.a<{ selected: boolean }>`
   align-items: center;
   gap: 8px;
   padding: 12px 16px 12px 32px;
-  color: var(--default-color);
+  color: var(--text-primary);
   text-decoration: none;
   transition: 0.1s;
   color: ${({ selected }) =>
-    selected ? "var(--bg-color)" : "var(--default-color)"};
+    selected ? "var(--bg-primary)" : "var(--text-primary)"};
 
-  ${LinkItemWrapper}:hover & {
-    color: var(--bg-color);
+  .link-item-wrapper:hover & {
+    color: var(--bg-primary);
   }
 `
 
@@ -171,15 +172,15 @@ const DeleteBtn = styled.button<{ selected: boolean }>`
   background: transparent;
   border: none;
   color: ${({ selected }) =>
-    selected ? "var(--bg-color)" : "var(--default-color)"};
+    selected ? "var(--bg-primary)" : "var(--text-primary)"};
   cursor: pointer;
   padding: 8px 16px;
   opacity: 0;
   transition: 0.2s;
 
-  ${LinkItemWrapper}:hover & {
+  .link-item-wrapper:hover & {
     opacity: 0.7;
-    color: var(--bg-color);
+    color: var(--bg-primary);
   }
 
   &:hover {
@@ -190,7 +191,7 @@ const DeleteBtn = styled.button<{ selected: boolean }>`
 const NoResults = styled.div`
   padding: 40px 16px;
   text-align: center;
-  color: var(--default-color);
+  color: var(--text-primary);
   opacity: 0.5;
 `
 
@@ -205,7 +206,7 @@ const TriggerButton = styled.button`
   background: rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  color: var(--default-color);
+  color: var(--text-primary);
   cursor: pointer;
   font-size: 1.2rem;
   opacity: 0.6;
@@ -215,7 +216,7 @@ const TriggerButton = styled.button`
   &:hover {
     opacity: 1;
     background: rgba(0, 0, 0, 0.5);
-    color: var(--accent-color);
+    color: var(--accent);
   }
 `
 
@@ -343,7 +344,11 @@ const useGlobalKeyboard = (
 ): void => {
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      const isInputFocused = document.activeElement?.tagName === "INPUT"
+      const active = document.activeElement
+      const isInputFocused =
+        active instanceof HTMLElement &&
+        (["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName) ||
+          active.isContentEditable)
       if (e.key === "/" && !isOpen && !isInputFocused) {
         e.preventDefault()
         openPalette()
@@ -394,6 +399,7 @@ const SearchResults = memo(
           ) : (
             <LinkItemWrapper
               key={`link-${result.groupTitle}-${result.label}`}
+              className="link-item-wrapper"
               data-index={index}
               selected={index === selectedIndex}
             >
@@ -412,7 +418,9 @@ const SearchResults = memo(
               </LinkItem>
               {onDeleteLink && (
                 <DeleteBtn
+                  type="button"
                   selected={index === selectedIndex}
+                  aria-label={`删除链接 ${result.label}`}
                   onClick={e => {
                     e.preventDefault()
                     e.stopPropagation()
@@ -497,7 +505,8 @@ export const CommandPalette = memo(
         const searchResults = performSearch(linkGroups, searchQuery)
         setResults(searchResults)
         if (resetSelection) {
-          setSelectedIndex(searchResults.findIndex(r => r.type === "link"))
+          const firstLinkIndex = searchResults.findIndex(r => r.type === "link")
+          setSelectedIndex(firstLinkIndex >= 0 ? firstLinkIndex : 0)
         }
       },
       [linkGroups]
@@ -635,21 +644,28 @@ export const CommandPalette = memo(
 
     // Support opening via runtime message (optional)
     useEffect(() => {
-      if (typeof chrome === "undefined") return
+      const runtimeMessages =
+        typeof chrome === "undefined" ? undefined : chrome.runtime?.onMessage
+      if (!runtimeMessages) return
       const handler = (msg: unknown) => {
         const m = msg as { type?: string }
         if (m.type !== "fluidity:openCommandPalette") return
         openPalette()
         setTimeout(() => inputRef.current?.focus(), 0)
       }
-      chrome.runtime.onMessage.addListener(handler)
-      return () => chrome.runtime.onMessage.removeListener(handler)
+      runtimeMessages.addListener(handler)
+      return () => runtimeMessages.removeListener(handler)
     }, [openPalette])
 
     return (
       <>
         {!hideTrigger && (
-          <TriggerButton onClick={openPalette} title="搜索链接 (/)">
+          <TriggerButton
+            type="button"
+            onClick={openPalette}
+            aria-label="打开链接搜索"
+            title="打开链接搜索 (/)"
+          >
             <FontAwesomeIcon icon={faSearch} />
           </TriggerButton>
         )}
@@ -664,13 +680,19 @@ export const CommandPalette = memo(
             <SearchInput
               ref={inputRef}
               type="text"
+              aria-label="搜索链接"
               placeholder="搜索链接..."
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
             />
             <ShortcutHint>Esc</ShortcutHint>
-            <CloseButton onClick={closePalette}>
+            <CloseButton
+              type="button"
+              onClick={closePalette}
+              aria-label="关闭链接搜索"
+              title="关闭链接搜索"
+            >
               <FontAwesomeIcon icon={faTimes} />
             </CloseButton>
           </SearchHeader>

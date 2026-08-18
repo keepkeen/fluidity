@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Fluidity 起始页",
+  "name": "拾光",
   "version": "0.6.1",
-  "description": "优雅的手风琴式浏览器起始页，支持 AI 智能助手、主题生成、待办事项等功能",
+  "description": "iOS 风格的优雅起始页：收藏铺成应用网格，重逢被遗忘的链接，看见自己的屏幕时光。",
   "action": {
-    "default_title": "Fluidity",
+    "default_title": "拾光",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "logo192.png",
@@ -19,43 +19,50 @@
     "192": "logo192.png",
     "512": "logo512.png"
   },
-  "permissions": ["storage", "idle"],
-  "host_permissions": ["<all_urls>"],
+  "permissions": [
+    "storage",
+    "idle",
+    "scripting",
+    "activeTab"
+  ],
+  "optional_permissions": [
+    "bookmarks"
+  ],
+  "host_permissions": [
+    "https://www.bing.com/*",
+    "https://cn.bing.com/*"
+  ],
+  "optional_host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "http://[::1]/*",
+    "https://*/*",
+    "https://api.deepseek.com/*",
+    "https://api.github.com/*",
+    "https://gist.githubusercontent.com/*"
+  ],
   "background": {
-    "service_worker": "background.js",
+    "service_worker": "assets/background.js",
     "type": "module"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["contentScript.js"],
-      "run_at": "document_idle"
-    }
-  ],
   "chrome_url_overrides": {
     "newtab": "index.html"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'"
+    "extension_pages": "default-src 'self'; script-src 'self'; object-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*;frame-src 'self'; base-uri 'none'; form-action 'none'"
   },
-  "web_accessible_resources": [
-    {
-      "resources": ["palette.html"],
-      "matches": ["<all_urls>"]
-    }
-  ],
   "commands": {
     "fluidity-open-command-palette": {
       "suggested_key": {
         "default": "Ctrl+Shift+K",
         "mac": "Command+Shift+K"
       },
-      "description": "打开 Fluidity 链接搜索面板"
+      "description": "打开拾光链接搜索面板"
     }
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "fluidity@prettycoffee.github.io",
+      "id": "fluidity@cuteliam666.gmail.com",
       "strict_min_version": "109.0"
     }
   }

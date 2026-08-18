@@ -18,49 +18,67 @@ interface UseFaviconResult {
 export const useFavicon = (
   url: string,
   size = 16,
-  icon?: string | null
+  icon?: string | null,
+  sourceSize = size
 ): UseFaviconResult => {
-  const [favicon, setFavicon] = useState<string | null>(icon ?? null)
-  const [loading, setLoading] = useState(icon ? false : true)
+  const [state, setState] = useState<UseFaviconResult>(() => {
+    const initialIcon =
+      typeof icon === "string" &&
+      FaviconService.isSufficientSource(icon, sourceSize)
+        ? icon
+        : null
+    if (initialIcon) return { favicon: initialIcon, loading: false }
+    if (!url) return { favicon: null, loading: false }
+
+    // 首次渲染就同步读取本地缓存，避免页面重新挂载时先闪回占位字母。
+    const cached = FaviconService.getFromCache(url, sourceSize)
+    return cached === undefined
+      ? { favicon: null, loading: true }
+      : { favicon: cached, loading: false }
+  })
 
   useEffect(() => {
-    // Explicit override from link data model:
-    // - `null` means "known missing" → don't fetch
-    // - string means "already resolved" → don't fetch
-    if (icon === null) {
-      setFavicon(null)
-      setLoading(false)
-      return
-    }
-    if (typeof icon === "string" && icon.length > 0) {
-      setFavicon(icon)
-      setLoading(false)
-      return
+    let active = true
+    // Preserve custom/high-resolution icon overrides, but upgrade legacy
+    // provider URLs whose requested size is too small for this surface.
+    if (
+      typeof icon === "string" &&
+      icon.length > 0 &&
+      FaviconService.isSufficientSource(icon, sourceSize)
+    ) {
+      setState({ favicon: icon, loading: false })
+      return () => {
+        active = false
+      }
     }
 
     if (!url) {
-      setFavicon(null)
-      setLoading(false)
-      return
+      setState({ favicon: null, loading: false })
+      return () => {
+        active = false
+      }
     }
 
     // 先检查缓存
-    const cached = FaviconService.getFromCache(url)
+    const cached = FaviconService.getFromCache(url, sourceSize)
     if (cached !== undefined) {
-      setFavicon(cached)
-      setLoading(false)
-      return
+      setState({ favicon: cached, loading: false })
+      return () => {
+        active = false
+      }
     }
 
     // 异步获取
-    setLoading(true)
-    void FaviconService.getFavicon(url, size).then(result => {
-      setFavicon(result)
-      setLoading(false)
+    setState(current => ({ ...current, loading: true }))
+    void FaviconService.getFavicon(url, sourceSize).then(result => {
+      if (active) setState({ favicon: result, loading: false })
     })
-  }, [url, size, icon])
+    return () => {
+      active = false
+    }
+  }, [url, sourceSize, icon])
 
-  return { favicon, loading }
+  return state
 }
 
 /**

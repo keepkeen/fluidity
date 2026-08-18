@@ -7,6 +7,8 @@
 import { LinkAnalytics } from "./analytics"
 import { linkGroup, dataElem } from "../data/data"
 import { searchLogger } from "../utils/logger"
+import { isSafeLinkUrl } from "../utils/urlSafety"
+import { matchSearchText } from "./smartSearch"
 
 /**
  * 搜索结果类型
@@ -78,52 +80,6 @@ const linksOnlyCache = new SearchCache<(dataElem & { groupTitle: string })[]>()
 export const clearSearchCache = (): void => {
   searchCache.clear()
   linksOnlyCache.clear()
-}
-
-// ============ 模糊匹配 ============
-
-/**
- * 计算模糊匹配分数
- * 分数越高匹配越好
- */
-const calculateMatchScore = (text: string, query: string): number => {
-  const lowerText = text.toLowerCase()
-  const lowerQuery = query.toLowerCase()
-
-  // 完全匹配
-  if (lowerText === lowerQuery) return 100
-
-  // 以查询开头
-  if (lowerText.startsWith(lowerQuery)) return 90
-
-  // 包含完整查询
-  if (lowerText.includes(lowerQuery)) return 70
-
-  // 模糊匹配：检查查询字符是否按顺序出现在文本中
-  let queryIndex = 0
-  let consecutiveBonus = 0
-  let lastMatchIndex = -2
-
-  for (let i = 0; i < lowerText.length && queryIndex < lowerQuery.length; i++) {
-    if (lowerText[i] === lowerQuery[queryIndex]) {
-      // 连续匹配加分
-      if (i === lastMatchIndex + 1) {
-        consecutiveBonus += 5
-      }
-      lastMatchIndex = i
-      queryIndex++
-    }
-  }
-
-  // 所有查询字符都找到了
-  if (queryIndex === lowerQuery.length) {
-    const baseScore = 50
-    const lengthDiff = lowerText.length - lowerQuery.length
-    const lengthPenalty = Math.max(0, lengthDiff / 2)
-    return Math.max(10, baseScore + consecutiveBonus - lengthPenalty)
-  }
-
-  return 0
 }
 
 /**
@@ -246,10 +202,10 @@ export const searchLinksOnly = (
 
   linkGroups.forEach(group => {
     group.links.forEach(link => {
-      // 计算标签和 URL 的匹配分数
-      const labelScore = calculateMatchScore(link.label, q)
-      const urlScore = calculateMatchScore(link.value, q) * 0.5 // URL 匹配权重较低
-      const score = Math.max(labelScore, urlScore)
+      const labelScore = matchSearchText(link.label, q).score
+      const groupScore = matchSearchText(group.title, q).score * 0.72
+      const urlScore = matchSearchText(link.value, q).score * 0.5
+      const score = Math.max(labelScore, groupScore, urlScore)
 
       if (fuzzy ? score >= minScore : score >= 70) {
         results.push({
@@ -306,6 +262,8 @@ export const navigateToLink = (
   groupTitle: string,
   openInNewTab?: boolean
 ): void => {
+  if (!isSafeLinkUrl(url)) return
+
   // 记录点击
   LinkAnalytics.trackClick(url, label, groupTitle)
 

@@ -6,14 +6,14 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
 import { Theme } from "../../../data/data"
 import {
-  generateTheme,
+  generateThemes,
   AIGeneratedTheme,
 } from "../../../services/themeGenerator"
 
 const Container = styled.div`
   margin-top: 24px;
   padding: 16px;
-  border: 2px solid var(--border-color);
+  border: 1px solid var(--surface-border);
 `
 
 const Title = styled.h3`
@@ -45,7 +45,7 @@ const TextArea = styled.textarea`
   min-height: 80px;
   padding: 10px 12px;
   background: transparent;
-  border: 2px solid var(--border-color);
+  border: 1px solid var(--surface-border);
   color: var(--text-primary);
   font-size: 0.9rem;
   font-family: inherit;
@@ -69,32 +69,11 @@ const CharCount = styled.span`
   margin-top: 4px;
 `
 
-const Select = styled.select`
-  width: 100%;
-  padding: 10px 12px;
-  background: var(--bg-primary);
-  border: 2px solid var(--border-color);
-  color: var(--text-primary);
-  font-size: 0.9rem;
-  cursor: pointer;
-  box-sizing: border-box;
-
-  &:focus {
-    outline: none;
-    border-color: var(--border-active);
-  }
-
-  option {
-    background: var(--bg-primary);
-    color: var(--text-primary);
-  }
-`
-
 const GenerateButton = styled.button`
   width: 100%;
   padding: 12px;
   background: var(--accent);
-  border: 2px solid var(--text-primary);
+  border: 1px solid var(--surface-border-strong);
   color: var(--accent-text);
   font-size: 0.95rem;
   font-weight: 600;
@@ -118,7 +97,7 @@ const GenerateButton = styled.button`
 const PreviewContainer = styled.div`
   margin-top: 16px;
   padding: 16px;
-  border: 2px dashed var(--border-color);
+  border: 1px dashed var(--surface-border);
 `
 
 const PreviewTitle = styled.div`
@@ -142,7 +121,7 @@ const ColorSectionTitle = styled.div`
   color: var(--text-secondary);
   margin-bottom: 8px;
   padding-bottom: 4px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-default);
 `
 
 const ColorGrid = styled.div`
@@ -165,7 +144,7 @@ const ColorSwatch = styled.div<{ color: string }>`
   width: 28px;
   height: 28px;
   background: ${({ color }) => color};
-  border: 2px solid var(--text-primary);
+  border: 1px solid var(--surface-border-strong);
   flex-shrink: 0;
 `
 
@@ -194,7 +173,7 @@ const ButtonRow = styled.div`
 const ActionButton = styled.button<{ variant?: "primary" | "secondary" }>`
   flex: 1;
   padding: 10px 16px;
-  border: 2px solid var(--text-primary);
+  border: 1px solid var(--surface-border-strong);
   background: ${({ variant }) =>
     variant === "primary" ? "var(--accent)" : "transparent"};
   color: ${({ variant }) =>
@@ -214,10 +193,66 @@ const ActionButton = styled.button<{ variant?: "primary" | "secondary" }>`
 const ErrorMessage = styled.div`
   margin-top: 12px;
   padding: 10px 12px;
-  border: 2px solid var(--accent-hover);
+  border: 1px solid var(--accent-hover);
   background: rgba(255, 100, 100, 0.1);
   font-size: 0.85rem;
   color: var(--accent-hover);
+`
+
+const CandidateHint = styled.p`
+  font-size: 0.85rem;
+  opacity: 0.7;
+  margin: 12px 0 8px;
+`
+
+const CandidateRow = styled.div`
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+`
+
+const CandidateCard = styled.button<{ bg: string; selected: boolean }>`
+  flex: 1;
+  min-width: 110px;
+  padding: 14px 12px;
+  background: ${({ bg }) => bg};
+  border: 2px solid
+    ${({ selected }) => (selected ? "var(--accent)" : "var(--border-default)")};
+  cursor: pointer;
+  transition: 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+
+  :hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+`
+
+const CandidateName = styled.span<{ color: string }>`
+  color: ${({ color }) => color};
+  font-size: 0.9rem;
+  font-weight: 600;
+`
+
+const CandidateDots = styled.span`
+  display: flex;
+  gap: 6px;
+`
+
+const CandidateDot = styled.span<{ color: string }>`
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: ${({ color }) => color};
+  border: 1px solid rgba(128, 128, 128, 0.4);
 `
 
 interface Props {
@@ -232,29 +267,38 @@ export const AIThemeGenerator: React.FC<Props> = ({
   onSave,
 }) => {
   const [description, setDescription] = useState("")
-  const [model, setModel] = useState("deepseek-chat")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [generatedTheme, setGeneratedTheme] = useState<AIGeneratedTheme | null>(
-    null
-  )
+  const [candidates, setCandidates] = useState<AIGeneratedTheme[]>([])
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
+
+  const generatedTheme =
+    selectedIndex !== null ? candidates[selectedIndex] ?? null : null
 
   const maxLength = 200
 
   const handleGenerate = async () => {
     setLoading(true)
     setError(null)
-    setGeneratedTheme(null)
+    setCandidates([])
+    setSelectedIndex(null)
 
-    const result = await generateTheme(description, model)
+    const result = await generateThemes(description)
 
-    if (result.theme) {
-      setGeneratedTheme(result.theme)
+    if (result.themes.length > 0) {
+      setCandidates(result.themes)
     } else {
       setError(result.error ?? "生成失败")
     }
 
     setLoading(false)
+  }
+
+  // 点选候选：立即套用到草稿做整页实时预览
+  const handleSelectCandidate = (index: number) => {
+    setSelectedIndex(index)
+    const candidate = candidates[index]
+    if (candidate) onApply(convertToTheme(candidate))
   }
 
   const convertToTheme = (aiTheme: AIGeneratedTheme): Theme => ({
@@ -310,14 +354,6 @@ export const AIThemeGenerator: React.FC<Props> = ({
         </CharCount>
       </FormGroup>
 
-      <FormGroup>
-        <Label>选择 AI 模型：</Label>
-        <Select value={model} onChange={e => setModel(e.target.value)}>
-          <option value="deepseek-chat">DeepSeek Chat (推荐)</option>
-          <option value="deepseek-reasoner">DeepSeek Reasoner</option>
-        </Select>
-      </FormGroup>
-
       <GenerateButton
         onClick={() => void handleGenerate()}
         disabled={loading || !description.trim()}
@@ -330,6 +366,34 @@ export const AIThemeGenerator: React.FC<Props> = ({
       </GenerateButton>
 
       {error && <ErrorMessage>{error}</ErrorMessage>}
+
+      {candidates.length > 0 && (
+        <>
+          <CandidateHint>
+            点击候选即可整页试穿，满意后点底部&quot;应用更改&quot;保存：
+          </CandidateHint>
+          <CandidateRow>
+            {candidates.map((candidate, index) => (
+              <CandidateCard
+                key={`${candidate.name}-${index}`}
+                type="button"
+                bg={candidate.bgPrimary}
+                selected={index === selectedIndex}
+                onClick={() => handleSelectCandidate(index)}
+              >
+                <CandidateName color={candidate.textPrimary}>
+                  {candidate.name}
+                </CandidateName>
+                <CandidateDots>
+                  <CandidateDot color={candidate.accent} />
+                  <CandidateDot color={candidate.textPrimary} />
+                  <CandidateDot color={candidate.bgSecondary} />
+                </CandidateDots>
+              </CandidateCard>
+            ))}
+          </CandidateRow>
+        </>
+      )}
 
       {generatedTheme && (
         <PreviewContainer>

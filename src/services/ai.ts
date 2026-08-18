@@ -9,16 +9,21 @@ import {
   guessAppNameFromDomain,
   normalizeDomainKey,
 } from "./browserUsage"
+import { fetchWithTimeout } from "./http"
 import {
-  getRecommendedTagsForToday,
-  setRecommendedTagsForToday,
-} from "./recommendedTags"
+  DEFAULT_AI_BASE_URL,
+  resolveChatCompletionsUrl,
+} from "./aiEndpoint"
 import { aiLogger } from "../utils/logger"
+
+export { DEFAULT_AI_BASE_URL, resolveChatCompletionsUrl } from "./aiEndpoint"
 
 // AI 设置接口
 export interface AISettings {
   enabled: boolean
   apiKey: string
+  /** OpenAI 兼容接口地址（不含 /chat/completions 路径） */
+  apiBaseUrl: string
   model: string
   cacheMinutes: number // 缓存时间（分钟）
 
@@ -27,19 +32,14 @@ export interface AISettings {
   collectSearchHistory: boolean // 是否记录搜索历史
 
   // 发送给 AI 的数据控制
-  shareTopLinks: boolean // 发送最常访问链接
-  shareRecentSearches: boolean // 发送最近搜索
-  shareTodos: boolean // 发送待办事项
-  shareClickStats: boolean // 发送点击统计
-  shareSearchStats: boolean // 发送搜索统计
+  shareHabits: boolean // 发送使用习惯（常用链接/最近搜索/点击与搜索统计）
+  shareBrowserUsage: boolean // 发送浏览记录（域名/页面时长）
 }
 
 // 缓存的 AI 响应
 interface CachedResponse {
   message: string
   timestamp: number
-  day?: string
-  tags?: string[]
 }
 
 // DeepSeek API 响应类型
@@ -60,6 +60,7 @@ const STORAGE_KEYS = {
 const DEFAULT_SETTINGS: AISettings = {
   enabled: false,
   apiKey: "",
+  apiBaseUrl: DEFAULT_AI_BASE_URL,
   model: "deepseek-chat",
   cacheMinutes: 60, // 默认缓存1小时
 
@@ -67,12 +68,42 @@ const DEFAULT_SETTINGS: AISettings = {
   collectLinkClicks: true,
   collectSearchHistory: true,
 
-  // 默认开启数据共享给 AI
-  shareTopLinks: true,
-  shareRecentSearches: true,
-  shareTodos: true,
-  shareClickStats: true,
-  shareSearchStats: true,
+  // 默认开启使用习惯共享；浏览记录默认不共享
+  shareHabits: true,
+  shareBrowserUsage: false,
+}
+
+const AI_RESPONSE_CACHE_KEYS = [
+  STORAGE_KEYS.AI_CACHE,
+  "ai-theme-cache",
+  "report-cache",
+  "fluidity.ai.dailyReview.v1",
+]
+const AI_RESPONSE_CACHE_SCOPE_KEY = "ai-response-cache-scope.v1"
+
+/** 清除由当前服务商、模型或数据共享设置派生出的 AI 内容。 */
+export const clearAIResponseCaches = (): void => {
+  for (const key of AI_RESPONSE_CACHE_KEYS) {
+    localStorage.removeItem(key)
+  }
+}
+
+const getAIResponseCacheScope = (settings: AISettings): string =>
+  JSON.stringify({
+    version: 1,
+    enabled: settings.enabled,
+    apiBaseUrl: settings.apiBaseUrl.trim() || DEFAULT_AI_BASE_URL,
+    model: settings.model.trim() || DEFAULT_SETTINGS.model,
+    shareHabits: settings.shareHabits,
+    shareBrowserUsage: settings.shareBrowserUsage,
+  })
+
+const syncAIResponseCacheScope = (settings: AISettings): void => {
+  const nextScope = getAIResponseCacheScope(settings)
+  if (localStorage.getItem(AI_RESPONSE_CACHE_SCOPE_KEY) !== nextScope) {
+    clearAIResponseCaches()
+    localStorage.setItem(AI_RESPONSE_CACHE_SCOPE_KEY, nextScope)
+  }
 }
 
 /**
@@ -122,9 +153,27 @@ export const AISettingsManager = {
   get(): AISettings {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.AI_SETTINGS)
-      return data
-        ? { ...DEFAULT_SETTINGS, ...(JSON.parse(data) as Partial<AISettings>) }
-        : DEFAULT_SETTINGS
+      if (!data) {
+        syncAIResponseCacheScope(DEFAULT_SETTINGS)
+        return DEFAULT_SETTINGS
+      }
+      const stored = JSON.parse(data) as Partial<AISettings> &
+        Record<string, unknown>
+      const merged = { ...DEFAULT_SETTINGS, ...stored }
+      // 迁移：旧版是 5 个独立共享开关；任一被关闭视为不共享，
+      // 避免迁移悄悄扩大共享范围
+      if (typeof stored.shareHabits !== "boolean") {
+        const legacy = [
+          stored.shareTopLinks,
+          stored.shareRecentSearches,
+          stored.shareTodos,
+          stored.shareClickStats,
+          stored.shareSearchStats,
+        ]
+        merged.shareHabits = !legacy.some(v => v === false)
+      }
+      syncAIResponseCacheScope(merged)
+      return merged
     } catch {
       return DEFAULT_SETTINGS
     }
@@ -132,9 +181,29 @@ export const AISettingsManager = {
 
   set(settings: Partial<AISettings>): void {
     const current = this.get()
+    const next = { ...current, ...settings }
+    next.apiKey = next.apiKey.trim()
+    next.apiBaseUrl = next.apiBaseUrl.trim() || DEFAULT_AI_BASE_URL
+    next.model = next.model.trim() || DEFAULT_SETTINGS.model
+
+    const invalidatesAIResponses =
+      current.apiKey.trim() !== next.apiKey ||
+      current.apiBaseUrl.trim() !== next.apiBaseUrl ||
+      current.model.trim() !== next.model ||
+      current.enabled !== next.enabled ||
+      current.shareHabits !== next.shareHabits ||
+      current.shareBrowserUsage !== next.shareBrowserUsage
+
     localStorage.setItem(
       STORAGE_KEYS.AI_SETTINGS,
-      JSON.stringify({ ...current, ...settings })
+      JSON.stringify(next)
+    )
+    if (invalidatesAIResponses) {
+      clearAIResponseCaches()
+    }
+    localStorage.setItem(
+      AI_RESPONSE_CACHE_SCOPE_KEY,
+      getAIResponseCacheScope(next)
     )
   },
 
@@ -165,16 +234,6 @@ const AICache = {
     localStorage.setItem(STORAGE_KEYS.AI_CACHE, JSON.stringify(cache))
   },
 
-  setWithTags(message: string, tags: string[], day: string): void {
-    const cache: CachedResponse = {
-      message,
-      timestamp: Date.now(),
-      day,
-      tags,
-    }
-    localStorage.setItem(STORAGE_KEYS.AI_CACHE, JSON.stringify(cache))
-  },
-
   isValid(): boolean {
     const cache = this.get()
     if (!cache) return false
@@ -196,16 +255,22 @@ export const callDeepSeekAPI = async (
   apiKey: string,
   prompt: string,
   model = "deepseek-chat",
-  options?: { maxTokens?: number; temperature?: number }
+  options?: {
+    maxTokens?: number
+    temperature?: number
+    apiBaseUrl?: string
+    timeoutMs?: number
+  }
 ): Promise<string> => {
   const maxTokens = options?.maxTokens ?? 100
   const temperature = options?.temperature ?? 0.8
+  const normalizedModel = model.trim() || "deepseek-chat"
 
   // DeepSeek Reasoner 模型不支持 temperature 参数
-  const isReasonerModel = model === "deepseek-reasoner"
+  const isReasonerModel = normalizedModel === "deepseek-reasoner"
 
   const requestBody: Record<string, unknown> = {
-    model,
+    model: normalizedModel,
     messages: [
       {
         role: "user",
@@ -220,17 +285,30 @@ export const callDeepSeekAPI = async (
     requestBody.temperature = temperature
   }
 
-  const response = await fetch("https://api.deepseek.com/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+  // 支持任意 OpenAI 兼容服务（OpenAI/Moonshot/本地 Ollama 等）
+  const baseUrl =
+    options?.apiBaseUrl ?? AISettingsManager.get().apiBaseUrl
+  const endpoint = resolveChatCompletionsUrl(baseUrl)
+
+  const response = await fetchWithTimeout(
+    endpoint,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey.trim()}`,
+      },
+      body: JSON.stringify(requestBody),
     },
-    body: JSON.stringify(requestBody),
-  })
+    {
+      timeoutMs: options?.timeoutMs ?? 30_000,
+      retries: 1,
+      retryDelayMs: 1000,
+    }
+  )
 
   if (!response.ok) {
-    const error = await response.text()
+    const error = (await response.text()).slice(0, 1000)
     throw new Error(`API 请求失败: ${response.status} - ${error}`)
   }
 
@@ -271,31 +349,21 @@ export const callDeepSeekAPI = async (
   return content
 }
 
-const pad2 = (n: number): string => String(n).padStart(2, "0")
-
-const getTodayStringLocal = (): string => {
-  const d = new Date()
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
-}
-
 const secondsToMinutes = (sec: number): number => Math.round(sec / 60)
 
 const generatePromptV2 = (context: Record<string, unknown>): string => {
-  return `你是一个友好的个人助手，负责在用户打开浏览器新标签页时给出一句简短的问候/提醒，并生成一些“推荐搜索标签”帮助用户高效导航。
+  return `你是一个友好的个人助手，负责在用户打开浏览器新标签页时给出一句简短的问候/提醒。
 
-你会收到一份 JSON 格式的用户数据（包含最近一小时与今天的浏览器使用汇总、待办、点击/搜索习惯等）。
+你会收到一份 JSON 格式的用户数据（包含最近一小时与今天的浏览器使用汇总、点击/搜索习惯等）。
 
 请严格输出 JSON（不要输出代码块、不要输出多余解释），结构如下：
 {
-  "greeting": "一句话（<=50字）",
-  "tags": ["推荐搜索标签1", "标签2", "..."]
+  "greeting": "一句话（<=50字）"
 }
 
 规则：
-1) greeting 语气轻松友好，像朋友一样；不要说“根据数据”等措辞；最多 2 个 emoji
+1) 语气轻松友好，像朋友一样；不要说“根据数据”等措辞；最多 2 个 emoji
 2) 如果最近一小时连续使用时间较长（例如 >=45分钟），可以温柔提醒喝水/休息/活动一下；不要吓人/不要医学化
-3) tags 用于搜索栏默认建议：给 6-10 个短语（每个尽量 <=8 个字/<=4 个词），贴合今天的访问/任务/兴趣；不要包含 URL，不要包含敏感个人信息
-4) tags 尽量多样：学习/工作/资讯/娱乐/效率/健康提醒 等方向可以混合
 
 用户数据：
 ${JSON.stringify(context, null, 2)}
@@ -323,24 +391,20 @@ const tryParseJsonObject = (raw: string): Record<string, unknown> | null => {
   }
 }
 
-const getGreetingCache = (
-  today: string
-): { message: string; fromCache: boolean } | null => {
+const getGreetingCache = (): {
+  message: string
+  fromCache: boolean
+} | null => {
   if (!AICache.isValid()) return null
   const cache = AICache.get()
   if (!cache) return null
 
-  // 若今天还没有推荐标签，优先触发一次 AI（即使问候语缓存仍有效）
-  if (getRecommendedTagsForToday().length === 0) return null
-
-  if (cache.day === today && Array.isArray(cache.tags)) {
-    setRecommendedTagsForToday(cache.tags)
-  }
-
   return { message: cache.message, fromCache: true }
 }
 
-const buildGreetingContext = async (): Promise<Record<string, unknown>> => {
+const buildGreetingContext = async (
+  settings: AISettings
+): Promise<Record<string, unknown>> => {
   const baseRaw = generateAIContext()
   let baseContext: Record<string, unknown> = {}
   try {
@@ -349,12 +413,12 @@ const buildGreetingContext = async (): Promise<Record<string, unknown>> => {
     baseContext = { baseContext: baseRaw }
   }
 
-  const lastHour = await getLastHourBrowserUsageSummary()
-  const todayUsage = await getTodayBrowserUsageSummary()
+  const context: Record<string, unknown> = { ...baseContext }
 
-  return {
-    ...baseContext,
-    browserUsage: {
+  if (settings.shareBrowserUsage) {
+    const lastHour = await getLastHourBrowserUsageSummary()
+    const todayUsage = await getTodayBrowserUsageSummary()
+    context.browserUsage = {
       lastHour: {
         totalMinutes: secondsToMinutes(lastHour.totalSec),
         topDomains: lastHour.topDomains.map(d => ({
@@ -379,27 +443,17 @@ const buildGreetingContext = async (): Promise<Record<string, unknown>> => {
           minutes: secondsToMinutes(p.sec),
         })),
       },
-    },
+    }
   }
+
+  return context
 }
 
-const parseGreetingPayload = (
-  raw: string
-): { message: string; tags: string[] } => {
+const parseGreetingPayload = (raw: string): { message: string } => {
   const parsed = tryParseJsonObject(raw)
   const message =
     typeof parsed?.greeting === "string" ? parsed.greeting.trim() : ""
-
-  const tagsValue =
-    parsed && typeof parsed === "object" ? parsed.tags : undefined
-  const tagsRaw = Array.isArray(tagsValue) ? tagsValue : []
-  const tags = tagsRaw
-    .filter((t): t is string => typeof t === "string")
-    .map(t => t.trim())
-    .filter(t => t.length > 0)
-    .slice(0, 12)
-
-  return { message, tags }
+  return { message }
 }
 
 const generateDomainAppNamePrompt = (domain: string): string => {
@@ -471,7 +525,6 @@ export const getAIGreeting = async (): Promise<{
   error?: string
 }> => {
   const settings = AISettingsManager.get()
-  const today = getTodayStringLocal()
 
   // 检查是否启用
   if (!settings.enabled || !settings.apiKey) {
@@ -481,12 +534,12 @@ export const getAIGreeting = async (): Promise<{
     }
   }
 
-  const cached = getGreetingCache(today)
+  const cached = getGreetingCache()
   if (cached) return cached
 
   // 调用 API
   try {
-    const context = await buildGreetingContext()
+    const context = await buildGreetingContext(settings)
 
     const prompt = generatePromptV2(context)
     const raw = await callDeepSeekAPI(settings.apiKey, prompt, settings.model, {
@@ -494,16 +547,11 @@ export const getAIGreeting = async (): Promise<{
       temperature: 0.7,
     })
 
-    const { message, tags } = parseGreetingPayload(raw)
+    const { message } = parseGreetingPayload(raw)
 
     if (!message) throw new Error("AI 响应内容为空，请重试")
 
-    if (tags.length > 0) {
-      setRecommendedTagsForToday(tags)
-      AICache.setWithTags(message, tags, today)
-    } else {
-      AICache.set(message)
-    }
+    AICache.set(message)
 
     return {
       message,

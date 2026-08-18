@@ -83,16 +83,16 @@ const ModalContainer = styled.div<{ closing: boolean }>`
 `
 
 const ModalContent = styled.div`
-  background: var(--bg-color);
-  border: 2px solid var(--default-color);
-  box-shadow: 10px 10px 0px var(--accent-color);
+  background: var(--bg-primary);
+  border: 1px solid var(--surface-border-strong);
+  box-shadow: var(--shadow-pop);
+  border-radius: var(--radius-main);
   padding: 32px;
   max-height: calc(100vh - 40px);
   overflow-y: auto;
 
   @media screen and (max-width: 600px) {
     padding: 20px;
-    box-shadow: 5px 5px 0px var(--accent-color);
   }
 `
 
@@ -116,14 +116,14 @@ const Title = styled.h1`
 `
 
 const TitleIcon = styled.span`
-  color: var(--accent-color);
+  color: var(--accent);
   font-size: 1.3rem;
 `
 
 const CloseButton = styled.button`
   background: transparent;
-  border: 2px solid var(--border-color);
-  color: var(--default-color);
+  border: 1px solid var(--surface-border);
+  color: var(--text-primary);
   width: 36px;
   height: 36px;
   display: flex;
@@ -133,9 +133,9 @@ const CloseButton = styled.button`
   transition: 0.2s;
 
   &:hover {
-    background: var(--accent-color2);
-    color: var(--bg-color);
-    border-color: var(--accent-color2);
+    background: var(--accent-hover);
+    color: var(--bg-primary);
+    border-color: var(--accent-hover);
   }
 `
 
@@ -147,18 +147,18 @@ const StepIndicator = styled.div`
 `
 
 // eslint-disable-next-line sonarjs/no-duplicate-string
-const ACCENT_COLOR_VAR = "var(--accent-color)"
+const ACCENT_COLOR_VAR = "var(--accent)"
 
 const StepDot = styled.button<{ active: boolean; completed: boolean }>`
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 2px solid var(--default-color);
+  border: 1px solid var(--surface-border-strong);
   background: ${({ active, completed }) =>
     active
       ? ACCENT_COLOR_VAR
       : completed
-      ? "var(--default-color)"
+      ? "var(--text-primary)"
       : "transparent"};
   cursor: pointer;
   padding: 0;
@@ -179,7 +179,7 @@ const StepDescription = styled.p`
   font-size: 0.95rem;
   line-height: 1.6;
   margin: 0 0 20px 0;
-  color: var(--secondary-color);
+  color: var(--text-secondary);
 `
 
 const FeatureList = styled.ul`
@@ -193,7 +193,7 @@ const FeatureItem = styled.li`
   align-items: flex-start;
   gap: 12px;
   padding: 12px 0;
-  border-bottom: 1px dashed var(--border-color);
+  border-bottom: 1px dashed var(--border-default);
 
   &:last-child {
     border-bottom: none;
@@ -201,7 +201,7 @@ const FeatureItem = styled.li`
 `
 
 const FeatureIcon = styled.span`
-  color: var(--accent-color);
+  color: var(--accent);
   font-size: 1.1rem;
   flex-shrink: 0;
   width: 24px;
@@ -219,7 +219,7 @@ const FeatureTitle = styled.div`
 
 const FeatureDesc = styled.div`
   font-size: 0.85rem;
-  color: var(--secondary-color);
+  color: var(--text-secondary);
 `
 
 const ButtonRow = styled.div`
@@ -232,11 +232,11 @@ const ButtonRow = styled.div`
 
 const Button = styled.button<{ variant?: "primary" | "secondary" }>`
   padding: 12px 24px;
-  border: 2px solid var(--default-color);
+  border: 1px solid var(--surface-border-strong);
   background: ${({ variant }) =>
-    variant === "primary" ? "var(--accent-color)" : "transparent"};
+    variant === "primary" ? "var(--accent)" : "transparent"};
   color: ${({ variant }) =>
-    variant === "primary" ? "var(--bg-color)" : "var(--default-color)"};
+    variant === "primary" ? "var(--bg-primary)" : "var(--text-primary)"};
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
@@ -247,21 +247,21 @@ const Button = styled.button<{ variant?: "primary" | "secondary" }>`
 
   &:hover {
     background: ${({ variant }) =>
-      variant === "primary" ? "var(--accent-color2)" : "var(--accent-color)"};
-    color: var(--bg-color);
+      variant === "primary" ? "var(--accent-hover)" : "var(--accent)"};
+    color: var(--bg-primary);
   }
 `
 
 const SkipButton = styled.button`
   background: transparent;
   border: none;
-  color: var(--secondary-color);
+  color: var(--text-secondary);
   font-size: 0.85rem;
   cursor: pointer;
   padding: 8px;
 
   &:hover {
-    color: var(--default-color);
+    color: var(--text-primary);
     text-decoration: underline;
   }
 `
@@ -271,8 +271,8 @@ const KeyboardHint = styled.div`
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  background: var(--bg-color);
-  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
   border-radius: 4px;
   font-family: monospace;
   font-size: 0.85rem;
@@ -291,15 +291,15 @@ interface Step {
 
 const steps: Step[] = [
   {
-    title: "欢迎使用 Fluidity",
+    title: "欢迎使用拾光",
     icon: faRocket,
     description:
-      "Fluidity 是一款优雅的浏览器起始页，让你的新标签页更加高效和美观。",
+      "拾光是一款 iOS 风格的优雅起始页——把收藏铺成主屏，让被遗忘的重新被看见。",
     features: [
       {
         icon: faPalette,
-        title: "手风琴式链接",
-        desc: "经典的水平展开设计，鼠标悬停即可展开链接分组，支持音效反馈",
+        title: "主屏网格",
+        desc: "收藏以应用图标呈现，长按进入编辑模式即可拖拽排序或删除",
       },
       {
         icon: faKeyboard,
@@ -321,7 +321,7 @@ const steps: Step[] = [
       {
         icon: faPalette,
         title: "外观设置",
-        desc: "选择 13+ 预设主题，或自定义 6 种颜色变量和背景图片",
+        desc: "六套清雅预设主题，也可用 13 色变量与壁纸完全自定义",
       },
       {
         icon: faCog,
@@ -331,7 +331,7 @@ const steps: Step[] = [
       {
         icon: faMagicWandSparkles,
         title: "AI 助手设置",
-        desc: "配置 DeepSeek API Key，控制数据收集和隐私选项",
+        desc: "配置 AI 服务的 API Key，控制数据收集和隐私选项",
       },
     ],
   },
@@ -347,8 +347,8 @@ const steps: Step[] = [
       },
       {
         icon: faCog,
-        title: "待办事项",
-        desc: "左侧轮播图可切换到待办事项面板，记录和管理你的任务",
+        title: "重逢卡片",
+        desc: "左侧部件会每天轮流展示你很久没打开的收藏，帮你想起它们",
       },
       {
         icon: faPalette,

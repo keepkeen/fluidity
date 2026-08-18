@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react"
 
 import styled from "@emotion/styled"
-import { ChromePicker, ColorResult } from "react-color"
+import { HexColorPicker } from "react-colorful"
 
 import { colorsType } from "../data/data"
 
@@ -43,7 +43,7 @@ const ColorRow = styled.div`
   transition: background 0.2s;
 
   &:hover {
-    background: var(--hover-bg);
+    background: var(--bg-hover);
   }
 `
 
@@ -57,16 +57,16 @@ const ColorLabel = styled.span`
 const ColorSwatch = styled.button<{ color: string; active: boolean }>`
   width: 32px;
   height: 32px;
-  border: 2px solid
+  border: 1px solid
     ${({ active }) =>
-      active ? "var(--accent-primary)" : "var(--border-color)"};
+      active ? "var(--accent)" : "var(--border-default)"};
   background: ${({ color }) => color};
   cursor: pointer;
   transition: 0.2s;
   padding: 0;
 
   &:hover {
-    border-color: var(--accent-primary);
+    border-color: var(--accent);
     transform: scale(1.1);
   }
 `
@@ -74,7 +74,7 @@ const ColorSwatch = styled.button<{ color: string; active: boolean }>`
 const ColorValue = styled.input`
   width: 80px;
   padding: 4px 8px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-default);
   background: var(--bg-secondary);
   color: var(--text-primary);
   font-size: 0.8rem;
@@ -82,7 +82,7 @@ const ColorValue = styled.input`
 
   &:focus {
     outline: none;
-    border-color: var(--accent-primary);
+    border-color: var(--accent);
   }
 `
 
@@ -106,10 +106,14 @@ const ColorRowWrapper = styled.div`
   position: relative;
 `
 
-const StyledChromePicker = styled.div`
-  .chrome-picker {
-    background: var(--bg-secondary) !important;
-    box-shadow: 0 4px 20px var(--shadow-color) !important;
+const StyledPicker = styled.div`
+  background: var(--bg-secondary);
+  padding: 10px;
+  box-shadow: 0 4px 20px var(--glow);
+
+  .react-colorful {
+    width: 200px;
+    height: 180px;
   }
 `
 
@@ -154,9 +158,9 @@ const ColorRowItem = ({
     }
   }
 
-  const handlePickerChange = (result: ColorResult) => {
-    onColorChange(result.hex)
-    setInputValue(result.hex)
+  const handlePickerChange = (hex: string) => {
+    onColorChange(hex)
+    setInputValue(hex)
   }
 
   const label = colorLabels[colorKey] || colorKey.replace(/^--/, "")
@@ -182,13 +186,9 @@ const ColorRowItem = ({
       {isActive && (
         <PickerPopover>
           <PickerCover onClick={onClose} />
-          <StyledChromePicker>
-            <ChromePicker
-              color={colorValue}
-              onChange={handlePickerChange}
-              disableAlpha
-            />
-          </StyledChromePicker>
+          <StyledPicker>
+            <HexColorPicker color={colorValue} onChange={handlePickerChange} />
+          </StyledPicker>
         </PickerPopover>
       )}
     </ColorRowWrapper>

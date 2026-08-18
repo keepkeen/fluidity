@@ -7,6 +7,7 @@ import {
   BROWSER_USAGE_DOMAIN_APPS_KEY,
   BROWSER_USAGE_STORAGE_KEY,
 } from "./browserUsage"
+import { BROWSER_USAGE_SETTINGS_KEY } from "./browserUsageSettings"
 import {
   getChromeLocal,
   hasChromeStorage,
@@ -15,6 +16,8 @@ import {
 
 // 常量
 const AI_SETTINGS_KEY = "ai-settings"
+const WALLPAPER_SETTINGS_KEY = "wallpaper-settings"
+const CARD_AREA_SETTINGS_KEY = "card-area-settings"
 
 // 所有需要备份的 localStorage 键
 const BACKUP_KEYS = {
@@ -25,6 +28,10 @@ const BACKUP_KEYS = {
     "link-groups",
     "design",
     "link-display-settings",
+    WALLPAPER_SETTINGS_KEY,
+    CARD_AREA_SETTINGS_KEY,
+    "fluidity.linkPins.v1",
+    "fluidity.homeLayout.v1",
   ],
   // AI 相关（不包含 apiKey）
   ai: [AI_SETTINGS_KEY, "ai-cache"],
@@ -32,20 +39,17 @@ const BACKUP_KEYS = {
   analytics: [
     "link-analytics",
     "search-history",
-    "fluidity.ai.recommendedSearchTags.v1",
-    "fluidity.ai.recommendedQuickSearches.v1",
     "fluidity.ai.dailyReview.v1",
   ],
   // 报告相关
-  reports: ["report-state", "report-cache", "todo-contributions"],
-  // 待办
-  todos: ["todos"],
+  reports: ["report-state", "report-cache"],
 }
 
 // 需要从 chrome.storage.local 读取/写入的键（仅扩展环境存在）
 const CHROME_BACKUP_KEYS = [
   BROWSER_USAGE_STORAGE_KEY,
   BROWSER_USAGE_DOMAIN_APPS_KEY,
+  BROWSER_USAGE_SETTINGS_KEY,
 ]
 
 const importChromeBackupKeys = async (
@@ -95,7 +99,6 @@ export interface BackupData {
 export interface ExportOptions {
   includeApiKey?: boolean
   includeAnalytics?: boolean
-  includeTodos?: boolean
   includeReports?: boolean
 }
 
@@ -113,7 +116,6 @@ export interface ImportResult {
 const getAllBackupKeys = (options: ExportOptions = {}): string[] => {
   const {
     includeAnalytics = true,
-    includeTodos = true,
     includeReports = true,
   } = options
 
@@ -121,10 +123,6 @@ const getAllBackupKeys = (options: ExportOptions = {}): string[] => {
 
   if (includeAnalytics) {
     keys = [...keys, ...BACKUP_KEYS.analytics]
-  }
-
-  if (includeTodos) {
-    keys = [...keys, ...BACKUP_KEYS.todos]
   }
 
   if (includeReports) {
@@ -155,6 +153,29 @@ const sanitizeAISettings = (
 }
 
 /**
+ * 剥离体积巨大的 base64 图片数据。
+ * 备份/同步只携带壁纸配置项，本地图片需在新环境重新上传。
+ */
+const stripLargeImageData = (
+  data: Record<string, unknown>
+): Record<string, unknown> => {
+  const next = { ...data }
+
+  const wallpaper = next[WALLPAPER_SETTINGS_KEY]
+  if (wallpaper && typeof wallpaper === "object") {
+    const w = wallpaper as Record<string, unknown>
+    next[WALLPAPER_SETTINGS_KEY] = {
+      ...w,
+      localImageData: null,
+      // 本地图片不随备份走，来源退回预设避免恢复后黑屏
+      source: w.source === "local" ? "preset" : w.source,
+    }
+  }
+
+  return next
+}
+
+/**
  * 导出所有数据
  */
 export const exportData = (options: ExportOptions = {}): BackupData => {
@@ -174,8 +195,10 @@ export const exportData = (options: ExportOptions = {}): BackupData => {
     }
   })
 
-  // 处理敏感信息
-  const sanitizedData = sanitizeAISettings(data, includeApiKey)
+  // 处理敏感信息与大体积图片
+  const sanitizedData = stripLargeImageData(
+    sanitizeAISettings(data, includeApiKey)
+  )
 
   return {
     version: "1.0.0",
@@ -258,7 +281,6 @@ const getAllValidKeys = (): string[] => [
   ...BACKUP_KEYS.ai,
   ...BACKUP_KEYS.analytics,
   ...BACKUP_KEYS.reports,
-  ...BACKUP_KEYS.todos,
 ]
 
 /**
@@ -278,6 +300,59 @@ const preserveApiKey = (newValue: unknown): unknown => {
 }
 
 /**
+ * 备份不携带本地图片，覆盖导入时保留本设备已有的图片数据
+ */
+const preserveLocalImages = (key: string, newValue: unknown): unknown => {
+  const currentRaw = localStorage.getItem(key)
+  if (!currentRaw || !newValue || typeof newValue !== "object") return newValue
+
+  try {
+    const current = JSON.parse(currentRaw) as Record<string, unknown>
+    const incoming = newValue as Record<string, unknown>
+
+    if (key === WALLPAPER_SETTINGS_KEY) {
+      if (
+        !incoming.localImageData &&
+        typeof current.localImageData === "string" &&
+        current.localImageData
+      ) {
+        return {
+          ...incoming,
+          localImageData: current.localImageData,
+          // 导出时 local 来源被退回 preset，这里恢复本机的选择
+          source: incoming.source === "preset" ? current.source : incoming.source,
+        }
+      }
+      return incoming
+    }
+
+    return incoming
+  } catch {
+    return newValue
+  }
+}
+
+/**
+ * 同步合并路径使用：写入单个键值，套用与导入相同的保留策略
+ * （apiKey 不落远端值、本地壁纸图不被抹掉），chrome 键写入扩展存储。
+ */
+export const applyBackupValue = async (
+  key: string,
+  value: unknown
+): Promise<void> => {
+  if (CHROME_BACKUP_KEYS.includes(key)) {
+    await setChromeLocal(key, value)
+    return
+  }
+
+  let finalValue = key === AI_SETTINGS_KEY ? preserveApiKey(value) : value
+  if (key === WALLPAPER_SETTINGS_KEY) {
+    finalValue = preserveLocalImages(key, finalValue)
+  }
+  localStorage.setItem(key, JSON.stringify(finalValue))
+}
+
+/**
  * 导入单个键值
  */
 const importSingleKey = (
@@ -294,10 +369,14 @@ const importSingleKey = (
   }
 
   // 处理 AI 设置中的 API Key
-  const finalValue =
+  let finalValue =
     key === AI_SETTINGS_KEY && options.skipApiKey
       ? preserveApiKey(value)
       : value
+
+  if (key === WALLPAPER_SETTINGS_KEY) {
+    finalValue = preserveLocalImages(key, finalValue)
+  }
 
   // 检查是否覆盖
   if (!options.overwrite && localStorage.getItem(key) !== null) {
@@ -379,7 +458,7 @@ export const importFromFile = (file: File): Promise<ImportResult> => {
           return
         }
 
-        void importDataAsync(backup).then(resolve)
+        void importDataAsync(backup, { overwrite: true, skipApiKey: true }).then(resolve)
       } catch (error) {
         resolve({
           success: false,
@@ -449,11 +528,6 @@ export const getDataStats = (): {
       keys: BACKUP_KEYS.reports.filter(k => localStorage.getItem(k)).length,
       size: formatSize(calculateSize(BACKUP_KEYS.reports)),
     },
-    {
-      category: "待办",
-      keys: BACKUP_KEYS.todos.filter(k => localStorage.getItem(k)).length,
-      size: formatSize(calculateSize(BACKUP_KEYS.todos)),
-    },
   ]
 
   const allKeys = [
@@ -461,7 +535,6 @@ export const getDataStats = (): {
     ...BACKUP_KEYS.ai,
     ...BACKUP_KEYS.analytics,
     ...BACKUP_KEYS.reports,
-    ...BACKUP_KEYS.todos,
   ]
 
   return {

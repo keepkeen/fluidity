@@ -5,7 +5,7 @@ import styled from "@emotion/styled"
 const Link = styled.a`
   &,
   :visited {
-    color: var(--accent-color);
+    color: var(--accent);
   }
   :hover {
     text-decoration: underline;

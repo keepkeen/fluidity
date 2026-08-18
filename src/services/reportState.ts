@@ -18,7 +18,7 @@ const DEFAULT_STATE: ReportStateData = {
 /**
  * 获取周字符串 (YYYY-WXX)
  */
-const getWeekString = (date: Date): string => {
+export const getWeekString = (date: Date): string => {
   const year = date.getFullYear()
   const startOfYear = new Date(year, 0, 1)
   const days = Math.floor(
@@ -31,7 +31,7 @@ const getWeekString = (date: Date): string => {
 /**
  * 获取月字符串 (YYYY-MM)
  */
-const getMonthString = (date: Date): string => {
+export const getMonthString = (date: Date): string => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
 }
 

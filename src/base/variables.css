@@ -1,4 +1,31 @@
 :root {
+	/* 页面左右留白：小屏 16px ↔ 大屏 100px 之间流式过渡 */
+	--page-margin: clamp(16px, 5vw, 100px);
+
+	/* ===== 清雅表面配方（随任意配色主题自动适配） ===== */
+	--surface-border: color-mix(in srgb, var(--text-primary) 14%, transparent);
+	--surface-border-strong: color-mix(in srgb, var(--text-primary) 28%, transparent);
+	--surface-bg: color-mix(in srgb, var(--bg-secondary) 62%, transparent);
+	--surface-bg-hover: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+	--surface-blur: blur(18px) saturate(1.15);
+	--shadow-soft: 0 8px 30px rgba(0, 0, 0, 0.14);
+	--shadow-pop: 0 18px 50px rgba(0, 0, 0, 0.32);
+	--transition-fast: 160ms cubic-bezier(0.4, 0, 0.2, 1);
+	/* 兜底：未运行 applyThemeMode 的页面也拿到清雅默认 */
+	--radius-main: 16px;
+	--radius-sm: 10px;
+	--border-width: 1px;
+	--font-main: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+		"Helvetica Neue", Arial, sans-serif;
+	--shadow-card: var(--shadow-soft);
+	--glass-opacity: 0.7;
+	--hover-transform: translateY(-1px);
+	/* 主屏统一表面：图标、小组件、搜索和问候共享同一层次。 */
+	--home-surface: color-mix(in srgb, var(--bg-primary) 68%, transparent);
+	--home-surface-strong: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+	--home-stroke: color-mix(in srgb, var(--text-primary) 16%, transparent);
+	--home-shadow: 0 10px 30px color-mix(in srgb, var(--bg-primary) 42%, transparent);
+	--home-shadow-pop: 0 22px 60px color-mix(in srgb, var(--bg-primary) 58%, transparent);
 	/* ===== 新版 13 色系统 ===== */
 
 	/* 背景层 */
@@ -24,22 +51,7 @@
 	--success: #B4FFE6;
 	--glow: #FFB4E6;
 
-	/* ===== 兼容性别名（映射旧变量名到新变量） ===== */
-	--bg-color: var(--bg-primary);
-	--default-color: var(--text-primary);
-	--secondary-color: var(--text-secondary);
-	--accent-color: var(--accent);
-	--accent-color2: var(--accent-hover);
-	--border-color: var(--border-default);
-
 	/* ===== 其他 ===== */
-	--border-radius: 5px;
+	--font-mono: "Fira Code", ui-monospace, monospace;
 	--settings-window-gap: 50px;
-	--text-shadow-downwards: 1px 0px 0 var(--accent),
-            -1px 0px 0 var(--accent),
-            0px -1px 0 var(--accent),
-            0px 1px 0 var(--accent),
-            0px 2px 0 var(--accent),
-            0px 3px 0 var(--accent),
-            0px 4px 0 var(--accent);
 }

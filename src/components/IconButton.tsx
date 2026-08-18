@@ -6,7 +6,7 @@ import {
 
 const StyledIconButton = styled.button<{ inverted?: boolean }>`
   color: ${({ inverted }) =>
-    inverted ? "var(--bg-color)" : "var(--default-color)"};
+    inverted ? "var(--bg-primary)" : "var(--text-primary)"};
   background-color: transparent;
   min-width: 50px;
   font-size: 20px;
@@ -16,19 +16,20 @@ const StyledIconButton = styled.button<{ inverted?: boolean }>`
   display: flex;
   justify-content: center;
   align-items: center;
+  border-radius: var(--radius-sm);
+  transition: opacity var(--transition-fast), color var(--transition-fast);
 
   :enabled:hover {
-    ${({ inverted }) =>
-      inverted
-        ? `filter: 
-            drop-shadow(2px 2px 0 var(--accent-color))
-            drop-shadow(-2px -2px 0 var(--accent-color))
-            drop-shadow(-2px 2px 0 var(--accent-color))
-            drop-shadow(2px -2px 0 var(--accent-color))`
-        : "animation: box-flicker 0.01s ease 0s infinite alternate"};
+    opacity: 1;
+    color: ${({ inverted }) =>
+      inverted ? "var(--bg-primary)" : "var(--accent)"};
   }
   :focus {
     outline: none;
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
   :disabled {
     opacity: 0.2;
@@ -45,9 +46,15 @@ type props = Partial<Pick<FontAwesomeIconProps, "icon">> &
     inverted?: boolean
   }
 
-export const IconButton = ({ icon, text, children, ...props }: props) => {
+export const IconButton = ({
+  icon,
+  text,
+  children,
+  type = "button",
+  ...props
+}: props) => {
   return (
-    <StyledIconButton {...props}>
+    <StyledIconButton type={type} {...props}>
       {children}
       {text && <span>{text}</span>}
       {icon && <FontAwesomeIcon icon={icon}></FontAwesomeIcon>}

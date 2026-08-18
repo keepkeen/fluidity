@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 
 import styled from "@emotion/styled"
 import { faSync } from "@fortawesome/free-solid-svg-icons"
@@ -17,39 +17,31 @@ const GreetingContainer = styled.div`
   align-items: center;
   justify-content: center;
   gap: 12px;
-  padding: 20px 100px 0;
+  padding: clamp(8px, 1.5vh, 20px) var(--page-margin) 0;
   flex-shrink: 0;
 
-  @media screen and (max-width: 1200px) {
-    padding: 20px 60px 0;
-  }
-
   @media screen and (max-width: 900px) {
-    padding: 15px 40px 0;
     gap: 8px;
-  }
-
-  @media screen and (max-width: 600px) {
-    padding: 10px 20px 0;
   }
 `
 
-const GreetingText = styled.div<{ loading?: boolean }>`
+const GreetingText = styled.div<{ $loading?: boolean }>`
   font-size: 1.1rem;
-  color: var(--default-color);
+  color: var(--text-primary);
   text-align: center;
-  padding: 12px 24px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  opacity: ${({ loading }) => (loading ? 0.6 : 1)};
+  padding: 12px 26px;
+  border: 1px solid var(--home-stroke);
+  border-radius: var(--radius-main);
+  background: var(--home-surface);
+  backdrop-filter: var(--surface-blur);
+  -webkit-backdrop-filter: var(--surface-blur);
+  box-shadow: var(--home-shadow);
+  opacity: ${({ $loading }) => ($loading ? 0.6 : 1)};
   transition: opacity 0.3s, transform 0.3s;
   max-width: 600px;
   line-height: 1.5;
-  animation: ${({ loading }) =>
-    loading ? "none" : "greeting-fade-in 0.5s ease-out"};
+  animation: ${({ $loading }) =>
+    $loading ? "none" : "greeting-fade-in 0.5s ease-out"};
 
   @keyframes greeting-fade-in {
     from {
@@ -84,7 +76,7 @@ const GreetingContent = styled.div`
 
 const DailyReviewText = styled.div`
   font-size: 0.85rem;
-  color: var(--default-color);
+  color: var(--text-primary);
   opacity: 0.7;
   text-align: center;
   max-width: 620px;
@@ -94,12 +86,12 @@ const DailyReviewText = styled.div`
 const RefreshButton = styled.button<{ spinning?: boolean }>`
   width: 36px;
   height: 36px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  color: var(--default-color);
+  border: 1px solid var(--home-stroke);
+  border-radius: 12px;
+  background: var(--home-surface);
+  backdrop-filter: var(--surface-blur);
+  -webkit-backdrop-filter: var(--surface-blur);
+  color: var(--text-primary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -107,8 +99,8 @@ const RefreshButton = styled.button<{ spinning?: boolean }>`
   transition: 0.2s;
 
   &:hover {
-    background: rgba(0, 0, 0, 0.5);
-    color: var(--accent-color);
+    background: var(--home-surface-strong);
+    color: var(--accent);
   }
 
   &:disabled {
@@ -134,11 +126,12 @@ const RefreshButton = styled.button<{ spinning?: boolean }>`
 const AIBadge = styled.span`
   font-size: 0.7rem;
   padding: 2px 6px;
-  background: var(--accent-color);
-  color: var(--bg-color);
+  background: var(--accent);
+  color: var(--bg-primary);
   margin-left: 8px;
   vertical-align: middle;
   opacity: 0.8;
+  border-radius: 999px;
 `
 
 export const AIGreeting = () => {
@@ -171,7 +164,11 @@ export const AIGreeting = () => {
     }
   }
 
+  // StrictMode 下挂载 effect 会执行两次，不加守卫会重复发起付费 AI 请求
+  const didFetchRef = useRef(false)
   useEffect(() => {
+    if (didFetchRef.current) return
+    didFetchRef.current = true
     void fetchGreeting()
   }, [])
 
@@ -195,7 +192,7 @@ export const AIGreeting = () => {
   return (
     <GreetingContainer>
       <GreetingContent>
-        <GreetingText loading={loading}>
+        <GreetingText $loading={loading}>
           {loading ? "正在思考..." : greeting}
           {isAI && !loading && <AIBadge>AI</AIBadge>}
         </GreetingText>

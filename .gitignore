@@ -32,6 +32,11 @@ pnpm-debug.log*
 *.swp
 *.swo
 
+# Claude Code
+.claude/worktrees/
+.claude/settings.local.json
+.agent/
+
 # Extension artifacts
 fluidity.zip
 *.crx

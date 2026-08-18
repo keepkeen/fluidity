@@ -26,9 +26,8 @@ interface props {
 export const OptionSlider = ({ values, onChange, currentValue }: props) => {
   const [index, setIndex] = useState(0)
   useEffect(() => {
-    values.forEach((val, i) => {
-      currentValue === val.value && i !== index && setIndex(i)
-    })
+    const nextIndex = values.findIndex(val => val.value === currentValue)
+    if (nextIndex !== -1 && nextIndex !== index) setIndex(nextIndex)
   }, [currentValue, values, index])
 
   const handleChange = (newIndex: number) => {

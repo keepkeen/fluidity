@@ -7,7 +7,7 @@ import * as Settings from "../settingsHandler"
 
 const StyledOptionTextArea = styled.div<{ error?: string }>`
   position: relative;
-  border: 2px solid var(--border-color);
+  border: 1px solid var(--surface-border);
   display: flex;
   padding: 10px 0 10px 20px;
   height: calc(100% - 40px);
@@ -16,7 +16,7 @@ const StyledOptionTextArea = styled.div<{ error?: string }>`
     `
         ::after{
             content: "${error}";
-            color: var(--accent-color);
+            color: var(--accent);
             position: absolute;
             top: 10px;
             right: 15px;
@@ -26,8 +26,8 @@ const StyledOptionTextArea = styled.div<{ error?: string }>`
 `
 
 const StyledTextArea = styled.textarea`
-  background-color: var(--bg-color);
-  color: var(--default-color);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
   border: none;
   height: 100%;
   width: 100%;

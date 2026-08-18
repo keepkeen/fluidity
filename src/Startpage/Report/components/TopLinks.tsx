@@ -34,7 +34,7 @@ const LinkItem = styled.div`
 
 const Rank = styled.span`
   font-weight: 600;
-  color: var(--accent-color);
+  color: var(--accent);
   min-width: 16px;
 `
 
