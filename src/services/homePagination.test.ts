@@ -7,8 +7,18 @@ import {
   getVisiblePageIndices,
   paginateHomeItems,
 } from "./homePagination"
+import { WidgetSize } from "./widgetRegistry"
 
-const widget = (id: string): HomeItem => ({ kind: "widget", id })
+const widget = (id: string, size: WidgetSize = "medium"): HomeItem => ({
+  kind: "widget",
+  id,
+  widget: {
+    instanceId: id,
+    type: "read-later",
+    size,
+    config: {},
+  },
+})
 const app = (id: string): HomeItem => ({
   kind: "app",
   id,
@@ -22,7 +32,6 @@ describe("getHomeGridMetrics", () => {
     expect(getHomeGridMetrics(390, 440)).toEqual({
       columns: 4,
       rows: 4,
-      widgetSpan: 2,
     })
   })
 
@@ -30,7 +39,6 @@ describe("getHomeGridMetrics", () => {
     expect(getHomeGridMetrics(1040, 590)).toEqual({
       columns: 9,
       rows: 5,
-      widgetSpan: 3,
     })
   })
 
@@ -38,14 +46,13 @@ describe("getHomeGridMetrics", () => {
     expect(getHomeGridMetrics(320, 360)).toEqual({
       columns: 3,
       rows: 3,
-      widgetSpan: 2,
     })
   })
 })
 
 describe("paginateHomeItems", () => {
   it("accounts for widget area instead of slicing by item count", () => {
-    const metrics = { columns: 4, rows: 4, widgetSpan: 2 }
+    const metrics = { columns: 4, rows: 4 }
     const items = [widget("one"), widget("two"), ...Array.from({ length: 9 }, (_, i) => app(`a${i}`))]
     const pages = paginateHomeItems(items, metrics)
 
@@ -56,14 +63,14 @@ describe("paginateHomeItems", () => {
 
   it("returns one empty page for an empty home", () => {
     expect(
-      paginateHomeItems([], { columns: 4, rows: 4, widgetSpan: 2 })
+      paginateHomeItems([], { columns: 4, rows: 4 })
     ).toEqual([[]])
   })
 })
 
 describe("getOrderForItemOnPage", () => {
   it("verifies the packed destination instead of filling an earlier page gap", () => {
-    const metrics = { columns: 3, rows: 3, widgetSpan: 2 }
+    const metrics = { columns: 3, rows: 3 }
     const items = [
       widget("w1"),
       widget("w2"),
@@ -82,6 +89,17 @@ describe("getOrderForItemOnPage", () => {
       page.some(item => item.id === "a5")
     )
     expect(destination).toBe(1)
+  })
+
+  it("packs semantic wide and large sizes and clamps large widgets on narrow pages", () => {
+    const desktop = { columns: 6, rows: 3 }
+    const items = [widget("wide", "wide"), widget("large", "large")]
+    expect(paginateHomeItems(items, desktop)).toHaveLength(1)
+
+    const narrow = { columns: 3, rows: 3 }
+    expect(paginateHomeItems([widget("large", "large")], narrow)).toEqual([
+      [widget("large", "large")],
+    ])
   })
 })
 

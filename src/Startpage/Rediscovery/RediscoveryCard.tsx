@@ -14,10 +14,14 @@ import { linkGroup } from "../../data/data"
 import { navigateToLink } from "../../services/linkSearch"
 import {
   findForgottenLinks,
+  hideRediscovery,
+  isRediscoveryHidden,
   pickDailyRediscoveries,
   readRediscoveryState,
+  restoreRediscovery,
   snoozeRediscovery,
 } from "../../services/rediscovery"
+import { WidgetSize } from "../../services/widgetRegistry"
 
 const StyledWidgetCard = styled(WidgetCard)`
   height: 100%;
@@ -89,10 +93,9 @@ const GroupTag = styled.span`
 
 const ItemBottom = styled.div`
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   gap: 8px;
-  flex-wrap: wrap;
   min-width: 0;
 `
 
@@ -105,11 +108,19 @@ const AgeHint = styled.span`
 `
 
 const Actions = styled.div`
-  display: flex;
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
   gap: 6px;
+
+  @container (max-width: 280px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 `
 
 const ActionBtn = styled.button`
+  min-width: 0;
   background: transparent;
   white-space: nowrap;
   border-radius: 999px;
@@ -121,7 +132,9 @@ const ActionBtn = styled.button`
   transition: 0.2s;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
+  overflow: hidden;
 
   :hover {
     border-color: var(--accent);
@@ -131,6 +144,15 @@ const ActionBtn = styled.button`
   :focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+  }
+`
+
+const ActionLabel = styled.span`
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  @container (max-width: 280px) {
+    display: none;
   }
 `
 
@@ -158,11 +180,15 @@ const formatAge = (lastClicked: number | null): string => {
 interface RediscoveryCardProps {
   linkGroups: linkGroup[]
   onRequestRemove: (url: string, label: string) => void
+  size?: WidgetSize
+  onUndoableAction?: (message: string, undo: () => void) => void
 }
 
 export const RediscoveryCard = ({
   linkGroups,
   onRequestRemove,
+  size = "medium",
+  onUndoableAction,
 }: RediscoveryCardProps) => {
   // 打开/暂缓后重新采样；删除由父级 linkGroups 更新触发。
   const [refreshTick, setRefreshTick] = useState(0)
@@ -170,18 +196,19 @@ export const RediscoveryCard = ({
   const picks = useMemo(() => {
     void refreshTick
     const now = Date.now()
+    const state = readRediscoveryState()
     const candidates = findForgottenLinks(
       linkGroups,
       LinkAnalytics.get(),
       now
-    )
+    ).filter(candidate => !isRediscoveryHidden(state, candidate.url))
     return pickDailyRediscoveries(
       candidates,
       todayString(),
-      readRediscoveryState().snoozed,
+      state.snoozed,
       now
-    )
-  }, [linkGroups, refreshTick])
+    ).slice(0, size === "large" ? 2 : 1)
+  }, [linkGroups, refreshTick, size])
 
   const refresh = useCallback(() => setRefreshTick(t => t + 1), [])
 
@@ -195,8 +222,21 @@ export const RediscoveryCard = ({
     refresh()
   }
 
+  const handleHide = (url: string) => {
+    hideRediscovery(url)
+    refresh()
+    onUndoableAction?.("这个链接不会再出现在重逢中", () => {
+      restoreRediscovery(url)
+      refresh()
+    })
+  }
+
   return (
-    <StyledWidgetCard title="重逢">
+    <StyledWidgetCard
+      title="重逢"
+      symbol="⌁"
+      subtitle={picks.length > 0 ? "因为很久没有打开" : "收藏都保持活跃"}
+    >
       {picks.length === 0 ? (
         <Empty>
           收藏里没有被遗忘的链接
@@ -220,26 +260,43 @@ export const RediscoveryCard = ({
               <ItemBottom>
                 <AgeHint>{formatAge(pick.lastClicked)}</AgeHint>
                 <Actions>
-                  <ActionBtn type="button" onClick={() => handleOpen(pick)}>
+                  <ActionBtn
+                    type="button"
+                    aria-label="打开"
+                    title="打开"
+                    onClick={() => handleOpen(pick)}
+                  >
                     <FontAwesomeIcon icon={faArrowUpRightFromSquare} />
-                    打开
+                    <ActionLabel>打开</ActionLabel>
                   </ActionBtn>
                   <ActionBtn
                     type="button"
+                    aria-label="下次再说"
                     onClick={() => handleSnooze(pick.url)}
                     title="7 天内不再展示"
                   >
                     <FontAwesomeIcon icon={faClock} />
-                    下次再说
+                    <ActionLabel>下次再说</ActionLabel>
                   </ActionBtn>
                   <ActionBtn
                     type="button"
-                    onClick={() => onRequestRemove(pick.url, pick.label)}
-                    title="从收藏中删除"
+                    aria-label="不再推荐"
+                    onClick={() => handleHide(pick.url)}
+                    title="保留收藏，但不再推荐"
                   >
                     <FontAwesomeIcon icon={faTrash} />
-                    不需要了
+                    <ActionLabel>不再推荐</ActionLabel>
                   </ActionBtn>
+                  {size === "large" && (
+                    <ActionBtn
+                      type="button"
+                      aria-label="删除收藏"
+                      onClick={() => onRequestRemove(pick.url, pick.label)}
+                      title="从收藏中彻底删除"
+                    >
+                      <ActionLabel>删除收藏</ActionLabel>
+                    </ActionBtn>
+                  )}
                 </Actions>
               </ItemBottom>
             </Item>

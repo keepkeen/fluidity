@@ -1,9 +1,13 @@
-import { describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it } from "vitest"
 
 import { LinkClickRecord } from "./analytics"
 import {
   findForgottenLinks,
+  hideRediscovery,
+  isRediscoveryHidden,
   pickDailyRediscoveries,
+  readRediscoveryState,
+  restoreRediscovery,
 } from "./rediscovery"
 import { linkGroup } from "../data/data"
 
@@ -37,6 +41,8 @@ const analytics = Object.fromEntries([
   record("https://often.example.com", NOW - 2 * DAY_MS),
   record("https://forgotten.example.com", NOW - 45 * DAY_MS),
 ])
+
+beforeEach(() => localStorage.clear())
 
 describe("findForgottenLinks", () => {
   it("keeps never-clicked and stale links, drops recent and non-http ones", () => {
@@ -97,5 +103,19 @@ describe("pickDailyRediscoveries", () => {
       NOW
     )
     expect(afterExpiry.map(p => p.url)).toContain(target.url)
+  })
+})
+
+describe("rediscovery hide undo", () => {
+  it("records a newer restore tombstone so an older synced hide cannot return", () => {
+    const url = "https://forgotten.example.com"
+    hideRediscovery(url, 100)
+    expect(isRediscoveryHidden(readRediscoveryState(), url)).toBe(true)
+
+    restoreRediscovery(url, 200)
+    const restored = readRediscoveryState()
+    expect(isRediscoveryHidden(restored, url)).toBe(false)
+    expect(restored.hidden[url]).toBe(100)
+    expect(restored.restored[url]).toBe(200)
   })
 })

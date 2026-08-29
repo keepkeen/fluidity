@@ -26,6 +26,7 @@ import {
   DEFAULT_HOME_PAGE_SHORTCUT_MODIFIER,
   HomePageShortcutModifier,
   readHomeLayout,
+  resetHomeLayout,
   saveHomeLayout,
 } from "../../../services/homeLayout"
 import {
@@ -335,7 +336,7 @@ export const DesignSettings = ({
               type="button"
               variant="secondary"
               onClick={() => {
-                localStorage.removeItem("fluidity.homeLayout.v1")
+                resetHomeLayout()
                 setPageShortcutModifier(DEFAULT_HOME_PAGE_SHORTCUT_MODIFIER)
                 window.dispatchEvent(new Event("fluidity-home-layout-changed"))
                 window.dispatchEvent(

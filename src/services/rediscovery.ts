@@ -22,9 +22,13 @@ export interface RediscoveryCandidate {
   lastClicked: number | null
 }
 
-interface RediscoveryState {
+export interface RediscoveryState {
   /** url -> 暂缓展示的截止时间戳 */
   snoozed: Record<string, number>
+  /** url -> 用户明确选择“不再推荐”的时间戳 */
+  hidden: Record<string, number>
+  /** url -> 用户撤销“不再推荐”的时间戳，用于跨设备覆盖旧隐藏状态 */
+  restored: Record<string, number>
 }
 
 /**
@@ -92,14 +96,29 @@ export const readRediscoveryState = (): RediscoveryState => {
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<RediscoveryState>
       if (parsed && typeof parsed.snoozed === "object" && parsed.snoozed) {
-        return { snoozed: parsed.snoozed as Record<string, number> }
+        return {
+          snoozed: parsed.snoozed as Record<string, number>,
+          hidden:
+            parsed.hidden && typeof parsed.hidden === "object"
+              ? (parsed.hidden as Record<string, number>)
+              : {},
+          restored:
+            parsed.restored && typeof parsed.restored === "object"
+              ? (parsed.restored as Record<string, number>)
+              : {},
+        }
       }
     }
   } catch {
     // ignore
   }
-  return { snoozed: {} }
+  return { snoozed: {}, hidden: {}, restored: {} }
 }
+
+export const isRediscoveryHidden = (
+  state: RediscoveryState,
+  url: string
+): boolean => (state.hidden[url] ?? 0) > (state.restored[url] ?? 0)
 
 export const snoozeRediscovery = (url: string, now: number): void => {
   const state = readRediscoveryState()
@@ -111,8 +130,28 @@ export const snoozeRediscovery = (url: string, now: number): void => {
   try {
     localStorage.setItem(
       REDISCOVERY_STATE_KEY,
-      JSON.stringify({ snoozed } satisfies RediscoveryState)
+      JSON.stringify({ ...state, snoozed } satisfies RediscoveryState)
     )
+  } catch {
+    // ignore
+  }
+}
+
+export const hideRediscovery = (url: string, now = Date.now()): void => {
+  const state = readRediscoveryState()
+  state.hidden[url] = now
+  try {
+    localStorage.setItem(REDISCOVERY_STATE_KEY, JSON.stringify(state))
+  } catch {
+    // ignore
+  }
+}
+
+export const restoreRediscovery = (url: string, now = Date.now()): void => {
+  const state = readRediscoveryState()
+  state.restored[url] = now
+  try {
+    localStorage.setItem(REDISCOVERY_STATE_KEY, JSON.stringify(state))
   } catch {
     // ignore
   }

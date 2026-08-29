@@ -143,3 +143,70 @@ export const removeBrowserUsagePermissions = async (): Promise<boolean> => {
     return false
   }
 }
+
+export interface NarrowBrowserUsagePermissionsResult {
+  hadBroadPermissions: boolean
+  serviceOriginsGranted: boolean
+}
+
+/**
+ * 关闭浏览统计时撤销全站权限，并把仍在使用的网络功能收窄到精确域名。
+ *
+ * Chrome 在全站授权存在时会把精确域名视作已授权，却不会保证它在
+ * 全站授权撤销后仍作为独立授权保留。因此必须先撤销，再在同一次用户
+ * 操作中申请精确域名。
+ */
+export const narrowBrowserUsagePermissions = async (
+  requiredServiceOrigins: string[]
+): Promise<NarrowBrowserUsagePermissionsResult> => {
+  if (typeof chrome === "undefined") {
+    return { hadBroadPermissions: false, serviceOriginsGranted: true }
+  }
+
+  const permissions = chrome.permissions
+  if (!permissions.contains || !permissions.remove) {
+    if (chrome.runtime?.id) {
+      throw new Error("权限接口不可用，请重新加载扩展后再试")
+    }
+    return { hadBroadPermissions: false, serviceOriginsGranted: true }
+  }
+
+  const grantedBroadOrigins: string[] = []
+  for (const origin of BROWSER_USAGE_PERMISSION_ORIGINS) {
+    if (await permissions.contains({ origins: [origin] })) {
+      grantedBroadOrigins.push(origin)
+    }
+  }
+  const hadBroadPermissions = grantedBroadOrigins.length > 0
+  if (!hadBroadPermissions) {
+    return { hadBroadPermissions: false, serviceOriginsGranted: true }
+  }
+
+  const removed = await permissions.remove({
+    origins: grantedBroadOrigins,
+  })
+  if (!removed) {
+    throw new Error("全站访问权限撤销失败，请在扩展详情页中手动检查")
+  }
+
+  const origins = Array.from(
+    new Set(
+      requiredServiceOrigins
+        .map(origin => origin.trim())
+        .filter(origin => origin && !BROWSER_USAGE_PERMISSION_ORIGINS.includes(origin))
+    )
+  )
+  if (origins.length === 0) {
+    return { hadBroadPermissions: true, serviceOriginsGranted: true }
+  }
+
+  if (!permissions.request) {
+    return { hadBroadPermissions: true, serviceOriginsGranted: false }
+  }
+
+  const alreadyGranted = await permissions.contains({ origins })
+  const serviceOriginsGranted =
+    alreadyGranted || (await permissions.request({ origins }))
+
+  return { hadBroadPermissions: true, serviceOriginsGranted }
+}

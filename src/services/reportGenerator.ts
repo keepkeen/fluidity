@@ -237,6 +237,37 @@ const getDefaultMonthlySummary = (stats: MonthlyStats): string => {
   }。新的一月继续保持节奏！✨`
 }
 
+const applyWeeklyPrivacy = (
+  stats: WeeklyStats,
+  settings: { shareHabits: boolean; shareBrowserUsage: boolean }
+): WeeklyStats => ({
+  ...stats,
+  ...(!settings.shareHabits
+    ? { linkClicks: 0, searches: 0, topLink: null }
+    : {}),
+  ...(!settings.shareBrowserUsage
+    ? { browserMinutes: 0, browserTopDomains: [], browserTopPages: [] }
+    : {}),
+})
+
+const applyMonthlyPrivacy = (
+  stats: MonthlyStats,
+  settings: { shareHabits: boolean; shareBrowserUsage: boolean }
+): MonthlyStats => ({
+  ...stats,
+  ...(!settings.shareHabits
+    ? {
+        linkClicks: 0,
+        searches: 0,
+        mostActiveHour: "暂无数据",
+        topLinks: [],
+      }
+    : {}),
+  ...(!settings.shareBrowserUsage
+    ? { browserMinutes: 0, browserTopDomains: [], browserTopPages: [] }
+    : {}),
+})
+
 /**
  * 生成周报 AI 点评
  */
@@ -276,11 +307,9 @@ export const generateWeeklyReport = async (): Promise<{
     return { summary: getDefaultWeeklySummary(stats), fromAI: false }
   }
 
-  // 调用 AI（未开启"发送浏览时长统计"时，浏览数据不得进入 prompt）
+  // 两类共享开关分别约束使用习惯与浏览时长，未授权字段不得进入 prompt。
   try {
-    const promptStats = settings.shareBrowserUsage
-      ? stats
-      : { ...stats, browserMinutes: 0, browserTopDomains: [], browserTopPages: [] }
+    const promptStats = applyWeeklyPrivacy(stats, settings)
     const prompt = generateWeeklyPrompt(promptStats)
     const summary = await callDeepSeekAPI(
       settings.apiKey,
@@ -341,11 +370,9 @@ export const generateMonthlyReport = async (): Promise<{
     return { summary: getDefaultMonthlySummary(stats), fromAI: false }
   }
 
-  // 调用 AI（未开启"发送浏览时长统计"时，浏览数据不得进入 prompt）
+  // 两类共享开关分别约束使用习惯与浏览时长，未授权字段不得进入 prompt。
   try {
-    const promptStats = settings.shareBrowserUsage
-      ? stats
-      : { ...stats, browserMinutes: 0, browserTopDomains: [], browserTopPages: [] }
+    const promptStats = applyMonthlyPrivacy(stats, settings)
     const prompt = generateMonthlyPrompt(promptStats)
     const summary = await callDeepSeekAPI(
       settings.apiKey,

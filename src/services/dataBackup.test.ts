@@ -45,6 +45,21 @@ describe("exportData", () => {
     expect(wallpaper.source).toBe("preset")
     expect(wallpaper.blur).toBe(4)
   })
+
+  it("exports widget data but never exports the device-local RSS cache", () => {
+    localStorage.setItem("fluidity.homeLayout.v2", JSON.stringify({ version: 2 }))
+    localStorage.setItem("fluidity.laterRead.v1", JSON.stringify({ version: 1 }))
+    localStorage.setItem("fluidity.rss.subscriptions.v1", JSON.stringify({ version: 1 }))
+    localStorage.setItem("fluidity.rss.readState.v1", JSON.stringify({ one: { read: true } }))
+    localStorage.setItem("fluidity.rss.cache.v1.web", JSON.stringify({ private: "cache" }))
+
+    const data = exportData().data
+    expect(data["fluidity.homeLayout.v2"]).toBeDefined()
+    expect(data["fluidity.laterRead.v1"]).toBeDefined()
+    expect(data["fluidity.rss.subscriptions.v1"]).toBeDefined()
+    expect(data["fluidity.rss.readState.v1"]).toBeDefined()
+    expect(data["fluidity.rss.cache.v1.web"]).toBeUndefined()
+  })
 })
 
 describe("importData", () => {

@@ -3,7 +3,6 @@ import { HomeItem } from "./homeLayout"
 export interface HomeGridMetrics {
   columns: number
   rows: number
-  widgetSpan: number
 }
 
 const MIN_COLUMNS = 3
@@ -38,17 +37,27 @@ export const getHomeGridMetrics = (
   return {
     columns,
     rows,
-    widgetSpan: columns <= 5 ? 2 : 3,
   }
 }
 
-const itemSpan = (
+export const getHomeItemSpan = (
   item: HomeItem,
   metrics: HomeGridMetrics
-): { columns: number; rows: number } =>
-  item.kind === "widget"
-    ? { columns: metrics.widgetSpan, rows: metrics.widgetSpan }
-    : { columns: 1, rows: 1 }
+): { columns: number; rows: number } => {
+  if (item.kind === "app") return { columns: 1, rows: 1 }
+  const requested =
+    item.widget.size === "small"
+      ? { columns: 1, rows: 1 }
+      : item.widget.size === "wide"
+        ? { columns: 2, rows: 1 }
+        : item.widget.size === "medium"
+          ? { columns: 2, rows: 2 }
+          : { columns: 4, rows: 2 }
+  return {
+    columns: Math.min(metrics.columns, requested.columns),
+    rows: Math.min(metrics.rows, requested.rows),
+  }
+}
 
 const tryPlace = (
   occupied: boolean[][],
@@ -100,7 +109,7 @@ export const paginateHomeItems = (
   let occupied = emptyPage(metrics)
 
   items.forEach(item => {
-    const span = itemSpan(item, metrics)
+    const span = getHomeItemSpan(item, metrics)
     if (!tryPlace(occupied, span, metrics)) {
       pages.push([])
       occupied = emptyPage(metrics)

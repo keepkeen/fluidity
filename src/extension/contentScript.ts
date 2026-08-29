@@ -150,9 +150,13 @@
       usagePort.onDisconnect.addListener(() => {
         usagePort = null
         if (portRetryTimer) clearTimeout(portRetryTimer)
+        if (!usageSettings.enabled) {
+          portRetryTimer = 0
+          return
+        }
         portRetryTimer = window.setTimeout(() => {
           portRetryTimer = 0
-          connectUsagePort()
+          if (usageSettings.enabled) connectUsagePort()
         }, 1500)
       })
       return usagePort
@@ -172,6 +176,19 @@
     if (!usageSettings.enabled && usageTimer) {
       clearInterval(usageTimer)
       usageTimer = 0
+    }
+    if (!usageSettings.enabled) {
+      if (portRetryTimer) clearTimeout(portRetryTimer)
+      portRetryTimer = 0
+      if (usagePort) {
+        const port = usagePort
+        usagePort = null
+        try {
+          port.disconnect()
+        } catch {
+          // The extension context may already be gone.
+        }
+      }
     }
   }
 

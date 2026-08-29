@@ -34,7 +34,7 @@ export const subscribeSettingsWindow = (
   }
 }
 
-const IndicatorContainer = styled.div<{ visible: boolean }>`
+const IndicatorContainer = styled.div`
   position: fixed;
   top: 20px;
   left: 20px;
@@ -47,11 +47,22 @@ const IndicatorContainer = styled.div<{ visible: boolean }>`
   box-shadow: var(--shadow-soft);
   border-radius: var(--radius-sm);
   z-index: 50;
-  opacity: ${({ visible }) => (visible ? 1 : 0)};
-  transform: ${({ visible }) =>
-    visible ? "translateX(0)" : "translateX(-100%)"};
-  transition: opacity 0.3s, transform 0.3s;
-  pointer-events: ${({ visible }) => (visible ? "auto" : "none")};
+  animation: indicator-in 0.3s ease-out both;
+
+  @keyframes indicator-in {
+    from {
+      opacity: 0;
+      transform: translateX(-24px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
 `
 
 const SpinnerIcon = styled(FontAwesomeIcon)`
@@ -65,6 +76,10 @@ const SpinnerIcon = styled(FontAwesomeIcon)`
     to {
       transform: rotate(360deg);
     }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
   }
 `
 
@@ -94,8 +109,10 @@ export const AILoadingIndicator: React.FC = () => {
   // 只在设置窗口关闭且正在加载时显示
   const isLoading = status === "loading" && !settingsOpen
 
+  if (!isLoading) return null
+
   return (
-    <IndicatorContainer visible={isLoading}>
+    <IndicatorContainer role="status" aria-live="polite">
       <SpinnerIcon icon={faSpinner} />
       <LoadingText>AI 正在整理链接...</LoadingText>
     </IndicatorContainer>

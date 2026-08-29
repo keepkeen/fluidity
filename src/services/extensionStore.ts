@@ -11,12 +11,28 @@ export const hasChromeStorage = (): boolean => {
   }
 }
 
+const getRuntimeStorageError = (): Error | null => {
+  try {
+    const message = chrome.runtime?.lastError?.message
+    return message ? new Error(message) : null
+  } catch {
+    return null
+  }
+}
+
 export const getChromeLocal = async <T>(
   key: string
 ): Promise<T | undefined> => {
   if (!hasChromeStorage()) return undefined
-  return await new Promise<T | undefined>(resolve => {
-    chrome.storage.local.get([key], result => resolve(result[key] as T))
+  return await new Promise<T | undefined>((resolve, reject) => {
+    chrome.storage.local.get([key], result => {
+      const error = getRuntimeStorageError()
+      if (error) {
+        reject(error)
+        return
+      }
+      resolve(result[key] as T)
+    })
   })
 }
 
@@ -25,8 +41,12 @@ export const setChromeLocal = async (
   value: unknown
 ): Promise<void> => {
   if (!hasChromeStorage()) return
-  await new Promise<void>(resolve => {
-    chrome.storage.local.set({ [key]: value }, () => resolve())
+  await new Promise<void>((resolve, reject) => {
+    chrome.storage.local.set({ [key]: value }, () => {
+      const error = getRuntimeStorageError()
+      if (error) reject(error)
+      else resolve()
+    })
   })
 }
 
@@ -48,8 +68,15 @@ export const getChromeSession = async <T>(
   key: string
 ): Promise<T | undefined> => {
   if (!hasChromeSessionStorage()) return undefined
-  return await new Promise<T | undefined>(resolve => {
-    chrome.storage.session.get([key], result => resolve(result[key] as T))
+  return await new Promise<T | undefined>((resolve, reject) => {
+    chrome.storage.session.get([key], result => {
+      const error = getRuntimeStorageError()
+      if (error) {
+        reject(error)
+        return
+      }
+      resolve(result[key] as T)
+    })
   })
 }
 
@@ -58,14 +85,22 @@ export const setChromeSession = async (
   value: unknown
 ): Promise<void> => {
   if (!hasChromeSessionStorage()) return
-  await new Promise<void>(resolve => {
-    chrome.storage.session.set({ [key]: value }, () => resolve())
+  await new Promise<void>((resolve, reject) => {
+    chrome.storage.session.set({ [key]: value }, () => {
+      const error = getRuntimeStorageError()
+      if (error) reject(error)
+      else resolve()
+    })
   })
 }
 
 export const removeChromeSession = async (key: string): Promise<void> => {
   if (!hasChromeSessionStorage()) return
-  await new Promise<void>(resolve => {
-    chrome.storage.session.remove(key, () => resolve())
+  await new Promise<void>((resolve, reject) => {
+    chrome.storage.session.remove(key, () => {
+      const error = getRuntimeStorageError()
+      if (error) reject(error)
+      else resolve()
+    })
   })
 }

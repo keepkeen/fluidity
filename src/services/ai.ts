@@ -502,7 +502,9 @@ export const resolveAppNameForDomain = async (
   domain: string
 ): Promise<string | null> => {
   const settings = AISettingsManager.get()
-  if (!settings.enabled || !settings.apiKey) return null
+  if (!settings.enabled || !settings.apiKey || !settings.shareBrowserUsage) {
+    return null
+  }
 
   const prompt = generateDomainAppNamePrompt(domain)
   const raw = await callDeepSeekAPI(settings.apiKey, prompt, settings.model, {

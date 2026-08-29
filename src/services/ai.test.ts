@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   AISettingsManager,
   callDeepSeekAPI,
+  resolveAppNameForDomain,
   resolveChatCompletionsUrl,
 } from "./ai"
 import { resolveAIServicePermissionOrigin } from "./aiEndpoint"
@@ -48,9 +49,9 @@ describe("OpenAI-compatible endpoint handling", () => {
     expect(resolveChatCompletionsUrl("http://localhost:11434/v1")).toBe(
       "http://localhost:11434/v1/chat/completions"
     )
-    expect(resolveAIServicePermissionOrigin("http://[::1]:11434/v1")).toBe(
-      "http://[::1]:11434/*"
-    )
+    expect(() =>
+      resolveAIServicePermissionOrigin("http://[::1]:11434/v1")
+    ).toThrow("必须使用 HTTPS")
     expect(() =>
       resolveChatCompletionsUrl("http://provider.example/v1")
     ).toThrow("必须使用 HTTPS")
@@ -118,5 +119,19 @@ describe("OpenAI-compatible endpoint handling", () => {
     expect(AISettingsManager.get().model).toBe("model-existing")
     expect(localStorage.getItem("ai-cache")).toBeNull()
     expect(localStorage.getItem("ai-response-cache-scope.v1")).not.toBeNull()
+  })
+})
+
+describe("browser usage privacy", () => {
+  it("does not send a domain when browser usage sharing is disabled", async () => {
+    AISettingsManager.set({
+      enabled: true,
+      apiKey: "sk-test-key",
+      shareBrowserUsage: false,
+    })
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+
+    await expect(resolveAppNameForDomain("example.com")).resolves.toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

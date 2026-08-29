@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 
 import styled from "@emotion/styled"
 
+import { Modal } from "../../components/Modal"
 import { WidgetCard } from "../../components/WidgetCard"
 import { resolveAppNameForDomain } from "../../services/ai"
 import {
@@ -18,6 +19,15 @@ import {
   getBrowserUsageSettings,
   hasBrowserUsagePermissions,
 } from "../../services/browserUsageSettings"
+import { WidgetSize } from "../../services/widgetRegistry"
+import {
+  DrawerBody,
+  DrawerCard,
+  DrawerClose,
+  DrawerHeader,
+  DrawerTitle,
+  WidgetRowMeta,
+} from "../Widgets/shared"
 
 const StyledWidgetCard = styled(WidgetCard)`
   height: 100%;
@@ -57,7 +67,7 @@ const List = styled.div`
   flex-direction: column;
   gap: 10px;
   flex: 1;
-  overflow-y: auto;
+  overflow: hidden;
   padding-right: 4px;
 `
 
@@ -170,6 +180,7 @@ const EmptyAction = styled.button`
 `
 
 type TrackingState = "disabled" | "permission-missing" | "waiting" | "active"
+const DOMAIN_LABEL_RETRY_MS = 30 * 60 * 1000
 
 const secToMin = (sec: number): number => Math.round((sec / 60) * 10) / 10
 
@@ -189,7 +200,8 @@ const formatMinutes = (minutes: number): string => {
 
 const resolveMissingDomainLabels = (
   domains: string[],
-  resolving: Set<string>
+  resolving: Set<string>,
+  retryAfter: Map<string, number>
 ): void => {
   const unique: Record<string, string> = {}
   domains.forEach(domain => {
@@ -200,15 +212,22 @@ const resolveMissingDomainLabels = (
 
   for (const key of Object.keys(unique)) {
     if (resolving.has(key)) continue
+    if ((retryAfter.get(key) ?? 0) > Date.now()) continue
     resolving.add(key)
 
     const domain = unique[key]
     void resolveAppNameForDomain(domain)
       .then(name => {
-        if (!name) return
+        if (!name) {
+          retryAfter.set(key, Date.now() + DOMAIN_LABEL_RETRY_MS)
+          return
+        }
+        retryAfter.delete(key)
         return upsertDomainAppName({ domain, name, source: "ai" })
       })
-      .catch(() => undefined)
+      .catch(() => {
+        retryAfter.set(key, Date.now() + DOMAIN_LABEL_RETRY_MS)
+      })
       .finally(() => {
         resolving.delete(key)
       })
@@ -285,7 +304,24 @@ const subscribeToUsageUpdates = (onUpdate: () => void): (() => void) => {
   }
 }
 
-export const TodayScreenTime = () => {
+interface TodayScreenTimeProps {
+  active?: boolean
+  size?: WidgetSize
+  config?: Record<string, unknown>
+  onConfigChange?: (config: Record<string, unknown>) => void
+}
+
+export const hasScreenTimeTrendData = (
+  history: readonly { minutes: number }[],
+  totalMinutes: number
+): boolean =>
+  totalMinutes > 0 || history.some(day => day.minutes > 0)
+
+export const TodayScreenTime = ({
+  active: uiActive = true,
+  size = "medium",
+  config = {},
+}: TodayScreenTimeProps) => {
   const [totalMinutes, setTotalMinutes] = useState<number>(0)
   const [items, setItems] = useState<
     { domain: string; label: string; minutes: number }[]
@@ -297,10 +333,15 @@ export const TodayScreenTime = () => {
   // 前 6 天的每日总时长（分钟），今天的柱子由 totalMinutes 实时驱动
   const [history, setHistory] = useState<{ day: string; minutes: number }[]>([])
   const [avgMinutes, setAvgMinutes] = useState<number | null>(null)
+  const [showDetails, setShowDetails] = useState(false)
   const resolvingRef = useRef<Set<string>>(new Set())
+  const domainLabelRetryAfterRef = useRef<Map<string, number>>(new Map())
 
+  // 这里只控制组件的读取与重绘。实际浏览时长由内容脚本/后台持续采集，
+  // 无论这个组件位于哪一页，都不能在这里启动或停止计时。
   // 历史数据一次加载即可（过去的天数不会再变）
   useEffect(() => {
+    if (!uiActive) return
     let mounted = true
     const loadHistory = async () => {
       const days: { day: string; minutes: number }[] = []
@@ -324,9 +365,10 @@ export const TodayScreenTime = () => {
     return () => {
       mounted = false
     }
-  }, [])
+  }, [uiActive])
 
   useEffect(() => {
+    if (!uiActive) return
     let mounted = true
     let raf = 0
     let pending = false
@@ -339,7 +381,11 @@ export const TodayScreenTime = () => {
         setTotalMinutes(vm.totalMinutes)
         setLastUpdatedAt(vm.lastUpdatedAt)
         setTrackingState(vm.trackingState)
-        resolveMissingDomainLabels(vm.missingDomains, resolvingRef.current)
+        resolveMissingDomainLabels(
+          vm.missingDomains,
+          resolvingRef.current,
+          domainLabelRetryAfterRef.current
+        )
       } else {
         setItems([])
         setTotalMinutes(0)
@@ -380,9 +426,12 @@ export const TodayScreenTime = () => {
       window.removeEventListener("focus", onFocus)
       window.removeEventListener("pageshow", onFocus)
     }
-  }, [])
+  }, [uiActive])
 
   const maxMinutes = Math.max(...items.map(i => i.minutes), 0)
+  const goalMinutes = Math.max(1, Number(config.dailyGoalMinutes ?? 180))
+  const displayItems = items.slice(0, size === "large" ? 2 : 1)
+  const showTrend = hasScreenTimeTrendData(history, totalMinutes)
   const emptyMessage =
     trackingState === "disabled"
       ? "浏览时长统计尚未启用"
@@ -391,12 +440,20 @@ export const TodayScreenTime = () => {
         : "已启用：请在普通网页停留几秒；新标签页本身不计时"
 
   return (
-    <StyledWidgetCard
-      title="屏幕时间"
-      actions={
-        <Total>{loading ? "…" : `${formatMinutes(totalMinutes)} 分钟`}</Total>
-      }
-    >
+    <>
+      <StyledWidgetCard
+        title="屏幕时间"
+        symbol="◷"
+        subtitle={
+          trackingState === "active"
+            ? `今日预算 ${goalMinutes} 分钟`
+            : "统计由后台持续采集"
+        }
+        actions={
+          <Total>{loading ? "…" : `${formatMinutes(totalMinutes)} 分钟`}</Total>
+        }
+        onOpen={() => setShowDetails(true)}
+      >
       <div
         style={{
           display: "flex",
@@ -405,12 +462,12 @@ export const TodayScreenTime = () => {
           height: "100%",
         }}
       >
-        <HeaderLeft style={{ padding: "0 4px" }}>
+        {size !== "small" && displayItems.length > 0 && <HeaderLeft style={{ padding: "0 4px" }}>
           <HeaderHint>
-            <HintTop>TOP 5</HintTop>
+            <HintTop>{size === "large" ? "TOP 2" : "TOP 1"}</HintTop>
             {lastUpdatedAt ? (
               <UpdatedHint>
-                Update:{" "}
+                更新于{" "}
                 {new Date(lastUpdatedAt).toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
@@ -418,10 +475,10 @@ export const TodayScreenTime = () => {
               </UpdatedHint>
             ) : null}
           </HeaderHint>
-        </HeaderLeft>
+        </HeaderLeft>}
 
-        {(history.length > 0 || totalMinutes > 0) && (
-          <TrendRow aria-hidden>
+        {size !== "small" && showTrend && (
+          <TrendRow aria-hidden data-screen-time-trend="true">
             {[...history, { day: "今天", minutes: totalMinutes }].map(bar => {
               const trendMax = Math.max(
                 ...history.map(h => h.minutes),
@@ -440,14 +497,18 @@ export const TodayScreenTime = () => {
           </TrendRow>
         )}
 
-        {avgMinutes !== null && avgMinutes > 0 && !loading && (
+        {size !== "small" && avgMinutes !== null && avgMinutes > 0 && !loading && (
           <CompareHint over={totalMinutes > avgMinutes}>
             比过去 7 天平均{totalMinutes >= avgMinutes ? "多" : "少"}{" "}
             {formatMinutes(Math.abs(totalMinutes - avgMinutes))} 分钟
           </CompareHint>
         )}
 
-        {items.length === 0 ? (
+        {size === "small" && trackingState === "active" ? (
+          <Empty>
+            已使用今日预算的 {Math.round((totalMinutes / goalMinutes) * 100)}%
+          </Empty>
+        ) : items.length === 0 ? (
           <Empty>
             {loading ? "正在检查统计状态…" : emptyMessage}
             {!loading && trackingState !== "active" && (
@@ -467,7 +528,7 @@ export const TodayScreenTime = () => {
           </Empty>
         ) : (
           <List>
-            {items.map((item, idx) => (
+            {displayItems.map((item, idx) => (
               <Item key={item.domain}>
                 <Fill
                   width={
@@ -485,7 +546,62 @@ export const TodayScreenTime = () => {
             ))}
           </List>
         )}
-      </div>
-    </StyledWidgetCard>
+        </div>
+      </StyledWidgetCard>
+
+      {showDetails && (
+        <Modal
+          onClose={() => setShowDetails(false)}
+          label="屏幕时间详情"
+          overlay="dark"
+        >
+          <DrawerCard>
+            <DrawerHeader>
+              <div>
+                <DrawerTitle>今日屏幕时间</DrawerTitle>
+                <WidgetRowMeta>
+                  {formatMinutes(totalMinutes)} 分钟 · 注意力预算 {goalMinutes} 分钟
+                </WidgetRowMeta>
+              </div>
+              <DrawerClose
+                type="button"
+                aria-label="关闭"
+                onClick={() => setShowDetails(false)}
+              >
+                ×
+              </DrawerClose>
+            </DrawerHeader>
+            <DrawerBody>
+              {avgMinutes !== null && avgMinutes > 0 && (
+                <CompareHint over={totalMinutes > avgMinutes}>
+                  比过去 7 天平均{totalMinutes >= avgMinutes ? "多" : "少"}{" "}
+                  {formatMinutes(Math.abs(totalMinutes - avgMinutes))} 分钟
+                </CompareHint>
+              )}
+              {items.length === 0 ? (
+                <Empty>{loading ? "正在读取统计…" : emptyMessage}</Empty>
+              ) : (
+                <List style={{ overflow: "visible", marginTop: 14 }}>
+                  {items.map((item, idx) => (
+                    <Item key={item.domain}>
+                      <Fill
+                        width={
+                          maxMinutes > 0
+                            ? Math.round((item.minutes / maxMinutes) * 100)
+                            : 0
+                        }
+                      />
+                      <Rank>{idx + 1}.</Rank>
+                      <Domain title={item.domain}>{item.label}</Domain>
+                      <Minutes>{formatMinutes(item.minutes)}m</Minutes>
+                    </Item>
+                  ))}
+                </List>
+              )}
+            </DrawerBody>
+          </DrawerCard>
+        </Modal>
+      )}
+    </>
   )
 }

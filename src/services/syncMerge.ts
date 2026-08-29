@@ -7,7 +7,11 @@
  *   两台设备各自的新增都保留，且合并函数幂等（反复合并不膨胀）
  */
 
-import { LinkClickRecord } from "./analytics"
+import {
+  LinkClickRecord,
+  normalizeSearchRecords,
+  SearchRecord,
+} from "./analytics"
 import { linkGroup } from "../data/data"
 
 export type KeyTimestamps = Record<string, number>
@@ -18,6 +22,10 @@ export const DEEP_MERGE_KEYS = new Set([
   "fluidity.linkPins.v1",
   "link-analytics",
   "search-history",
+  "fluidity.rediscovery.v1",
+  "fluidity.laterRead.v1",
+  "fluidity.rss.subscriptions.v1",
+  "fluidity.rss.readState.v1",
 ])
 
 // ============ 各键的深度合并 ============
@@ -92,17 +100,135 @@ const mergeAnalytics = (
   return result
 }
 
-const SEARCH_HISTORY_LIMIT = 20
+const SEARCH_HISTORY_LIMIT = 100
 
-/** 搜索历史：较新一侧优先，补另一侧缺失，去重截断 */
-const mergeSearchHistory = (newer: unknown, older: unknown): string[] => {
-  const a = Array.isArray(newer) ? newer : []
-  const b = Array.isArray(older) ? older : []
-  return [
-    ...new Set(
-      [...a, ...b].filter((v): v is string => typeof v === "string")
+const searchRecordKey = (record: SearchRecord): string =>
+  JSON.stringify([record.timestamp, record.engine, record.query])
+
+const compareText = (a: string, b: string): number =>
+  a < b ? -1 : a > b ? 1 : 0
+
+/** 搜索历史：按真实 SearchRecord 模型合并，精确事件去重后稳定排序。 */
+const mergeSearchHistory = (newer: unknown, older: unknown): SearchRecord[] => {
+  const records = [
+    ...normalizeSearchRecords(newer),
+    ...normalizeSearchRecords(older),
+  ]
+  const unique = new Map<string, SearchRecord>()
+  for (const record of records) unique.set(searchRecordKey(record), record)
+
+  return [...unique.values()]
+    .sort(
+      (a, b) =>
+        b.timestamp - a.timestamp ||
+        compareText(a.engine, b.engine) ||
+        compareText(a.query, b.query)
+    )
+    .slice(0, SEARCH_HISTORY_LIMIT)
+}
+
+const stableSerialize = (value: unknown): string => {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value) ?? String(value)
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(stableSerialize).join(",")}]`
+  }
+  const record = value as Record<string, unknown>
+  return `{${Object.keys(record)
+    .sort()
+    .map(key => `${JSON.stringify(key)}:${stableSerialize(record[key])}`)
+    .join(",")}}`
+}
+
+interface UpdatedRecord {
+  updatedAt?: number
+}
+
+const mergeUpdatedRecords = (
+  newer: Record<string, UpdatedRecord>,
+  older: Record<string, UpdatedRecord>
+): Record<string, UpdatedRecord> => {
+  const result: Record<string, UpdatedRecord> = {}
+  for (const id of new Set([...Object.keys(older), ...Object.keys(newer)])) {
+    const a = newer[id]
+    const b = older[id]
+    if (!a || !b) {
+      result[id] = a ?? b
+      continue
+    }
+    const aTimestamp = a.updatedAt ?? 0
+    const bTimestamp = b.updatedAt ?? 0
+    if (aTimestamp !== bTimestamp) {
+      result[id] = aTimestamp > bTimestamp ? a : b
+      continue
+    }
+
+    // 同一毫秒内的逐记录并发更新也必须与参数方向无关，否则两端会各自
+    // 保留自己的记录。稳定序列化可让所有设备选择同一个内容赢家。
+    result[id] = stableSerialize(a) >= stableSerialize(b) ? a : b
+  }
+  return result
+}
+
+const mergeLaterRead = (newer: unknown, older: unknown): unknown => {
+  const a = (newer ?? {}) as {
+    version?: number
+    items?: Record<string, UpdatedRecord>
+  }
+  const b = (older ?? {}) as {
+    version?: number
+    items?: Record<string, UpdatedRecord>
+  }
+  return {
+    version: 1,
+    items: mergeUpdatedRecords(a.items ?? {}, b.items ?? {}),
+  }
+}
+
+const mergeRssSubscriptions = (newer: unknown, older: unknown): unknown => {
+  const a = (newer ?? {}) as {
+    subscriptions?: Record<string, UpdatedRecord>
+  }
+  const b = (older ?? {}) as {
+    subscriptions?: Record<string, UpdatedRecord>
+  }
+  return {
+    version: 1,
+    subscriptions: mergeUpdatedRecords(
+      a.subscriptions ?? {},
+      b.subscriptions ?? {}
     ),
-  ].slice(0, SEARCH_HISTORY_LIMIT)
+  }
+}
+
+const mergeRssReadState = (newer: unknown, older: unknown): unknown =>
+  mergeUpdatedRecords(
+    (newer ?? {}) as Record<string, UpdatedRecord>,
+    (older ?? {}) as Record<string, UpdatedRecord>
+  )
+
+const mergeTimestampMaps = (
+  newer: unknown,
+  older: unknown
+): Record<string, number> => {
+  const a = (newer ?? {}) as Record<string, number>
+  const b = (older ?? {}) as Record<string, number>
+  const result: Record<string, number> = {}
+  for (const key of new Set([...Object.keys(b), ...Object.keys(a)])) {
+    result[key] = Math.max(Number(a[key] ?? 0), Number(b[key] ?? 0))
+  }
+  return result
+}
+
+const mergeRediscovery = (newer: unknown, older: unknown): unknown => {
+  const a = (newer ?? {}) as Record<string, unknown>
+  const b = (older ?? {}) as Record<string, unknown>
+  return {
+    snoozed: mergeTimestampMaps(a.snoozed, b.snoozed),
+    hidden: mergeTimestampMaps(a.hidden, b.hidden),
+    restored: mergeTimestampMaps(a.restored, b.restored),
+  }
 }
 
 /**
@@ -122,6 +248,14 @@ export const deepMergeKey = (
       return mergeAnalytics(newer, older)
     case "search-history":
       return mergeSearchHistory(newer, older)
+    case "fluidity.rediscovery.v1":
+      return mergeRediscovery(newer, older)
+    case "fluidity.laterRead.v1":
+      return mergeLaterRead(newer, older)
+    case "fluidity.rss.subscriptions.v1":
+      return mergeRssSubscriptions(newer, older)
+    case "fluidity.rss.readState.v1":
+      return mergeRssReadState(newer, older)
     default:
       return newer
   }
@@ -185,13 +319,31 @@ export const planMerge = (options: {
       continue
     }
 
-    if (remoteHas && (!localHas || remoteTs > localTs)) {
+    if (remoteHas && !localHas) {
       plan.push({ key, value: remoteData[key], timestamp: remoteTs, needsPush: false })
-    } else if (localHas && (!remoteHas || localTs > remoteTs)) {
+    } else if (localHas && !remoteHas) {
+      plan.push({ key, timestamp: localTs, needsPush: true })
+    } else if (remoteTs > localTs) {
+      plan.push({ key, value: remoteData[key], timestamp: remoteTs, needsPush: false })
+    } else if (localTs > remoteTs) {
       plan.push({ key, timestamp: localTs, needsPush: true })
     } else {
-      // 相同时间戳：视为一致，保留本地
-      plan.push({ key, timestamp: localTs, needsPush: false })
+      const localSerialized = stableSerialize(localData[key])
+      const remoteSerialized = stableSerialize(remoteData[key])
+      if (localSerialized === remoteSerialized) {
+        plan.push({ key, timestamp: localTs, needsPush: false })
+        continue
+      }
+
+      // 同一毫秒内的并发更新无法再靠时间仲裁；用内容的稳定序列化结果
+      // 确定赢家，保证两台设备无论站在哪一侧都收敛到同一个值。
+      const localWins = localSerialized > remoteSerialized
+      plan.push({
+        key,
+        value: localWins ? undefined : remoteData[key],
+        timestamp: localTs,
+        needsPush: localWins,
+      })
     }
   }
 

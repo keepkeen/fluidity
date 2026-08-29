@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useRef } from "react"
+import { createPortal } from "react-dom"
 
 import styled from "@emotion/styled"
 
@@ -14,13 +15,26 @@ const Overlay = styled.div<{ dim: "light" | "dark" }>`
   right: 0;
   bottom: 0;
   left: 0;
-  z-index: 100;
+  /* Cover ordinary fixed UI (edit toolbar/toasts), while global notifications
+     intentionally stay above the modal at z-index 9998+. */
+  z-index: 9000;
   background-color: ${({ dim }) =>
     dim === "dark"
       ? "rgba(0, 0, 0, 0.45)"
       : "color-mix(in srgb, var(--bg-primary) 55%, transparent)"};
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
+`
+
+const DialogContainer = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 9001;
+  pointer-events: none;
+
+  > * {
+    pointer-events: auto;
+  }
 `
 
 const FOCUSABLE_SELECTOR = [
@@ -31,6 +45,21 @@ const FOCUSABLE_SELECTOR = [
   "textarea:not([disabled])",
   '[tabindex]:not([tabindex="-1"])',
 ].join(", ")
+
+export const isVisibleModalFocusTarget = (element: HTMLElement): boolean => {
+  if (
+    element.matches(":disabled") ||
+    element.closest('[hidden], [inert], [aria-hidden="true"]')
+  ) {
+    return false
+  }
+  const style = window.getComputedStyle(element)
+  return (
+    style.display !== "none" &&
+    style.visibility !== "hidden" &&
+    element.getClientRects().length > 0
+  )
+}
 
 interface ModalProps {
   onClose: () => void
@@ -66,7 +95,7 @@ export const Modal = ({
       if (!containerRef.current) return []
       return Array.from(
         containerRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
-      )
+      ).filter(isVisibleModalFocusTarget)
     }
 
     const initial = getFocusable()[0] ?? containerRef.current
@@ -103,23 +132,38 @@ export const Modal = ({
     }
   }, [])
 
-  return (
+  return createPortal(
     <>
       {overlay !== "none" && (
         <Overlay
+          data-fluidity-modal="true"
           dim={overlay}
-          onClick={closeOnOverlayClick ? () => onCloseRef.current() : undefined}
+          onPointerDown={event => event.stopPropagation()}
+          onPointerMove={event => event.stopPropagation()}
+          onPointerUp={event => event.stopPropagation()}
+          onWheel={event => event.stopPropagation()}
+          onClick={event => {
+            event.stopPropagation()
+            if (closeOnOverlayClick) onCloseRef.current()
+          }}
         />
       )}
-      <div
+      <DialogContainer
         ref={containerRef}
+        data-fluidity-modal="true"
         role="dialog"
         aria-modal="true"
         aria-label={label}
         tabIndex={-1}
+        onPointerDown={event => event.stopPropagation()}
+        onPointerMove={event => event.stopPropagation()}
+        onPointerUp={event => event.stopPropagation()}
+        onWheel={event => event.stopPropagation()}
+        onClick={event => event.stopPropagation()}
       >
         {children}
-      </div>
-    </>
+      </DialogContainer>
+    </>,
+    document.body
   )
 }

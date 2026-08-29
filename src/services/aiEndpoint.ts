@@ -1,6 +1,8 @@
 export const DEFAULT_AI_BASE_URL = "https://api.deepseek.com"
 
-const LOCAL_HTTP_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"])
+// Chromium extension CSP rejects IPv6 literal host sources. Accepting ::1 here
+// would let endpoint validation succeed and then make every real request fail.
+const LOCAL_HTTP_HOSTS = new Set(["localhost", "127.0.0.1"])
 
 const parseAIServiceUrl = (rawBaseUrl: string): URL => {
   const value = rawBaseUrl.trim() || DEFAULT_AI_BASE_URL

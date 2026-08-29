@@ -14,11 +14,13 @@ import {
   getDataStats,
   ImportResult,
 } from "../../../services/dataBackup"
+import { AISettingsManager } from "../../../services/ai"
 import {
   BrowserUsageSettings,
   DEFAULT_BROWSER_USAGE_SETTINGS,
   getBrowserUsageSettings,
   hasBrowserUsagePermissions,
+  narrowBrowserUsagePermissions,
   removeBrowserUsagePermissions,
   requestBrowserUsagePermissions,
   setBrowserUsageSettings,
@@ -38,7 +40,14 @@ import {
   restoreConflictCopy,
   setSyncPasswordForSession,
 } from "../../../services/gistSync"
-import { ensureSyncPermissions } from "../../../services/optionalPermissions"
+import { resolveAIServicePermissionOrigin } from "../../../services/aiEndpoint"
+import {
+  ensureSyncPermissions,
+  resolveRssPermissionOrigin,
+  SYNC_PERMISSION_ORIGINS,
+} from "../../../services/optionalPermissions"
+import { resetApplicationData } from "../../../services/resetApplicationData"
+import { listRssSubscriptions } from "../../../services/rss"
 import { Toggle } from "../../../components/Toggle"
 import { emitSettingsApplied } from "../../../services/settingsEvents"
 import {
@@ -178,8 +187,11 @@ export const DataSettings: React.FC = () => {
   const [usageSettings, setUsageSettingsState] =
     useState<BrowserUsageSettings>(DEFAULT_BROWSER_USAGE_SETTINGS)
   const [usageBusy, setUsageBusy] = useState(false)
+  const usageOperationRef = useRef(false)
   const [usageError, setUsageError] = useState<string | null>(null)
   const [usageSuccess, setUsageSuccess] = useState<string | null>(null)
+  const [isResetting, setIsResetting] = useState(false)
+  const [resetError, setResetError] = useState<string | null>(null)
 
   const [token, setToken] = useState("")
   const [syncPassword, setSyncPassword] = useState("")
@@ -266,7 +278,6 @@ export const DataSettings: React.FC = () => {
   const persistUsageSettings = async (
     nextSettings: BrowserUsageSettings
   ): Promise<boolean> => {
-    setUsageBusy(true)
     setUsageError(null)
     setUsageSuccess(null)
     try {
@@ -278,56 +289,122 @@ export const DataSettings: React.FC = () => {
         error instanceof Error ? error.message : "浏览统计设置保存失败"
       )
       return false
-    } finally {
-      setUsageBusy(false)
     }
   }
 
   const handleUsageEnabledChange = async (enabled: boolean): Promise<void> => {
-    if (enabled) {
-      const alreadyGranted = await hasBrowserUsagePermissions()
-      const granted = await requestBrowserUsagePermissions()
-      if (!granted) {
-        setUsageError("需要授予网站访问权限后才能统计浏览时长")
+    if (usageOperationRef.current) return
+    usageOperationRef.current = true
+    setUsageBusy(true)
+    try {
+      if (enabled) {
+        const alreadyGranted = await hasBrowserUsagePermissions()
+        const granted = await requestBrowserUsagePermissions()
+        if (!granted) {
+          setUsageError("需要授予网站访问权限后才能统计浏览时长")
+          return
+        }
+        const saved = await persistUsageSettings({
+          ...usageSettings,
+          enabled: true,
+        })
+        if (!saved) {
+          if (!alreadyGranted) await removeBrowserUsagePermissions()
+          return
+        }
+        setUsageSuccess(
+          "浏览统计已启动，当前打开的普通网页会立即接入；新标签页本身不计入时长。"
+        )
         return
       }
+
       const saved = await persistUsageSettings({
         ...usageSettings,
-        enabled: true,
+        enabled: false,
       })
-      if (!saved) {
-        if (!alreadyGranted) await removeBrowserUsagePermissions()
-        return
+      if (!saved) return
+
+      try {
+        const serviceOrigins: string[] = []
+        const aiSettings = AISettingsManager.get()
+        if (aiSettings.apiKey.trim()) {
+          try {
+            serviceOrigins.push(
+              resolveAIServicePermissionOrigin(aiSettings.apiBaseUrl)
+            )
+          } catch {
+            // 无效接口地址无法被实际请求，也不应成为保留全站权限的理由。
+          }
+        }
+        for (const subscription of listRssSubscriptions()) {
+          if (!subscription.enabled || subscription.deletedAt) continue
+          try {
+            serviceOrigins.push(resolveRssPermissionOrigin(subscription.url))
+          } catch {
+            // 无效的旧订阅留给订阅设置修复，权限在这里保持最小化。
+          }
+        }
+        if ((await getGistSyncConfig()).enabled) {
+          serviceOrigins.push(...SYNC_PERMISSION_ORIGINS)
+        }
+
+        const result = await narrowBrowserUsagePermissions(serviceOrigins)
+        setUsageSuccess(
+          result.hadBroadPermissions && !result.serviceOriginsGranted
+            ? "浏览统计已关闭，全站访问权限已移除；部分精确域名授权未恢复，RSS 手动刷新或云同步操作时会再次申请。"
+            : result.hadBroadPermissions
+              ? "浏览统计已关闭，全站访问权限已移除；现有网络功能仅保留所需域名授权。"
+              : "浏览统计已关闭，未发现需要撤销的全站访问权限。"
+        )
+      } catch (error) {
+        setUsageError(
+          error instanceof Error
+            ? `浏览统计已关闭，但${error.message}`
+            : "浏览统计已关闭，但全站访问权限撤销失败"
+        )
       }
-      setUsageSuccess(
-        "浏览统计已启动，当前打开的普通网页会立即接入；新标签页本身不计入时长。"
-      )
-      return
+    } finally {
+      usageOperationRef.current = false
+      setUsageBusy(false)
     }
-
-    const saved = await persistUsageSettings({
-      ...usageSettings,
-      enabled: false,
-    })
-    if (!saved) return
-
-    const removed = await removeBrowserUsagePermissions()
-    setUsageSuccess(
-      removed
-        ? "浏览统计已关闭，网站访问权限已移除。"
-        : "浏览统计已关闭；网站访问权限可在扩展详情页中检查。"
-    )
   }
 
   const handleUsagePrivacyChange = async (
     key: "includePagePath" | "includePageTitle",
     checked: boolean
   ): Promise<void> => {
-    await persistUsageSettings({ ...usageSettings, [key]: checked })
+    if (usageOperationRef.current) return
+    usageOperationRef.current = true
+    setUsageBusy(true)
+    try {
+      await persistUsageSettings({ ...usageSettings, [key]: checked })
+    } finally {
+      usageOperationRef.current = false
+      setUsageBusy(false)
+    }
   }
 
   const handleImportClick = () => {
     fileInputRef.current?.click()
+  }
+
+  const handleResetApplication = async (): Promise<void> => {
+    const confirmed = window.confirm(
+      "确定要清除全部设置吗？链接、主题、统计、同步配置和缓存都会被删除，且无法恢复。"
+    )
+    if (!confirmed) return
+
+    setIsResetting(true)
+    setResetError(null)
+    try {
+      await resetApplicationData()
+      window.location.reload()
+    } catch (error) {
+      setResetError(
+        error instanceof Error ? error.message : "清除失败，请重新加载扩展后再试"
+      )
+      setIsResetting(false)
+    }
   }
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -441,6 +518,10 @@ export const DataSettings: React.FC = () => {
     setSyncError(null)
     setSyncSuccess(null)
     try {
+      if (!(await ensureSyncPermissions())) {
+        setSyncError("未授予 GitHub API 访问权限，无法使用云同步")
+        return
+      }
       await pullNow()
       emitSettingsApplied()
     } catch (error) {
@@ -455,6 +536,10 @@ export const DataSettings: React.FC = () => {
     setSyncError(null)
     setSyncSuccess(null)
     try {
+      if (!(await ensureSyncPermissions())) {
+        setSyncError("未授予 GitHub API 访问权限，无法使用云同步")
+        return
+      }
       const copies = await listConflictCopies()
       setConflictCopies(copies)
       if (copies.length === 0) setSyncSuccess("云端没有冲突副本")
@@ -473,6 +558,10 @@ export const DataSettings: React.FC = () => {
     setIsSyncBusy(true)
     setSyncError(null)
     try {
+      if (!(await ensureSyncPermissions())) {
+        setSyncError("未授予 GitHub API 访问权限，无法使用云同步")
+        return
+      }
       await restoreConflictCopy(filename)
       emitSettingsApplied()
     } catch (error) {
@@ -491,6 +580,10 @@ export const DataSettings: React.FC = () => {
     setSyncError(null)
     setSyncSuccess(null)
     try {
+      if (!(await ensureSyncPermissions())) {
+        setSyncError("未授予 GitHub API 访问权限，无法使用云同步")
+        return
+      }
       const pwd = syncPassword.trim()
       if (!pwd) {
         setSyncError("请输入同步密码")
@@ -513,6 +606,10 @@ export const DataSettings: React.FC = () => {
     setSyncError(null)
     setSyncSuccess(null)
     try {
+      if (!(await ensureSyncPermissions())) {
+        setSyncError("未授予 GitHub API 访问权限，无法使用云同步")
+        return
+      }
       const pwd = syncPassword.trim()
       if (pwd) setSyncPasswordForSession(pwd)
       await pushNow({ force: true })
@@ -961,17 +1058,22 @@ export const DataSettings: React.FC = () => {
             <Button
               variant="danger"
               type="button"
-              onClick={() => {
-                const confirmed = window.confirm(
-                  "确定要清除全部设置吗？链接、主题和统计数据都会被删除，且无法恢复。"
-                )
-                if (!confirmed) return
-                localStorage.clear()
-                window.location.reload()
-              }}
+              onClick={() => void handleResetApplication()}
+              disabled={isResetting}
             >
-              清除全部设置
+              {isResetting ? "正在清除…" : "清除全部设置"}
             </Button>
+            {resetError && (
+              <ResultMessage success={false}>
+                <ResultIcon success={false}>
+                  <FontAwesomeIcon icon={faExclamationTriangle} />
+                </ResultIcon>
+                <ResultDetails>
+                  <strong>清除失败</strong>
+                  <span>{resetError}</span>
+                </ResultDetails>
+              </ResultMessage>
+            )}
           </Section>
 
           <Section>

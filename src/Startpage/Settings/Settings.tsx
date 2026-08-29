@@ -72,7 +72,7 @@ export const Settings = () => {
   useEffect(() => {
     const openSettings = (event: Event) => {
       const detail = (event as CustomEvent<{ tab?: string }>).detail
-      setInitialTab(detail?.tab === "data" ? "data" : undefined)
+      setInitialTab(detail?.tab)
       setShowSettings(true)
     }
     window.addEventListener("fluidity:open-settings", openSettings)

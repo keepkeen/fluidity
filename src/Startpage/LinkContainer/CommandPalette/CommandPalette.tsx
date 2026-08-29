@@ -7,6 +7,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { Favicon } from "../../../components/Favicon"
 import { linkGroup } from "../../../data/data"
 import { navigateToLink } from "../../../services/linkSearch"
+import { matchSearchText } from "../../../services/smartSearch"
 import * as Settings from "../../Settings/settingsHandler"
 
 const Overlay = styled.div<{ visible: boolean }>`
@@ -186,6 +187,12 @@ const DeleteBtn = styled.button<{ selected: boolean }>`
   &:hover {
     opacity: 1 !important;
   }
+
+  &:focus-visible {
+    opacity: 1;
+    outline: 2px solid currentColor;
+    outline-offset: -4px;
+  }
 `
 
 const NoResults = styled.div`
@@ -218,7 +225,27 @@ const TriggerButton = styled.button`
     background: rgba(0, 0, 0, 0.5);
     color: var(--accent);
   }
+
+  @media screen and (max-width: 600px) {
+    right: 92px;
+    width: 40px;
+    height: 40px;
+    font-size: 1rem;
+  }
 `
+
+const PALETTE_FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(", ")
+
+const isVisibleFocusTarget = (element: HTMLElement): boolean =>
+  !element.closest('[hidden], [inert], [aria-hidden="true"]') &&
+  element.getClientRects().length > 0
 
 interface SearchResult {
   type: "group" | "link"
@@ -245,18 +272,26 @@ interface Props {
 }
 
 // 搜索函数
-const performSearch = (
+export const performSearch = (
   linkGroups: linkGroup[],
   searchQuery: string
 ): SearchResult[] => {
-  const q = searchQuery.toLowerCase().trim()
+  const q = searchQuery.trim()
   const searchResults: SearchResult[] = []
 
   linkGroups.forEach((group, groupIndex) => {
-    const groupMatches = group.title.toLowerCase().includes(q)
+    const groupMatches = q !== "" && matchSearchText(group.title, q).score > 0
     const matchingLinks = group.links
-      .map((link, linkIndex) => ({ link, linkIndex }))
-      .filter(({ link }) => link.label.toLowerCase().includes(q))
+      .map((link, linkIndex) => ({
+        link,
+        linkIndex,
+        score: Math.max(
+          matchSearchText(link.label, q).score,
+          matchSearchText(link.value, q).score
+        ),
+      }))
+      .filter(({ score }) => score > 0)
+      .sort((left, right) => right.score - left.score)
 
     const shouldIncludeGroup =
       q === "" || groupMatches || matchingLinks.length > 0
@@ -272,7 +307,7 @@ const performSearch = (
 
     const linksToShow =
       q === "" || groupMatches
-        ? group.links.map((link, linkIndex) => ({ link, linkIndex }))
+        ? group.links.map((link, linkIndex) => ({ link, linkIndex, score: 0 }))
         : matchingLinks
 
     linksToShow.forEach(({ link, linkIndex }) => {
@@ -390,7 +425,7 @@ const SearchResults = memo(
       <>
         {results.map((result, index) =>
           result.type === "group" ? (
-            <GroupSection key={`group-${result.groupTitle}`}>
+            <GroupSection key={`group-${result.groupIndex}`}>
               <GroupHeader>
                 <GroupIcon>📁</GroupIcon>
                 {result.label}
@@ -398,7 +433,7 @@ const SearchResults = memo(
             </GroupSection>
           ) : (
             <LinkItemWrapper
-              key={`link-${result.groupTitle}-${result.label}`}
+              key={`link-${result.groupIndex}-${result.linkIndex}`}
               className="link-item-wrapper"
               data-index={index}
               selected={index === selectedIndex}
@@ -460,14 +495,57 @@ export const CommandPalette = memo(
     const [results, setResults] = useState<SearchResult[]>([])
     const [scrolledByMouse, setScrolledByMouse] = useState(false)
     const inputRef = useRef<HTMLInputElement>(null)
+    const paletteRef = useRef<HTMLDivElement>(null)
     const resultsContainerRef = useRef<HTMLDivElement>(null)
+    const isOpenRef = useRef(defaultOpen)
+    const previousFocusRef = useRef<HTMLElement | null>(null)
     const linkDisplaySettings = Settings.LinkDisplay.getWithFallback()
 
-    const openPalette = useCallback(() => setIsOpen(true), [])
+    const openPalette = useCallback(() => {
+      if (isOpenRef.current) return
+
+      previousFocusRef.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null
+      isOpenRef.current = true
+      setIsOpen(true)
+    }, [])
     const closePalette = useCallback(() => {
+      if (!isOpenRef.current) return
+
+      isOpenRef.current = false
       setIsOpen(false)
       onClose?.()
+
+      const previousFocus = previousFocusRef.current
+      previousFocusRef.current = null
+      requestAnimationFrame(() => {
+        if (previousFocus?.isConnected) previousFocus.focus()
+      })
     }, [onClose])
+
+    const handleFocusTrap = useCallback((event: React.KeyboardEvent) => {
+      if (event.key !== "Tab" || !paletteRef.current) return
+
+      const focusable = Array.from(
+        paletteRef.current.querySelectorAll<HTMLElement>(
+          PALETTE_FOCUSABLE_SELECTOR
+        )
+      ).filter(isVisibleFocusTarget)
+      if (focusable.length === 0) return
+
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      const active = document.activeElement
+      if (event.shiftKey && active === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }, [])
 
     // 当选中项变化时，滚动到可见区域（仅在键盘导航时）
     useEffect(() => {
@@ -604,6 +682,8 @@ export const CommandPalette = memo(
             )
           }
         } else if (e.key === "Escape") {
+          e.preventDefault()
+          e.stopPropagation()
           closePalette()
         }
       },
@@ -670,43 +750,54 @@ export const CommandPalette = memo(
           </TriggerButton>
         )}
 
-        <Overlay visible={isOpen} onClick={closePalette} />
+        {isOpen && (
+          <>
+            <Overlay visible onClick={closePalette} />
 
-        <PaletteContainer visible={isOpen}>
-          <SearchHeader>
-            <SearchIcon>
-              <FontAwesomeIcon icon={faSearch} />
-            </SearchIcon>
-            <SearchInput
-              ref={inputRef}
-              type="text"
-              aria-label="搜索链接"
-              placeholder="搜索链接..."
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              onKeyDown={handleKeyDown}
-            />
-            <ShortcutHint>Esc</ShortcutHint>
-            <CloseButton
-              type="button"
-              onClick={closePalette}
-              aria-label="关闭链接搜索"
-              title="关闭链接搜索"
+            <PaletteContainer
+              ref={paletteRef}
+              visible
+              role="dialog"
+              aria-modal="true"
+              aria-label="链接搜索"
+              onKeyDown={handleFocusTrap}
             >
-              <FontAwesomeIcon icon={faTimes} />
-            </CloseButton>
-          </SearchHeader>
+              <SearchHeader>
+                <SearchIcon>
+                  <FontAwesomeIcon icon={faSearch} />
+                </SearchIcon>
+                <SearchInput
+                  ref={inputRef}
+                  type="text"
+                  aria-label="搜索链接"
+                  placeholder="搜索链接..."
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                />
+                <ShortcutHint>Esc</ShortcutHint>
+                <CloseButton
+                  type="button"
+                  onClick={closePalette}
+                  aria-label="关闭链接搜索"
+                  title="关闭链接搜索"
+                >
+                  <FontAwesomeIcon icon={faTimes} />
+                </CloseButton>
+              </SearchHeader>
 
-          <ResultsContainer ref={resultsContainerRef}>
-            <SearchResults
-              results={results}
-              selectedIndex={selectedIndex}
-              openInNewTab={linkDisplaySettings.openInNewTab}
-              onDeleteLink={onDeleteLink}
-              onNavigate={onNavigate}
-            />
-          </ResultsContainer>
-        </PaletteContainer>
+              <ResultsContainer ref={resultsContainerRef}>
+                <SearchResults
+                  results={results}
+                  selectedIndex={selectedIndex}
+                  openInNewTab={linkDisplaySettings.openInNewTab}
+                  onDeleteLink={onDeleteLink}
+                  onNavigate={onNavigate}
+                />
+              </ResultsContainer>
+            </PaletteContainer>
+          </>
+        )}
       </>
     )
   }

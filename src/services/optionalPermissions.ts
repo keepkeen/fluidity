@@ -24,6 +24,14 @@ const getPermissionsApi = (): typeof chrome.permissions | null => {
   }
 }
 
+const hasExtensionRuntime = (): boolean => {
+  try {
+    return typeof chrome !== "undefined" && Boolean(chrome.runtime?.id)
+  } catch {
+    return false
+  }
+}
+
 /**
  * 确保已获得指定域名权限；未授予时发起申请（需在用户手势中调用）。
  * 非扩展环境（web 版）没有 permissions API，请求直接走 CORS，返回 true。
@@ -32,7 +40,9 @@ export const ensureOriginPermissions = async (
   origins: string[]
 ): Promise<boolean> => {
   const permissions = getPermissionsApi()
-  if (!permissions?.request || !permissions.contains) return true
+  if (!permissions?.request || !permissions.contains) {
+    return !hasExtensionRuntime()
+  }
   try {
     const granted = await permissions.contains({ origins })
     if (granted) return true
@@ -56,3 +66,24 @@ export const ensureAIPermissionsFor = (baseUrl: string): Promise<boolean> => {
 
 export const ensureSyncPermissions = (): Promise<boolean> =>
   ensureOriginPermissions(SYNC_PERMISSION_ORIGINS)
+
+export const resolveRssPermissionOrigin = (feedUrl: string): string => {
+  const url = new URL(feedUrl)
+  const isLocal = ["localhost", "127.0.0.1"].includes(url.hostname)
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && isLocal)) {
+    throw new Error("RSS subscriptions require HTTPS")
+  }
+  if (url.username || url.password) throw new Error("RSS URL contains credentials")
+  return `${url.protocol}//${url.host}/*`
+}
+
+export const resolveRssPermissionOrigins = (feedUrls: string[]): string[] =>
+  Array.from(new Set(feedUrls.map(resolveRssPermissionOrigin)))
+
+export const ensureRssPermissionFor = (feedUrl: string): Promise<boolean> => {
+  try {
+    return ensureOriginPermissions(resolveRssPermissionOrigins([feedUrl]))
+  } catch {
+    return Promise.resolve(false)
+  }
+}

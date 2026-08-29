@@ -167,7 +167,8 @@ const FallbackSearchIcon = styled.div`
 `
 
 // 当前搜索引擎标签
-const EngineTag = styled.span`
+const EngineTag = styled.button`
+  appearance: none;
   display: inline-flex;
   align-items: center;
   align-self: center;
@@ -179,8 +180,16 @@ const EngineTag = styled.span`
   border-radius: 999px;
   font-size: 13px;
   font-weight: 500;
+  font-family: inherit;
+  line-height: inherit;
   white-space: nowrap;
   flex-shrink: 0;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 `
 
 const SuggestionsContainer = styled.div<{ visible: boolean }>`
@@ -417,6 +426,23 @@ const getDefaultSuggestions = (searchSettings: SearchType): Suggestion[] => {
   return collector.getAll()
 }
 
+const SPACE_ACTIVATION_SELECTOR = [
+  "button",
+  "a[href]",
+  "summary",
+  '[role="button"]',
+  '[role="checkbox"]',
+  '[role="link"]',
+  '[role="menuitem"]',
+  '[role="option"]',
+  '[role="radio"]',
+  '[role="switch"]',
+  '[role="tab"]',
+].join(", ")
+
+export const isSpaceActivationTarget = (target: EventTarget | null): boolean =>
+  target instanceof Element && Boolean(target.closest(SPACE_ACTIVATION_SELECTOR))
+
 export const Searchbar = () => {
   // 使用 useMemo 稳定 searchSettings，避免每次渲染都创建新对象
   const searchSettings = useMemo(() => Settings.Search.getWithFallback(), [])
@@ -551,6 +577,8 @@ export const Searchbar = () => {
         target instanceof HTMLElement &&
         (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) ||
           target.isContentEditable)
+      const spaceActivatesFocusedControl =
+        event.key === " " && isSpaceActivationTarget(target)
       const interactionBlocked = Boolean(
         document.querySelector('[role="dialog"]') ||
           document.querySelector('[data-home-editing="true"]')
@@ -561,6 +589,7 @@ export const Searchbar = () => {
         /^Digit[1-9]$/.test(event.code)
       if (
         isEditable ||
+        spaceActivatesFocusedControl ||
         interactionBlocked ||
         isShiftPageShortcut ||
         event.metaKey ||
@@ -836,9 +865,10 @@ export const Searchbar = () => {
         )}
         {tempEngine && (
           <EngineTag
+            type="button"
             onClick={() => setTempEngine(null)}
+            aria-label={`清除临时搜索引擎 ${tempEngine.label}，恢复默认引擎`}
             title="点击清除，恢复默认引擎"
-            style={{ cursor: "pointer" }}
           >
             {tempEngine.label} ✕
           </EngineTag>

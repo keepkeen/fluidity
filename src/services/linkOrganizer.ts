@@ -3,11 +3,8 @@
  */
 
 import { AISettingsManager, callDeepSeekAPI } from "./ai"
-import { linkGroup } from "../data/data"
+import { dataElem, linkGroup } from "../data/data"
 import { isSafeLinkUrl } from "../utils/urlSafety"
-
-// localStorage key for links
-const LINKS_STORAGE_KEY = "link-groups"
 
 // 整理状态
 export type OrganizeStatus = "idle" | "loading" | "success" | "error"
@@ -109,7 +106,72 @@ ${exampleOutput}
 - 只输出 JSON 数组，不要有任何解释或说明
 - 确保 JSON 格式正确，可以被直接解析
 - 保留所有原始链接，不要遗漏
+- 不要新增、删除、重复或修改任何链接地址
 - 群组名称使用中文`
+}
+
+const restoreOriginalLinks = (
+  sourceGroups: linkGroup[],
+  organizedGroups: unknown
+): linkGroup[] => {
+  if (!Array.isArray(organizedGroups)) {
+    throw new Error("AI 返回格式错误：不是数组")
+  }
+
+  const originalsByUrl = new Map<string, dataElem[]>()
+  for (const group of sourceGroups) {
+    for (const link of group.links) {
+      const matches = originalsByUrl.get(link.value) ?? []
+      matches.push(link)
+      originalsByUrl.set(link.value, matches)
+    }
+  }
+
+  const restored = organizedGroups.map(groupValue => {
+    if (!groupValue || typeof groupValue !== "object") {
+      throw new Error("AI 返回格式错误：群组结构不正确")
+    }
+    const group = groupValue as { title?: unknown; links?: unknown }
+    if (typeof group.title !== "string" || !group.title.trim()) {
+      throw new Error("AI 返回格式错误：群组名称不正确")
+    }
+    if (!Array.isArray(group.links)) {
+      throw new Error("AI 返回格式错误：群组结构不正确")
+    }
+
+    const links = group.links.map(linkValue => {
+      if (!linkValue || typeof linkValue !== "object") {
+        throw new Error("AI 返回格式错误：链接结构不正确")
+      }
+      const link = linkValue as { label?: unknown; value?: unknown }
+      if (
+        typeof link.label !== "string" ||
+        !link.label.trim() ||
+        typeof link.value !== "string" ||
+        !isSafeLinkUrl(link.value)
+      ) {
+        throw new Error("AI 返回格式错误：链接不合法")
+      }
+
+      const originals = originalsByUrl.get(link.value)
+      const original = originals?.shift()
+      if (!original) {
+        throw new Error("AI 返回的链接与原始数据不一致，已取消整理")
+      }
+      return {
+        ...original,
+        label: link.label.trim(),
+      }
+    })
+
+    return { title: group.title.trim(), links }
+  })
+
+  if ([...originalsByUrl.values()].some(matches => matches.length > 0)) {
+    throw new Error("AI 返回的链接与原始数据不一致，已取消整理")
+  }
+
+  return restored
 }
 
 /**
@@ -151,34 +213,7 @@ export const organizeLinksWithAI = async (
       jsonStr = jsonMatch[1].trim()
     }
 
-    const result = JSON.parse(jsonStr) as linkGroup[]
-
-    // 验证结果格式
-    if (!Array.isArray(result)) {
-      throw new Error("AI 返回格式错误：不是数组")
-    }
-
-    for (const group of result) {
-      if (!group.title || !Array.isArray(group.links)) {
-        throw new Error("AI 返回格式错误：群组结构不正确")
-      }
-      for (const link of group.links) {
-        if (
-          typeof link.label !== "string" ||
-          typeof link.value !== "string" ||
-          !isSafeLinkUrl(link.value)
-        ) {
-          throw new Error("AI 返回格式错误：链接不合法")
-        }
-      }
-    }
-
-    // 保存到 localStorage，这样即使设置窗口关闭也能获取到新数据
-    try {
-      localStorage.setItem(LINKS_STORAGE_KEY, JSON.stringify(result))
-    } catch {
-      // 忽略存储错误
-    }
+    const result = restoreOriginalLinks(linkGroups, JSON.parse(jsonStr))
 
     // 通知成功
     notifyListeners({ status: "success", data: result })

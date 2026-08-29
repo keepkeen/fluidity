@@ -79,6 +79,11 @@ export const IconButton = styled.button`
   &:active {
     transform: translateY(0.5px);
   }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 `
 
 export const SearchBar = styled.div`
@@ -157,6 +162,29 @@ export const GroupHeader = styled.div`
   }
 `
 
+export const GroupHeaderButton = styled.button`
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: 0.2s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -3px;
+  }
+`
+
 export const GroupTitle = styled.span`
   flex: 1;
   font-weight: 650;
@@ -206,12 +234,24 @@ export const LinkItem = styled.div<{ isAdded?: boolean }>`
   }
 `
 
-export const LinkLabel = styled.span`
+export const LinkLabel = styled.button`
   flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-primary, var(--text-primary));
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 `
 
 export const LinkActions = styled.div`
@@ -243,12 +283,22 @@ export const ActionBtn = styled.button<{ danger?: boolean }>`
   &:active {
     transform: translateY(0.5px);
   }
+
+  &:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 1px;
+  }
 `
 
-export const AddButton = styled.div`
+export const AddButton = styled.button`
+  width: 100%;
   display: flex;
   align-items: center;
   padding: 10px 12px 10px 32px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
   transition: 0.2s;
   font-size: 12px;
@@ -257,6 +307,11 @@ export const AddButton = styled.div`
   &:hover {
     background: rgba(255, 255, 255, 0.06);
     color: var(--text-primary, var(--text-primary));
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -3px;
   }
 `
 
@@ -370,6 +425,12 @@ export const Button = styled.button<{ primary?: boolean; danger?: boolean }>`
 
   &:active {
     transform: translateY(0.5px);
+  }
+
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 `
 

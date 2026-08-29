@@ -1,3 +1,9 @@
+import {
+  createUsageEventSequencer,
+  resetUsageRuntime,
+  shouldMutateUsageState,
+} from "./backgroundUsage"
+
 const STORAGE_KEY = "fluidity.browserUsage.v1"
 const USAGE_SETTINGS_KEY = "fluidity.browserUsage.settings.v1"
 const TRACKING_SCRIPT_ID = "fluidity-usage-tracker"
@@ -90,6 +96,18 @@ const storageSet = (obj: Record<string, unknown>) =>
     chrome.storage.local.set(obj, () => resolve())
   })
 
+const storageRemove = (key: string) =>
+  new Promise<void>((resolve, reject) => {
+    chrome.storage.local.remove(key, () => {
+      const error = runtimeError()
+      if (error?.message) {
+        reject(new Error(error.message))
+        return
+      }
+      resolve()
+    })
+  })
+
 const initState = () => ({
   version: 1,
   updatedAt: nowMs(),
@@ -140,6 +158,7 @@ let idleState: "active" | "idle" | "locked" = "active"
 let state: UsageState | null = null
 let stateLoading: Promise<UsageState> | null = null
 let writeChain = Promise.resolve()
+const usageEvents = createUsageEventSequencer()
 
 const enqueueWrite = (nextState: UsageState) => {
   writeChain = writeChain
@@ -197,12 +216,32 @@ const normalizeUsageState = (raw: unknown): UsageState => {
   return nextState
 }
 
+const latestUsageEventTimestamp = (st: UsageState): number => {
+  const candidates = [
+    st.current?.startTs,
+    st.current?.lastTs,
+    st.current?.countedTs,
+    ...st.recent.map(segment => segment.endTs),
+  ]
+  return candidates.reduce<number>(
+    (latest, value) =>
+      typeof value === "number" && Number.isFinite(value)
+        ? Math.max(latest, value)
+        : latest,
+    0
+  )
+}
+
+const usageMessageTimestamp = (value: unknown): number =>
+  typeof value === "number" && Number.isFinite(value) ? value : nowMs()
+
 const ensureLoaded = async () => {
   if (state) return state
   if (stateLoading) return await stateLoading
   stateLoading = (async () => {
     const result = await storageGet([STORAGE_KEY])
     state = normalizeUsageState(result[STORAGE_KEY])
+    usageEvents.primeTimestamp(latestUsageEventTimestamp(state))
     state.updatedAt = nowMs()
     pruneOldDays(state)
     await enqueueWrite(state)
@@ -343,17 +382,17 @@ const handleHeartbeat = async (hb: UsageMessage) => {
   if (!settings.enabled) return
 
   const st = await ensureLoaded()
-  const t = typeof hb.ts === "number" ? hb.ts : nowMs()
+  const page = typeof hb.url === "string" ? hb.url : null
+  const domain = page ? parseDomain(page) : null
+  if (!page || !domain) return
+  const t = usageMessageTimestamp(hb.ts)
+  if (!usageEvents.acceptTimestamp(t)) return
 
   if (idleState !== "active") {
     closeCurrentIfAny(st, t)
     await enqueueWrite(st)
     return
   }
-
-  const page = typeof hb.url === "string" ? hb.url : null
-  const domain = page ? parseDomain(page) : null
-  if (!page || !domain) return
 
   const title =
     settings.includePageTitle && typeof hb.title === "string"
@@ -396,13 +435,15 @@ const handleHeartbeat = async (hb: UsageMessage) => {
 }
 
 const handleStop = async (msg: UsageMessage) => {
+  const settings = await getUsageSettings()
+  if (!shouldMutateUsageState(settings.enabled)) return
   const st = await ensureLoaded()
-  const t = typeof msg.ts === "number" ? msg.ts : nowMs()
   const page = typeof msg.url === "string" ? msg.url : null
   if (!page) return
-
   if (!st.current) return
   if (st.current.page !== page) return
+  const t = usageMessageTimestamp(msg.ts)
+  if (!usageEvents.acceptTimestamp(t)) return
 
   closeCurrentIfAny(st, t)
   pruneOldDays(st)
@@ -557,12 +598,20 @@ chrome.runtime.onStartup?.addListener(() => {
   void enqueueUsageContentScriptRegistration().catch(() => undefined)
 })
 
-chrome.idle.onStateChanged.addListener(async next => {
-  idleState = next
-  if (next === "active") return
-  const st = await ensureLoaded()
-  closeCurrentIfAny(st, nowMs())
-  await enqueueWrite(st)
+chrome.idle.onStateChanged.addListener(next => {
+  void usageEvents
+    .enqueue(async () => {
+      idleState = next
+      if (next === "active") return
+      const settings = await getUsageSettings()
+      if (!shouldMutateUsageState(settings.enabled)) return
+      const st = await ensureLoaded()
+      const t = nowMs()
+      if (!usageEvents.acceptTimestamp(t)) return
+      closeCurrentIfAny(st, t)
+      await enqueueWrite(st)
+    })
+    .catch(() => undefined)
 })
 
 chrome.commands?.onCommand?.addListener(command => {
@@ -572,14 +621,34 @@ chrome.commands?.onCommand?.addListener(command => {
 
 chrome.runtime.onMessage.addListener((msg: UsageMessage, _sender, sendResponse) => {
   if (msg?.type === "fluidity:usageHeartbeat") {
-    Promise.resolve(handleHeartbeat(msg)).finally(() =>
+    void usageEvents.enqueue(() => handleHeartbeat(msg)).finally(() =>
       sendResponse({ ok: true })
     )
     return true
   }
 
   if (msg?.type === "fluidity:usageStop") {
-    Promise.resolve(handleStop(msg)).finally(() => sendResponse({ ok: true }))
+    void usageEvents
+      .enqueue(() => handleStop(msg))
+      .finally(() => sendResponse({ ok: true }))
+    return true
+  }
+
+  if (msg?.type === "fluidity:usageReset") {
+    void usageEvents
+      .enqueue(() =>
+        resetUsageRuntime({
+          waitForWrites: () => writeChain,
+          clearMemory: () => {
+            state = null
+            stateLoading = null
+          },
+          resetTimestamp: () => usageEvents.resetTimestamp(),
+          removePersisted: () => storageRemove(STORAGE_KEY),
+        })
+      )
+      .then(() => sendResponse({ ok: true }))
+      .catch(() => sendResponse({ ok: false, error: "浏览统计后台重置失败" }))
     return true
   }
 
@@ -606,11 +675,11 @@ chrome.runtime.onConnect?.addListener(port => {
   if (!port || port.name !== "fluidity:usage") return
   port.onMessage.addListener((msg: UsageMessage) => {
     if (msg?.type === "fluidity:usageHeartbeat") {
-      void handleHeartbeat(msg).catch(() => undefined)
+      void usageEvents.enqueue(() => handleHeartbeat(msg)).catch(() => undefined)
       return
     }
     if (msg?.type === "fluidity:usageStop") {
-      void handleStop(msg).catch(() => undefined)
+      void usageEvents.enqueue(() => handleStop(msg)).catch(() => undefined)
     }
   })
 })

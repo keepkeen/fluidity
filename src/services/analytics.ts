@@ -21,6 +21,27 @@ export interface SearchRecord {
   timestamp: number
 }
 
+/** Normalizes pre-0.6 string history entries into the current record model. */
+export const normalizeSearchRecords = (value: unknown): SearchRecord[] => {
+  if (!Array.isArray(value)) return []
+  return value.flatMap(entry => {
+    if (typeof entry === "string" && entry.trim()) {
+      return [{ query: entry.trim(), engine: "", timestamp: 0 }]
+    }
+    if (!entry || typeof entry !== "object") return []
+    const record = entry as Partial<SearchRecord>
+    if (
+      typeof record.query !== "string" ||
+      typeof record.engine !== "string" ||
+      typeof record.timestamp !== "number" ||
+      !Number.isFinite(record.timestamp)
+    ) {
+      return []
+    }
+    return [record as SearchRecord]
+  })
+}
+
 // 分析数据汇总
 export interface AnalyticsSummary {
   topLinks: { label: string; group: string; clicks: number }[]
@@ -62,6 +83,9 @@ const getCollectionSettings = (): CollectionSettings => {
     collectSearchHistory: true,
   }
 }
+
+export const isLinkAnalyticsEnabled = (): boolean =>
+  getCollectionSettings().collectLinkClicks
 
 const MAX_SEARCH_HISTORY = 100 // 最多保存100条搜索记录
 const MAX_CLICK_HISTORY_DAYS = 30 // 保留30天的点击历史
@@ -180,7 +204,7 @@ export const SearchHistory = {
   get(): SearchRecord[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.SEARCH_HISTORY)
-      return data ? (JSON.parse(data) as SearchRecord[]) : []
+      return data ? normalizeSearchRecords(JSON.parse(data) as unknown) : []
     } catch {
       return []
     }

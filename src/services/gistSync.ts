@@ -37,6 +37,7 @@ import {
 } from "./localStorageEmitter"
 import { KeyTimestamps, planMerge } from "./syncMerge"
 import { getSyncRuntimeStatus, setSyncRuntimeStatus } from "./syncRuntime"
+import { emitSettingsApplied } from "./settingsEvents"
 
 export type SyncInitContext = "startpage" | "popup"
 
@@ -87,6 +88,23 @@ const PASSWORD_KEY = "fluidity.gistSync.password.v1"
 const DEFAULT_FILENAME = "fluidity.sync.v1.json"
 const DEFAULT_DESCRIPTION = "Fluidity Sync Store (encrypted)"
 const DEFAULT_ITERATIONS = 200_000
+const SYNC_CANCELLED = "SYNC_CANCELLED"
+
+let syncLifecycleGeneration = 0
+let pullInFlight: Promise<void> | null = null
+
+const captureSyncGeneration = (): number => syncLifecycleGeneration
+
+const invalidateSyncOperations = (): void => {
+  syncLifecycleGeneration += 1
+  pullInFlight = null
+}
+
+const assertSyncGeneration = (generation: number): void => {
+  if (generation !== syncLifecycleGeneration) {
+    throw new Error(SYNC_CANCELLED)
+  }
+}
 
 const LEADER_KEY = "fluidity-sync.leader.v1"
 const REQUEST_KEY = "fluidity-sync.request.v1"
@@ -134,6 +152,10 @@ const SYNCED_LOCAL_STORAGE_KEYS = new Set<string>([
   "card-area-settings",
   "fluidity.linkPins.v1",
   "fluidity.homeLayout.v1",
+  "fluidity.homeLayout.v2",
+  "fluidity.rediscovery.v1",
+  "fluidity.laterRead.v1",
+  "fluidity.rss.subscriptions.v1",
   // AI (no apiKey in ciphertext export by default)
   "ai-settings",
   "ai-cache",
@@ -141,6 +163,7 @@ const SYNCED_LOCAL_STORAGE_KEYS = new Set<string>([
   "link-analytics",
   "search-history",
   "fluidity.ai.dailyReview.v1",
+  "fluidity.rss.readState.v1",
   // reports
   "report-state",
   "report-cache",
@@ -464,6 +487,7 @@ export const connectOrDiscover = async (options: {
   gistId: string
   lastKnownRevision?: string
 }> => {
+  const generation = captureSyncGeneration()
   setSyncRuntimeStatus({
     state: "syncing",
     updatedAt: Date.now(),
@@ -471,9 +495,12 @@ export const connectOrDiscover = async (options: {
   })
 
   await validateGitHubToken(options.token)
+  assertSyncGeneration(generation)
 
   const config = await getConfig()
+  assertSyncGeneration(generation)
   const gists = await listGists(options.token)
+  assertSyncGeneration(generation)
   const matched = gists.find(
     g =>
       (g.description ?? "").includes(config.description) &&
@@ -482,6 +509,7 @@ export const connectOrDiscover = async (options: {
 
   if (matched) {
     const updated = await getGist(options.token, matched.id)
+    assertSyncGeneration(generation)
     const head = updated.history?.[0]?.version
     const newConfig: GistSyncConfigV1 = {
       ...config,
@@ -492,11 +520,13 @@ export const connectOrDiscover = async (options: {
       rememberPassword: Boolean(options.rememberPassword),
       rememberedPassword: undefined,
     }
-    await setConfig(newConfig)
     await storeRememberedPassword(
       options.rememberPassword && options.password ? options.password : null
     )
     if (options.password) setSyncPasswordForSession(options.password)
+    assertSyncGeneration(generation)
+    await setConfig(newConfig)
+    assertSyncGeneration(generation)
     setSyncRuntimeStatus({
       state: "ok",
       updatedAt: Date.now(),
@@ -516,6 +546,7 @@ export const connectOrDiscover = async (options: {
 
   const salt = randomBase64(16)
   const plaintext = await buildSyncPlaintext()
+  assertSyncGeneration(generation)
   const envelope = await buildEnvelope({
     deviceId: config.deviceId,
     password: options.password,
@@ -523,6 +554,7 @@ export const connectOrDiscover = async (options: {
     iterations: config.iterations,
     plaintext,
   })
+  assertSyncGeneration(generation)
 
   setSyncRuntimeStatus({
     state: "syncing",
@@ -539,6 +571,7 @@ export const connectOrDiscover = async (options: {
       },
     },
   })
+  assertSyncGeneration(generation)
 
   const head = created.history?.[0]?.version
   const newConfig: GistSyncConfigV1 = {
@@ -550,11 +583,13 @@ export const connectOrDiscover = async (options: {
     rememberPassword: Boolean(options.rememberPassword),
     rememberedPassword: undefined,
   }
-  await setConfig(newConfig)
   await storeRememberedPassword(
     options.rememberPassword ? options.password : null
   )
   setSyncPasswordForSession(options.password)
+  assertSyncGeneration(generation)
+  await setConfig(newConfig)
+  assertSyncGeneration(generation)
 
   setSyncRuntimeStatus({
     state: "ok",
@@ -566,6 +601,7 @@ export const connectOrDiscover = async (options: {
 }
 
 export const disconnectGistSync = async (): Promise<void> => {
+  invalidateSyncOperations()
   const config = await getConfig()
   const next: GistSyncConfigV1 = {
     ...config,
@@ -586,7 +622,29 @@ export const disconnectGistSync = async (): Promise<void> => {
   })
 }
 
-let isApplyingRemote = false
+/**
+ * 全量重置的准备阶段：停止自动同步并取消在途操作，但在其余重置步骤
+ * 全部成功前保留 token、gistId 和会话密码，避免失败时留下半重置状态。
+ */
+export const prepareGistSyncForApplicationReset = async (): Promise<void> => {
+  invalidateSyncOperations()
+  const config = await getConfig()
+  await setConfig({
+    ...config,
+    enabled: false,
+  })
+  // 第一次 invalidate 与禁用配置写入之间仍可能启动新操作；配置提交后
+  // 再推进一代，确保这段窗口内捕获 generation 的操作也全部取消。
+  invalidateSyncOperations()
+  setSyncRuntimeStatus({
+    state: "disabled",
+    updatedAt: Date.now(),
+    message: "云同步已暂停",
+  })
+}
+
+let remoteApplyDepth = 0
+let remoteApplyTail: Promise<void> = Promise.resolve()
 let generalPushTimer: ReturnType<typeof setTimeout> | null = null
 let usagePushTimer: ReturnType<typeof setTimeout> | null = null
 let isPushing = false
@@ -596,6 +654,44 @@ let usageDirtyAt: number | null = null
 
 const USAGE_PUSH_DEBOUNCE_MS = 2 * 60 * 1000
 const USAGE_PUSH_MIN_INTERVAL_MS = 60 * 60 * 1000
+const LEADER_LEASE_MS = 6000
+const LEADER_RENEW_MS = 2000
+const LEADER_WATCHDOG_MS = 7000
+
+const beginRemoteApply = (): void => {
+  remoteApplyDepth += 1
+}
+
+const endRemoteApply = (): void => {
+  remoteApplyDepth = Math.max(0, remoteApplyDepth - 1)
+}
+
+const isRemoteApplyActive = (): boolean => remoteApplyDepth > 0
+
+const withRemoteApplyLock = async <T>(
+  generation: number,
+  operation: () => Promise<T>
+): Promise<T> => {
+  const previous = remoteApplyTail
+  let release!: () => void
+  remoteApplyTail = new Promise<void>(resolve => {
+    release = resolve
+  })
+
+  await previous
+  try {
+    // 等锁期间可能已经断开或重新启用同步；过期操作不能开始落盘。
+    assertSyncGeneration(generation)
+    beginRemoteApply()
+    try {
+      return await operation()
+    } finally {
+      endRemoteApply()
+    }
+  } finally {
+    release()
+  }
+}
 
 const writeLeader = (id: string, ttlMs: number) => {
   localStorage.setItem(
@@ -624,7 +720,7 @@ const isCurrentLeader = (id: string): boolean => {
 const tryBecomeLeader = (id: string): boolean => {
   const leader = readLeader()
   if (!leader || leader.expiresAt < Date.now()) {
-    writeLeader(id, 6000)
+    writeLeader(id, LEADER_LEASE_MS)
     return isCurrentLeader(id)
   }
   return leader.id === id
@@ -663,34 +759,42 @@ const buildSyncPlaintext = async (): Promise<string> => {
  */
 const mergeRemoteBackup = async (
   remote: SyncPayload,
-  remoteFallbackTs: number
-): Promise<boolean> => {
-  const localBackup = await exportDataAsync()
-  const plan = planMerge({
-    localData: localBackup.data,
-    localTimestamps: readKeyTimestamps(),
-    remoteData: remote.data ?? {},
-    remoteTimestamps: remote.keyTimestamps ?? {},
-    remoteFallbackTs,
-  })
+  remoteFallbackTs: number,
+  generation: number
+): Promise<{ needsPush: boolean; appliedLocal: boolean }> => {
+  return await withRemoteApplyLock(generation, async () => {
+    const localBackup = await exportDataAsync()
+    assertSyncGeneration(generation)
+    const plan = planMerge({
+      localData: localBackup.data,
+      localTimestamps: readKeyTimestamps(),
+      remoteData: remote.data ?? {},
+      remoteTimestamps: remote.keyTimestamps ?? {},
+      remoteFallbackTs,
+    })
 
-  isApplyingRemote = true
-  try {
+    let appliedLocal = false
     for (const entry of plan) {
+      assertSyncGeneration(generation)
       if (entry.value !== undefined) {
         await applyBackupValue(entry.key, entry.value)
+        assertSyncGeneration(generation)
+        appliedLocal = true
       }
       recordKeyTimestamp(entry.key, entry.timestamp)
     }
-  } finally {
-    isApplyingRemote = false
-  }
 
-  return plan.some(entry => entry.needsPush)
+    return {
+      needsPush: plan.some(entry => entry.needsPush),
+      appliedLocal,
+    }
+  })
 }
 
-export const pullNow = async (): Promise<void> => {
+const executePullNow = async (): Promise<void> => {
+  const generation = captureSyncGeneration()
   const config = await getConfig()
+  assertSyncGeneration(generation)
   if (!config.enabled || !config.token || !config.gistId) {
     setSyncRuntimeStatus({
       state: "disabled",
@@ -707,8 +811,10 @@ export const pullNow = async (): Promise<void> => {
   })
 
   const gist = await getGist(config.token, config.gistId)
+  assertSyncGeneration(generation)
   const head = gist.history?.[0]?.version
   const file = await getGistFileContent(gist, config.filename, config.token)
+  assertSyncGeneration(generation)
   if (!file) {
     setSyncRuntimeStatus({
       state: "error",
@@ -720,9 +826,11 @@ export const pullNow = async (): Promise<void> => {
 
   const envelope = parseEnvelope(file)
   const password = await getPassword()
+  assertSyncGeneration(generation)
   if (!password) {
     const next: GistSyncConfigV1 = { ...config, lastKnownRevision: head }
     await setConfig(next)
+    assertSyncGeneration(generation)
     setSyncRuntimeStatus({
       state: "error",
       updatedAt: Date.now(),
@@ -731,33 +839,56 @@ export const pullNow = async (): Promise<void> => {
     return
   }
 
+  let backup: SyncPayload
   try {
     const plaintext = await decryptEnvelope({ password, envelope })
-    const backup = JSON.parse(plaintext) as SyncPayload
-
-    // 逐键合并：远端较新的应用到本地，本地较新的保留并回推
-    const needsPush = await mergeRemoteBackup(
-      backup,
-      envelope.meta?.updatedAt ?? 0
-    )
-
-    const next: GistSyncConfigV1 = { ...config, lastKnownRevision: head }
-    await setConfig(next)
-    setSyncRuntimeStatus({
-      state: "ok",
-      updatedAt: Date.now(),
-      message: needsPush ? "已合并，正在回推本地更新…" : "同步完成",
-    })
-    if (needsPush) scheduleGeneralPush()
-  } catch {
-    isApplyingRemote = false
+    assertSyncGeneration(generation)
+    backup = JSON.parse(plaintext) as SyncPayload
+  } catch (error) {
+    if (error instanceof Error && error.message === SYNC_CANCELLED) {
+      throw error
+    }
     setSyncRuntimeStatus({
       state: "error",
       updatedAt: Date.now(),
-      message: "解密失败：同步密码可能不正确",
+      message: "云端备份无法解密或格式已损坏",
     })
     throw new Error("DECRYPT_FAILED")
   }
+
+  // 解密后的存储/导入错误保留原始错误信息，不能误报成密码错误。
+  const { needsPush, appliedLocal } = await mergeRemoteBackup(
+    backup,
+    envelope.meta?.updatedAt ?? 0,
+    generation
+  )
+
+  assertSyncGeneration(generation)
+  const next: GistSyncConfigV1 = { ...config, lastKnownRevision: head }
+  await setConfig(next)
+  assertSyncGeneration(generation)
+  setSyncRuntimeStatus({
+    state: "ok",
+    updatedAt: Date.now(),
+    message: needsPush ? "已合并，正在回推本地更新…" : "同步完成",
+  })
+  if (appliedLocal) emitSettingsApplied()
+  if (needsPush) scheduleGeneralPush()
+}
+
+export const pullNow = (): Promise<void> => {
+  if (pullInFlight) return pullInFlight
+  const operation = executePullNow()
+  pullInFlight = operation
+  void operation.then(
+    () => {
+      if (pullInFlight === operation) pullInFlight = null
+    },
+    () => {
+      if (pullInFlight === operation) pullInFlight = null
+    }
+  )
+  return operation
 }
 
 export interface ConflictCopy {
@@ -778,10 +909,13 @@ const parseConflictName = (filename: string): ConflictCopy | null => {
 
 /** 列出云端的冲突副本（推送冲突时另存的加密快照） */
 export const listConflictCopies = async (): Promise<ConflictCopy[]> => {
+  const generation = captureSyncGeneration()
   const config = await getConfig()
+  assertSyncGeneration(generation)
   if (!config.enabled || !config.token || !config.gistId) return []
 
   const gist = await getGist(config.token, config.gistId)
+  assertSyncGeneration(generation)
   return Object.keys(gist.files)
     .map(parseConflictName)
     .filter((c): c is ConflictCopy => c !== null)
@@ -790,38 +924,54 @@ export const listConflictCopies = async (): Promise<ConflictCopy[]> => {
 
 /** 用某份冲突副本覆盖本地数据（解密后走标准导入流程） */
 export const restoreConflictCopy = async (filename: string): Promise<void> => {
+  const generation = captureSyncGeneration()
   const config = await getConfig()
+  assertSyncGeneration(generation)
   if (!config.enabled || !config.token || !config.gistId) {
     throw new Error("NOT_CONFIGURED")
   }
   const password = await getPassword()
+  assertSyncGeneration(generation)
   if (!password) throw new Error("NEED_PASSWORD")
 
   const gist = await getGist(config.token, config.gistId)
+  assertSyncGeneration(generation)
   const file = await getGistFileContent(gist, filename, config.token)
+  assertSyncGeneration(generation)
   if (!file) throw new Error("GIST_FILE_MISSING")
 
   const envelope = parseEnvelope(file)
   let plaintext: string
   try {
     plaintext = await decryptEnvelope({ password, envelope })
-  } catch {
+    assertSyncGeneration(generation)
+  } catch (error) {
+    if (error instanceof Error && error.message === SYNC_CANCELLED) {
+      throw error
+    }
     throw new Error("DECRYPT_FAILED")
   }
   const backup = JSON.parse(plaintext) as Parameters<typeof importDataAsync>[0]
 
-  isApplyingRemote = true
-  try {
-    await importDataAsync(backup, { overwrite: true, skipApiKey: true })
-  } finally {
-    isApplyingRemote = false
-  }
+  await withRemoteApplyLock(generation, async () => {
+    assertSyncGeneration(generation)
+    const result = await importDataAsync(backup, {
+      overwrite: true,
+      skipApiKey: true,
+    })
+    assertSyncGeneration(generation)
+    if (!result.success) {
+      throw new Error(result.errors.join("；") || "恢复冲突副本失败")
+    }
+  })
 }
 
 export const pushNow = async (
   options: { force?: boolean } = {}
 ): Promise<void> => {
+  const generation = captureSyncGeneration()
   const config = await getConfig()
+  assertSyncGeneration(generation)
   if (!config.enabled || !config.token || !config.gistId) {
     setSyncRuntimeStatus({
       state: "disabled",
@@ -832,6 +982,7 @@ export const pushNow = async (
   }
 
   const password = await getPassword()
+  assertSyncGeneration(generation)
   if (!password) {
     setSyncRuntimeStatus({
       state: "error",
@@ -848,12 +999,14 @@ export const pushNow = async (
   })
 
   const gist = await getGist(config.token, config.gistId)
+  assertSyncGeneration(generation)
   const head = gist.history?.[0]?.version
   const remoteFile = await getGistFileContent(
     gist,
     config.filename,
     config.token
   )
+  assertSyncGeneration(generation)
 
   let salt = randomBase64(16)
   let iterations = config.iterations
@@ -884,18 +1037,24 @@ export const pushNow = async (
           password,
           envelope: remoteEnvelope,
         })
+        assertSyncGeneration(generation)
         await mergeRemoteBackup(
           JSON.parse(remotePlain) as SyncPayload,
-          remoteEnvelope.meta?.updatedAt ?? 0
+          remoteEnvelope.meta?.updatedAt ?? 0,
+          generation
         )
         mergedOk = true
-      } catch {
+      } catch (error) {
+        if (error instanceof Error && error.message === SYNC_CANCELLED) {
+          throw error
+        }
         mergedOk = false
       }
     }
 
     if (!mergedOk) {
       const plaintext = await buildSyncPlaintext()
+      assertSyncGeneration(generation)
       const envelope = await buildEnvelope({
         deviceId: config.deviceId,
         password,
@@ -903,6 +1062,7 @@ export const pushNow = async (
         iterations,
         plaintext,
       })
+      assertSyncGeneration(generation)
 
       const conflictName = `conflict.${Date.now()}.${config.deviceId}.json`
       // 冲突副本只保留最近几份，否则 gist 会无限膨胀
@@ -915,7 +1075,9 @@ export const pushNow = async (
         [conflictName]: { content: JSON.stringify(envelope) },
       }
       for (const name of staleConflicts) files[name] = null
+      assertSyncGeneration(generation)
       await updateGist(config.token, config.gistId, { files })
+      assertSyncGeneration(generation)
 
       setSyncRuntimeStatus({
         state: "error",
@@ -927,6 +1089,7 @@ export const pushNow = async (
   }
 
   const plaintext = await buildSyncPlaintext()
+  assertSyncGeneration(generation)
   const envelope = await buildEnvelope({
     deviceId: config.deviceId,
     password,
@@ -934,16 +1097,19 @@ export const pushNow = async (
     iterations,
     plaintext,
   })
+  assertSyncGeneration(generation)
 
   const updated = await updateGist(config.token, config.gistId, {
     files: {
       [config.filename]: { content: JSON.stringify(envelope) },
     },
   })
+  assertSyncGeneration(generation)
 
   const nextHead = updated.history?.[0]?.version ?? head
   const next: GistSyncConfigV1 = { ...config, lastKnownRevision: nextHead }
   await setConfig(next)
+  assertSyncGeneration(generation)
 
   setSyncRuntimeStatus({
     state: "ok",
@@ -958,13 +1124,16 @@ const NO_RETRY_ERRORS = new Set([
   "NEED_PASSWORD",
   "CONFLICT",
   "DECRYPT_FAILED",
+  SYNC_CANCELLED,
 ])
 
 const PUSH_RETRY_DELAYS_MS = [30_000, 120_000, 600_000]
 let pushRetryCount = 0
 let pushRetryTimer: ReturnType<typeof setTimeout> | null = null
+let autoSyncRuntimeActive = false
 
 const schedulePushRetry = (error: unknown): void => {
+  if (!autoSyncRuntimeActive) return
   if (error instanceof Error && NO_RETRY_ERRORS.has(error.message)) return
   if (pushRetryTimer) return
 
@@ -985,6 +1154,7 @@ const schedulePushRetry = (error: unknown): void => {
 }
 
 function runPush(): void {
+  if (!autoSyncRuntimeActive) return
   if (isPushing) {
     pushQueued = true
     return
@@ -1015,6 +1185,7 @@ function runPush(): void {
 }
 
 function scheduleUsagePush(): void {
+  if (!autoSyncRuntimeActive) return
   if (usageDirtyAt === null) return
   if (usagePushTimer) return
 
@@ -1034,11 +1205,13 @@ function scheduleUsagePush(): void {
 }
 
 function markUsageDirtyAndSchedule(): void {
+  if (!autoSyncRuntimeActive) return
   if (usageDirtyAt === null) usageDirtyAt = Date.now()
   scheduleUsagePush()
 }
 
 function scheduleGeneralPush(): void {
+  if (!autoSyncRuntimeActive) return
   if (generalPushTimer) clearTimeout(generalPushTimer)
   generalPushTimer = setTimeout(() => {
     generalPushTimer = null
@@ -1057,8 +1230,8 @@ const createLeaderController = (instanceId: string) => {
 
     if (!renewTimer) {
       renewTimer = setInterval(() => {
-        if (isLeader()) writeLeader(instanceId, 6000)
-      }, 2000)
+        if (isLeader()) writeLeader(instanceId, LEADER_LEASE_MS)
+      }, LEADER_RENEW_MS)
     }
 
     return true
@@ -1072,16 +1245,21 @@ const createLeaderController = (instanceId: string) => {
   const stop = () => {
     if (renewTimer) clearInterval(renewTimer)
     renewTimer = null
+    if (isLeader()) localStorage.removeItem(LEADER_KEY)
   }
 
-  return { isLeader, ensureLeaderOrRequestPull, stop }
+  return { isLeader, ensureLeader: becomeLeader, ensureLeaderOrRequestPull, stop }
 }
 
 const createRequestHandler =
-  (isLeader: () => boolean) =>
+  (isLeader: () => boolean, ensureLeader: () => boolean) =>
   (e: StorageEvent): void => {
+    if (e.key === LEADER_KEY && !e.newValue) {
+      if (ensureLeader()) pullIfLeader(isLeader)
+      return
+    }
     if (e.key !== REQUEST_KEY) return
-    if (!isLeader()) return
+    if (!isLeader() && !ensureLeader()) return
     if (!e.newValue) return
 
     try {
@@ -1094,12 +1272,12 @@ const createRequestHandler =
   }
 
 const createLocalChangeHandler =
-  (isLeader: () => boolean) =>
+  (isLeader: () => boolean, ensureLeader: () => boolean) =>
   (change: LocalStorageChange): void => {
-    if (isApplyingRemote) return
+    if (isRemoteApplyActive()) return
 
     if (change.op === "clear") {
-      if (isLeader()) scheduleGeneralPush()
+      if (isLeader() || ensureLeader()) scheduleGeneralPush()
       else requestLeaderAction("push")
       return
     }
@@ -1112,22 +1290,23 @@ const createLocalChangeHandler =
     // 记录逐键修改时间，供多设备合并仲裁
     recordKeyTimestamp(key)
 
-    if (isLeader()) scheduleGeneralPush()
+    if (isLeader() || ensureLeader()) scheduleGeneralPush()
     else requestLeaderAction("push")
   }
 
-const createOnlineHandler = (isLeader: () => boolean) => (): void => {
-  if (isLeader()) void pullNow().catch(() => undefined)
+const createOnlineHandler =
+  (isLeader: () => boolean, ensureLeader: () => boolean) => (): void => {
+  if (isLeader() || ensureLeader()) void pullNow().catch(() => undefined)
   else requestLeaderAction("pull")
 }
 
 const createChromeStorageChangedHandler =
-  (isLeader: () => boolean) =>
+  (isLeader: () => boolean, ensureLeader: () => boolean) =>
   (
     changes: Partial<Record<string, chrome.storage.StorageChange>>,
     areaName: string
   ) => {
-    if (isApplyingRemote) return
+    if (isRemoteApplyActive()) return
     if (areaName !== "local") return
     if (!changes[BROWSER_USAGE_STORAGE_KEY] && !changes[BROWSER_USAGE_SETTINGS_KEY]) {
       return
@@ -1135,7 +1314,7 @@ const createChromeStorageChangedHandler =
     for (const key of [BROWSER_USAGE_STORAGE_KEY, BROWSER_USAGE_SETTINGS_KEY]) {
       if (changes[key]) recordKeyTimestamp(key)
     }
-    if (isLeader()) markUsageDirtyAndSchedule()
+    if (isLeader() || ensureLeader()) markUsageDirtyAndSchedule()
     else requestLeaderAction("push")
   }
 
@@ -1168,34 +1347,129 @@ export const startGistAutoSync = (context: SyncInitContext): (() => void) => {
     .toString(16)
     .slice(2)}`
   const leader = createLeaderController(instanceId)
+  let stopped = false
+  let activeCleanup: (() => void) | null = null
+  let configRevision = 0
 
-  leader.ensureLeaderOrRequestPull()
-
-  const onRequest = createRequestHandler(leader.isLeader)
-  const offLocal = onLocalStorageChange(
-    createLocalChangeHandler(leader.isLeader)
-  )
-  const onOnline = createOnlineHandler(leader.isLeader)
-  const offChrome = bindChromeStorageChangedListener(
-    createChromeStorageChangedHandler(leader.isLeader)
-  )
-
-  window.addEventListener("storage", onRequest)
-  window.addEventListener("online", onOnline)
-  pullIfLeader(leader.isLeader)
-
-  return () => {
-    offLocal()
-    window.removeEventListener("storage", onRequest)
-    window.removeEventListener("online", onOnline)
-    offChrome()
-    leader.stop()
+  const clearAutoSyncTimers = () => {
     if (generalPushTimer) clearTimeout(generalPushTimer)
     generalPushTimer = null
     if (usagePushTimer) clearTimeout(usagePushTimer)
     usagePushTimer = null
+    if (pushRetryTimer) clearTimeout(pushRetryTimer)
+    pushRetryTimer = null
+    pushRetryCount = 0
     usageDirtyAt = null
     pushQueued = false
+  }
+
+  const deactivate = () => {
+    if (!activeCleanup) return
+    autoSyncRuntimeActive = false
+    activeCleanup()
+    activeCleanup = null
+    clearAutoSyncTimers()
+  }
+
+  const activate = () => {
+    if (stopped || activeCleanup) return
+    autoSyncRuntimeActive = true
+    leader.ensureLeaderOrRequestPull()
+
+    const onRequest = createRequestHandler(
+      leader.isLeader,
+      leader.ensureLeader
+    )
+    const offLocal = onLocalStorageChange(
+      createLocalChangeHandler(leader.isLeader, leader.ensureLeader)
+    )
+    const onOnline = createOnlineHandler(
+      leader.isLeader,
+      leader.ensureLeader
+    )
+    const offChrome = bindChromeStorageChangedListener(
+      createChromeStorageChangedHandler(
+        leader.isLeader,
+        leader.ensureLeader
+      )
+    )
+
+    window.addEventListener("storage", onRequest)
+    window.addEventListener("online", onOnline)
+    pullIfLeader(leader.isLeader)
+    const leaderWatchdog = setInterval(() => {
+      if (stopped || leader.isLeader()) return
+      if (leader.ensureLeader()) pullIfLeader(leader.isLeader)
+    }, LEADER_WATCHDOG_MS)
+
+    activeCleanup = () => {
+      clearInterval(leaderWatchdog)
+      offLocal()
+      window.removeEventListener("storage", onRequest)
+      window.removeEventListener("online", onOnline)
+      offChrome()
+      leader.stop()
+    }
+  }
+
+  const applyEnabledState = (
+    enabled: boolean,
+    invalidateRunningOperations = !enabled
+  ) => {
+    configRevision += 1
+    if (invalidateRunningOperations) invalidateSyncOperations()
+    if (enabled) activate()
+    else deactivate()
+  }
+
+  // The config listener stays active while syncing is disabled so enabling it
+  // in Settings can start the leader without reloading the page.
+  const offConfigLocal = onLocalStorageChange(change => {
+    if (hasChromeStorage()) return
+    if (change.op !== "clear" && change.key !== CONFIG_KEY) return
+    try {
+      const raw = localStorage.getItem(CONFIG_KEY)
+      const stored = raw
+        ? (JSON.parse(raw) as Partial<GistSyncConfigV1>)
+        : undefined
+      applyEnabledState(Boolean(stored?.enabled))
+    } catch {
+      applyEnabledState(false)
+    }
+  })
+
+  const onConfigChromeChanged = (
+    changes: Partial<Record<string, chrome.storage.StorageChange>>,
+    areaName: string
+  ) => {
+    if (areaName !== "local" || !changes[CONFIG_KEY]) return
+    const next = changes[CONFIG_KEY]?.newValue as
+      | Partial<GistSyncConfigV1>
+      | undefined
+    applyEnabledState(Boolean(next?.enabled))
+  }
+  if (hasChromeStorage()) {
+    chrome.storage.onChanged.addListener(onConfigChromeChanged)
+  }
+
+  const initialRevision = configRevision
+  void getConfig()
+    .then(config => {
+      if (!stopped && configRevision === initialRevision) {
+        applyEnabledState(config.enabled, false)
+      }
+    })
+    .catch(() => undefined)
+
+  return () => {
+    stopped = true
+    invalidateSyncOperations()
+    deactivate()
+    offConfigLocal()
+    if (hasChromeStorage()) {
+      chrome.storage.onChanged.removeListener(onConfigChromeChanged)
+    }
+    clearAutoSyncTimers()
     isPushing = false
   }
 }

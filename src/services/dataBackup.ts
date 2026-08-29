@@ -32,6 +32,10 @@ const BACKUP_KEYS = {
     CARD_AREA_SETTINGS_KEY,
     "fluidity.linkPins.v1",
     "fluidity.homeLayout.v1",
+    "fluidity.homeLayout.v2",
+    "fluidity.rediscovery.v1",
+    "fluidity.laterRead.v1",
+    "fluidity.rss.subscriptions.v1",
   ],
   // AI 相关（不包含 apiKey）
   ai: [AI_SETTINGS_KEY, "ai-cache"],
@@ -40,6 +44,7 @@ const BACKUP_KEYS = {
     "link-analytics",
     "search-history",
     "fluidity.ai.dailyReview.v1",
+    "fluidity.rss.readState.v1",
   ],
   // 报告相关
   reports: ["report-state", "report-cache"],

@@ -35,7 +35,7 @@
   "optional_host_permissions": [
     "http://localhost/*",
     "http://127.0.0.1/*",
-    "http://[::1]/*",
+    "http://*/*",
     "https://*/*",
     "https://api.deepseek.com/*",
     "https://api.github.com/*",

@@ -6,6 +6,7 @@ import {
   faCheck,
   faChevronDown,
   faChevronRight,
+  faClock,
   faCog,
   faExternalLinkAlt,
   faPen,
@@ -20,6 +21,8 @@ import { linkGroup, links as defaultLinks } from "../data/data"
 import { FALLBACK_COLORS, applyColors } from "../base/colorUtils"
 import { applyThemeMode } from "../base/theme"
 import * as Settings from "../Startpage/Settings/settingsHandler"
+import { addLaterRead, isLaterReadUrl } from "../services/readLater"
+import { matchSearchText } from "../services/smartSearch"
 import {
   ActionBtn,
   AddButton,
@@ -32,6 +35,7 @@ import {
   Container,
   GroupContainer,
   GroupHeader,
+  GroupHeaderButton,
   GroupIcon,
   GroupMeta,
   GroupTitle,
@@ -112,26 +116,11 @@ const computeSearchScore = (options: {
   value: string
 }): number => {
   const { query, groupTitle, label, value } = options
-  const groupLower = groupTitle.toLowerCase()
-  const labelLower = label.toLowerCase()
-  const valueLower = value.toLowerCase()
-
-  const groupHit = groupLower.includes(query)
-  const labelHit = labelLower.includes(query)
-  const urlHit = valueLower.includes(query)
-
-  if (!groupHit && !labelHit && !urlHit) return -1
-
-  const labelScore = labelLower.startsWith(query) ? 4 : labelHit ? 3 : 0
-
-  let urlScore = 0
-  if (valueLower.includes(`://${query}`) || valueLower.includes(`.${query}`)) {
-    urlScore = 2
-  } else if (urlHit) {
-    urlScore = 1
-  }
-
-  return labelScore + urlScore + (groupHit ? 0.5 : 0)
+  const groupScore = matchSearchText(groupTitle, query).score
+  const labelScore = matchSearchText(label, query).score
+  const urlScore = matchSearchText(value, query).score
+  if (groupScore === 0 && labelScore === 0 && urlScore === 0) return -1
+  return Math.max(labelScore, urlScore * 0.9, groupScore * 0.75)
 }
 
 interface SearchResult {
@@ -149,6 +138,7 @@ export const Popup = () => {
   const [currentTab, setCurrentTab] = useState<CurrentTabState>(null)
   const [q, setQ] = useState("")
   const [colors, setColors] = useState<Record<string, string>>(FALLBACK_COLORS)
+  const [, refreshLaterRead] = useState(0)
 
   const [showAddModal, setShowAddModal] = useState(false)
   const [groupName, setGroupName] = useState("")
@@ -335,6 +325,17 @@ export const Popup = () => {
     showToast(`已添加到「${resolvedGroupTitle}」`)
   }
 
+  const saveCurrentPageForLater = () => {
+    if (!currentTab) return
+    const saved = addLaterRead(currentTab.url, currentTab.title)
+    if (!saved) {
+      showToast("只能将 HTTP 或 HTTPS 页面加入稍后读")
+      return
+    }
+    refreshLaterRead(version => version + 1)
+    showToast("已加入稍后读")
+  }
+
   const openEditModal = (group: string, index: number, label: string) => {
     setEditingLink({ group, index, label })
     setShowEditModal(true)
@@ -389,27 +390,62 @@ export const Popup = () => {
     const hasModal = showAddModal || showEditModal || Boolean(confirmDelete)
     if (!hasModal) return
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return
-      setShowAddModal(false)
-      setShowEditModal(false)
-      setConfirmDelete(null)
+      if (e.key === "Escape") {
+        setShowAddModal(false)
+        setShowEditModal(false)
+        setConfirmDelete(null)
+        return
+      }
+      if (e.key !== "Tab") return
+      const dialog = document.querySelector<HTMLElement>(
+        '[role="dialog"][aria-modal="true"]'
+      )
+      if (!dialog) return
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+        )
+      )
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      } else if (!dialog.contains(document.activeElement)) {
+        e.preventDefault()
+        ;(e.shiftKey ? last : first).focus()
+      }
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [confirmDelete, showAddModal, showEditModal])
 
   const currentPageAdded = currentTab ? findLink(currentTab.url) : null
+  const currentPageLaterRead = currentTab
+    ? isLaterReadUrl(currentTab.url)
+    : false
+  const handleLaterReadAction = () => {
+    if (currentPageLaterRead) {
+      showToast("已经在稍后读中")
+      return
+    }
+    saveCurrentPageForLater()
+  }
 
   const filteredGroups = useMemo(() => {
-    const query = q.trim().toLowerCase()
+    const query = q.trim()
     if (!query) return links
     return links
       .map(group => {
-        const titleMatches = group.title.toLowerCase().includes(query)
+        const titleMatches = matchSearchText(group.title, query).score > 0
         const matchingLinks = group.links.filter(
           l =>
-            l.label.toLowerCase().includes(query) ||
-            l.value.toLowerCase().includes(query)
+            matchSearchText(l.label, query).score > 0 ||
+            matchSearchText(l.value, query).score > 0
         )
         if (titleMatches) return group
         if (matchingLinks.length === 0) return null
@@ -419,7 +455,7 @@ export const Popup = () => {
   }, [links, q])
 
   const searchResults = useMemo((): SearchResult[] => {
-    const query = q.trim().toLowerCase()
+    const query = q.trim()
     if (!query) return []
 
     const results: SearchResult[] = []
@@ -462,7 +498,12 @@ export const Popup = () => {
             />
             <Title>拾光</Title>
           </TitleRow>
-          <IconButton onClick={() => openSettings()} title="打开设置">
+          <IconButton
+            type="button"
+            onClick={() => openSettings()}
+            title="打开设置"
+            aria-label="打开设置"
+          >
             <FontAwesomeIcon icon={faCog} />
           </IconButton>
         </Header>
@@ -480,7 +521,8 @@ export const Popup = () => {
           {currentTab && (
             <Section>
               <Card>
-                <GroupHeader
+                <GroupHeaderButton
+                  type="button"
                   onClick={() => {
                     if (currentPageAdded) {
                       setExpandedGroups(
@@ -500,7 +542,21 @@ export const Popup = () => {
                   </GroupIcon>
                   <GroupTitle>{currentTab.title || "保存当前页面"}</GroupTitle>
                   <GroupMeta>{getHost(currentTab.url)}</GroupMeta>
-                </GroupHeader>
+                </GroupHeaderButton>
+                <GroupHeaderButton
+                  type="button"
+                  onClick={handleLaterReadAction}
+                >
+                  <GroupIcon>
+                    <FontAwesomeIcon
+                      icon={currentPageLaterRead ? faCheck : faClock}
+                    />
+                  </GroupIcon>
+                  <GroupTitle>
+                    {currentPageLaterRead ? "已加入稍后读" : "稍后读"}
+                  </GroupTitle>
+                  <GroupMeta>不必现在决定收藏到哪里</GroupMeta>
+                </GroupHeaderButton>
               </Card>
             </Section>
           )}
@@ -533,7 +589,10 @@ export const Popup = () => {
                             <FontAwesomeIcon icon={faCheck} />
                           </CheckIcon>
                         )}
-                        <LinkLabel onClick={() => openLink(result.value)}>
+                        <LinkLabel
+                          type="button"
+                          onClick={() => openLink(result.value)}
+                        >
                           {result.label}
                         </LinkLabel>
                         <ResultGroup title={result.group}>
@@ -541,6 +600,8 @@ export const Popup = () => {
                         </ResultGroup>
                         <LinkActions>
                           <ActionBtn
+                            type="button"
+                            aria-label={`重命名 ${result.label}`}
                             onClick={e => {
                               e.stopPropagation()
                               openEditModal(
@@ -554,6 +615,8 @@ export const Popup = () => {
                             <FontAwesomeIcon icon={faPen} />
                           </ActionBtn>
                           <ActionBtn
+                            type="button"
+                            aria-label={`删除 ${result.label}`}
                             danger
                             onClick={e => {
                               e.stopPropagation()
@@ -569,6 +632,8 @@ export const Popup = () => {
                             <FontAwesomeIcon icon={faTrash} />
                           </ActionBtn>
                           <ActionBtn
+                            type="button"
+                            aria-label={`在新标签页打开 ${result.label}`}
                             onClick={e => {
                               e.stopPropagation()
                               openLink(result.value, { newTab: true })
@@ -593,20 +658,29 @@ export const Popup = () => {
 
               <Card>
                 {filteredGroups.length === 0 && (
-                  <GroupHeader onClick={() => openAddModal()}>
+                  <GroupHeaderButton
+                    type="button"
+                    onClick={() => openAddModal()}
+                  >
                     <GroupIcon>
                       <FontAwesomeIcon icon={faPlus} />
                     </GroupIcon>
                     <GroupTitle>新建一个群组</GroupTitle>
                     <GroupMeta>从这里开始整理</GroupMeta>
-                  </GroupHeader>
+                  </GroupHeaderButton>
                 )}
 
-                {filteredGroups.map(group => {
+                {filteredGroups.map((group, groupIndex) => {
                   const isExpanded = expandedGroups.has(group.title)
+                  const listId = `popup-group-${groupIndex}`
                   return (
-                    <GroupContainer key={group.title}>
-                      <GroupHeader onClick={() => toggleGroup(group.title)}>
+                    <GroupContainer key={`${group.title}-${groupIndex}`}>
+                      <GroupHeaderButton
+                        type="button"
+                        aria-expanded={isExpanded}
+                        aria-controls={listId}
+                        onClick={() => toggleGroup(group.title)}
+                      >
                         <GroupIcon>
                           <FontAwesomeIcon
                             icon={isExpanded ? faChevronDown : faChevronRight}
@@ -614,9 +688,9 @@ export const Popup = () => {
                         </GroupIcon>
                         <GroupTitle>{group.title}</GroupTitle>
                         <GroupMeta>{group.links.length}</GroupMeta>
-                      </GroupHeader>
+                      </GroupHeaderButton>
 
-                      <LinkList expanded={isExpanded}>
+                      <LinkList id={listId} expanded={isExpanded}>
                         {group.links.map((link, index) => {
                           const isCurrentPage = currentTab?.url === link.value
                           return (
@@ -626,11 +700,16 @@ export const Popup = () => {
                                   <FontAwesomeIcon icon={faCheck} />
                                 </CheckIcon>
                               )}
-                              <LinkLabel onClick={() => openLink(link.value)}>
+                              <LinkLabel
+                                type="button"
+                                onClick={() => openLink(link.value)}
+                              >
                                 {link.label}
                               </LinkLabel>
                               <LinkActions>
                                 <ActionBtn
+                                  type="button"
+                                  aria-label={`重命名 ${link.label}`}
                                   onClick={e => {
                                     e.stopPropagation()
                                     openEditModal(
@@ -644,6 +723,8 @@ export const Popup = () => {
                                   <FontAwesomeIcon icon={faPen} />
                                 </ActionBtn>
                                 <ActionBtn
+                                  type="button"
+                                  aria-label={`删除 ${link.label}`}
                                   danger
                                   onClick={e => {
                                     e.stopPropagation()
@@ -659,6 +740,8 @@ export const Popup = () => {
                                   <FontAwesomeIcon icon={faTrash} />
                                 </ActionBtn>
                                 <ActionBtn
+                                  type="button"
+                                  aria-label={`在新标签页打开 ${link.label}`}
                                   onClick={e => {
                                     e.stopPropagation()
                                     openLink(link.value, { newTab: true })
@@ -673,7 +756,10 @@ export const Popup = () => {
                         })}
 
                         {currentTab && !currentPageAdded && (
-                          <AddButton onClick={() => openAddModal(group.title)}>
+                          <AddButton
+                            type="button"
+                            onClick={() => openAddModal(group.title)}
+                          >
                             <AddIcon>
                               <FontAwesomeIcon icon={faPlus} />
                             </AddIcon>
@@ -687,7 +773,7 @@ export const Popup = () => {
 
                 {currentTab && !currentPageAdded && (
                   <GroupContainer key="__new_group">
-                    <AddButton onClick={() => openAddModal()}>
+                    <AddButton type="button" onClick={() => openAddModal()}>
                       <AddIcon>
                         <FontAwesomeIcon icon={faPlus} />
                       </AddIcon>
@@ -702,8 +788,13 @@ export const Popup = () => {
 
         {showAddModal && currentTab && (
           <Modal onClick={() => setShowAddModal(false)}>
-            <ModalContent onClick={e => e.stopPropagation()}>
-              <ModalTitle>保存当前页面</ModalTitle>
+            <ModalContent
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="popup-add-title"
+              onClick={e => e.stopPropagation()}
+            >
+              <ModalTitle id="popup-add-title">保存当前页面</ModalTitle>
               <ModalSubtitle>
                 选择一个群组，并给它一个更好记的名字。
               </ModalSubtitle>
@@ -739,8 +830,13 @@ export const Popup = () => {
 
         {showEditModal && editingLink && (
           <Modal onClick={() => setShowEditModal(false)}>
-            <ModalContent onClick={e => e.stopPropagation()}>
-              <ModalTitle>重命名链接</ModalTitle>
+            <ModalContent
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="popup-edit-title"
+              onClick={e => e.stopPropagation()}
+            >
+              <ModalTitle id="popup-edit-title">重命名链接</ModalTitle>
               <ModalSubtitle>名字短一点，会更干净。</ModalSubtitle>
               <Input
                 value={editingLink.label}
@@ -763,14 +859,21 @@ export const Popup = () => {
 
         {confirmDelete && (
           <Modal onClick={() => setConfirmDelete(null)}>
-            <ModalContent onClick={e => e.stopPropagation()}>
-              <ModalTitle>删除这个链接？</ModalTitle>
+            <ModalContent
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="popup-delete-title"
+              onClick={e => e.stopPropagation()}
+            >
+              <ModalTitle id="popup-delete-title">删除这个链接？</ModalTitle>
               <ModalSubtitle>
                 它将从「{confirmDelete.group}」移除。你可以稍后重新添加。
               </ModalSubtitle>
               <UrlDisplay>{confirmDelete.url}</UrlDisplay>
               <ButtonRow>
-                <Button onClick={() => setConfirmDelete(null)}>取消</Button>
+                <Button autoFocus onClick={() => setConfirmDelete(null)}>
+                  取消
+                </Button>
                 <Button
                   danger
                   onClick={() => {
