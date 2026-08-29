@@ -5,6 +5,77 @@ export interface HomeGridMetrics {
   rows: number
 }
 
+export type HomeDropPosition = "before" | "after"
+
+/**
+ * 按稳定的相对落点移动主页条目。先移除 active 再定位 over，使同一个
+ * before/after 意图无论重复应用多少次都得到相同顺序。
+ */
+export const moveHomeItemRelative = (
+  order: string[],
+  activeId: string,
+  overId: string,
+  position: HomeDropPosition
+): string[] => {
+  const activeIndex = order.indexOf(activeId)
+  const overIndex = order.indexOf(overId)
+  if (activeId === overId || activeIndex < 0 || overIndex < 0) return order
+
+  const next = [...order]
+  next.splice(activeIndex, 1)
+  const remainingOverIndex = next.indexOf(overId)
+  next.splice(
+    position === "before" ? remainingOverIndex : remainingOverIndex + 1,
+    0,
+    activeId
+  )
+
+  return next.every((id, index) => id === order[index]) ? order : next
+}
+
+/**
+ * 只接受分页后仍能同时兑现目标页和 before/after 关系的落点。
+ * 混合尺寸条目位于容量边界时，这两个约束可能无法同时满足；返回 null
+ * 比静默把 before 反转成 after 更符合用户看到的落点标记。
+ */
+export const getOrderForRelativeDropOnPage = (
+  items: HomeItem[],
+  metrics: HomeGridMetrics,
+  activeId: string,
+  overId: string,
+  position: HomeDropPosition,
+  targetPage: number
+): string[] | null => {
+  if (targetPage < 0 || activeId === overId) return null
+  const order = items.map(item => item.id)
+  const candidateOrder = moveHomeItemRelative(
+    order,
+    activeId,
+    overId,
+    position
+  )
+  if (!candidateOrder.includes(activeId) || !candidateOrder.includes(overId)) {
+    return null
+  }
+
+  const itemById = new Map(items.map(item => [item.id, item]))
+  const candidateItems = candidateOrder.flatMap(id => {
+    const item = itemById.get(id)
+    return item ? [item] : []
+  })
+  const pages = paginateHomeItems(candidateItems, metrics)
+  const activePage = pages.findIndex(pageItems =>
+    pageItems.some(item => item.id === activeId)
+  )
+  const overPage = pages.findIndex(pageItems =>
+    pageItems.some(item => item.id === overId)
+  )
+
+  return activePage === targetPage && overPage === targetPage
+    ? candidateOrder
+    : null
+}
+
 const MIN_COLUMNS = 3
 const MAX_COLUMNS = 10
 const MIN_ROWS = 3

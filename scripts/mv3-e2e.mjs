@@ -14,6 +14,17 @@ const assert = (condition, message) => {
   if (!condition) throw new Error(message)
 }
 
+const assertPermutation = (before, after, label) => {
+  assert(
+    Array.isArray(before) &&
+      Array.isArray(after) &&
+      before.length === after.length &&
+      new Set(after).size === after.length &&
+      JSON.stringify([...before].sort()) === JSON.stringify([...after].sort()),
+    `${label} lost or duplicated home items`
+  )
+}
+
 const fileExists = async filePath => {
   try {
     await fs.access(filePath)
@@ -322,6 +333,19 @@ const main = async () => {
       `Floating search obscured the narrow-screen edit control: ${JSON.stringify({ floatingSearchBox, editHomeBox })}`
     )
 
+    const screenTimePageIndex = await initialScreenTimeShell.evaluate(shell =>
+      Number(
+        shell.closest('[data-home-page-index]')?.getAttribute("data-home-page-index") ??
+          0
+      )
+    )
+    await startpage
+      .getByRole("button", {
+        name: `转到第 ${screenTimePageIndex + 1} 页`,
+      })
+      .click()
+    await startpage.waitForTimeout(280)
+
     const enableTrackingButton = initialScreenTimeShell.getByRole("button", {
       name: "开启统计",
     })
@@ -434,6 +458,7 @@ const main = async () => {
       "Shift+Tab escaped the command palette"
     )
     await startpage.keyboard.press("Tab")
+    await startpage.waitForTimeout(50)
     assert(
       await paletteInput.evaluate(input => document.activeElement === input),
       "Tab did not wrap command-palette focus back to the search input"
@@ -628,6 +653,11 @@ const main = async () => {
       JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}")
         .order
     )
+    await startpage.evaluate(() => {
+      window.__fluidityWidgetDragProbe = document.querySelector(
+        '[data-home-item-id="widget:screen-time"]'
+      )
+    })
     await startpage.mouse.move(
       screenTimeHeadingBox.x + screenTimeHeadingBox.width / 2,
       screenTimeHeadingBox.y + screenTimeHeadingBox.height / 2
@@ -670,8 +700,17 @@ const main = async () => {
       { steps: 10 }
     )
     await startpage.waitForTimeout(120)
-    const screenTimeBoxMoving = await screenTimeShell.boundingBox()
+    const screenTimeBoxMoving = await startpage
+      .locator(
+        '[data-home-drag-overlay-id="widget:screen-time"]'
+      )
+      .boundingBox()
     const rediscoveryBoxReflowed = await rediscoveryShell.boundingBox()
+    const widgetTreeStayedMounted = await startpage.evaluate(
+      () =>
+        window.__fluidityWidgetDragProbe ===
+        document.querySelector('[data-home-item-id="widget:screen-time"]')
+    )
     assert(
       screenTimeBoxMoving &&
         Math.hypot(
@@ -681,12 +720,22 @@ const main = async () => {
       "The full widget card did not follow the drag pointer"
     )
     assert(
+      (await startpage
+        .locator('[data-home-drag-overlay="true"] img')
+        .count()) === 0,
+      "Widget drag overlay cloned a network-backed image"
+    )
+    assert(
       rediscoveryBoxReflowed &&
         Math.hypot(
           rediscoveryBoxReflowed.x - rediscoveryBox.x,
           rediscoveryBoxReflowed.y - rediscoveryBox.y
-        ) > 40,
-      "The vacated widget grid slot stayed occupied during drag"
+        ) < 2 &&
+        widgetTreeStayedMounted &&
+        (await screenTimeShell.evaluate(element =>
+          Number.parseFloat(getComputedStyle(element).opacity)
+        )) === 0,
+      "Dragging a widget remounted or reflowed the real page tree"
     )
     await startpage.mouse.up()
     await startpage.waitForTimeout(240)
@@ -884,7 +933,21 @@ const main = async () => {
       'button[aria-current="page"][aria-label="转到第 2 页"]',
       "cancelled drag edge page turn"
     )
-    await startpage.keyboard.press("Escape")
+    const cancelledBlankPoint = await findBlankGridPoint(activeGrid())
+    assert(
+      cancelledBlankPoint,
+      "Cross-page cancel destination has no blank grid point"
+    )
+    await startpage.mouse.move(
+      cancelledBlankPoint.x,
+      cancelledBlankPoint.y,
+      { steps: 8 }
+    )
+    await startpage.waitForTimeout(120)
+    assert(
+      (await startpage.locator("[data-home-drop-position]").count()) === 0,
+      "Blank cross-page destination still exposed an item drop marker"
+    )
     await startpage.mouse.up()
     await startpage.waitForTimeout(300)
     await expectVisible(
@@ -918,6 +981,9 @@ const main = async () => {
     const edgeDragShellById = startpage.locator(
       `[data-home-item-id=${JSON.stringify(edgeDragId)}]`
     )
+    const successfulEdgeOrderBefore = await startpage.evaluate(() =>
+      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    )
     await startpage.mouse.move(
       edgeDragBox.x + edgeDragBox.width / 2,
       edgeDragBox.y + edgeDragBox.height / 2
@@ -950,19 +1016,60 @@ const main = async () => {
       (await edgeDragShellById.getAttribute("data-home-dragging")) === "true",
       "App drag ended while turning the page at the edge"
     )
-    const secondPageTarget = activeGrid()
-      .locator('[data-home-app-tile="true"]')
-      .first()
+    const secondPageApps = activeGrid().locator('[data-home-app-tile="true"]')
+    const secondPageAppCount = await secondPageApps.count()
+    assert(
+      secondPageAppCount >= 3,
+      "Second page has too few app targets for an exact cross-page drop"
+    )
+    const secondPageTarget = secondPageApps.nth(
+      Math.floor(secondPageAppCount / 2)
+    )
+    const secondPageTargetShell = secondPageTarget.locator(
+      "xpath=ancestor::*[@data-home-item-kind='app'][1]"
+    )
+    const secondPageTargetId = await secondPageTargetShell.getAttribute(
+      "data-home-item-id"
+    )
     const secondPageTargetBox = await secondPageTarget.boundingBox()
-    assert(secondPageTargetBox, "Second page has no app drop target")
+    assert(
+      secondPageTargetBox && secondPageTargetId,
+      "Second page has no app drop target"
+    )
     await startpage.mouse.move(
-      secondPageTargetBox.x + secondPageTargetBox.width / 2,
+      secondPageTargetBox.x + secondPageTargetBox.width * 0.75,
       secondPageTargetBox.y + secondPageTargetBox.height / 2,
       { steps: 8 }
     )
     await startpage.waitForTimeout(320)
+    assert(
+      (await secondPageTargetShell.getAttribute("data-home-drop-position")) ===
+        "after",
+      "Cross-page drop did not expose the expected after-target marker"
+    )
+    const crossPageOrderDuring = await startpage.evaluate(() =>
+      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    )
+    assert(
+      JSON.stringify(crossPageOrderDuring) ===
+        JSON.stringify(successfulEdgeOrderBefore),
+      "Cross-page hover persisted before mouseup"
+    )
     await startpage.mouse.up()
     await startpage.waitForTimeout(240)
+    const crossPagePersistedOrder = await startpage.evaluate(() =>
+      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    )
+    assertPermutation(
+      successfulEdgeOrderBefore,
+      crossPagePersistedOrder,
+      "Cross-page drop"
+    )
+    assert(
+      crossPagePersistedOrder.indexOf(edgeDragId) ===
+        crossPagePersistedOrder.indexOf(secondPageTargetId) + 1,
+      "Cross-page item was not persisted immediately after its marked target"
+    )
     const movedToSecondPage = await activeGrid().evaluate(
       (grid, itemId) =>
         Array.from(grid.querySelectorAll("[data-home-item-id]")).some(
@@ -973,6 +1080,34 @@ const main = async () => {
     assert(
       movedToSecondPage,
       "Edge-turned app was not persisted on the destination page"
+    )
+    const moveBackButton = edgeDragShellById.getByRole("button", {
+      name: "移至上一页",
+      exact: true,
+    })
+    await moveBackButton.focus()
+    await startpage.keyboard.press("Enter")
+    await expectVisible(
+      startpage,
+      'button[aria-current="page"][aria-label="转到第 1 页"]',
+      "keyboard move-back destination"
+    )
+    const movedItemFocus = await startpage.evaluate(itemId => {
+      const active = document.activeElement
+      return {
+        itemId:
+          active instanceof HTMLElement
+            ? active.closest("[data-home-item-id]")?.getAttribute("data-home-item-id")
+            : null,
+        label:
+          active instanceof HTMLElement ? active.getAttribute("aria-label") : null,
+      }
+    }, edgeDragId)
+    assert(
+      movedItemFocus.itemId === edgeDragId &&
+        !movedItemFocus.label?.startsWith("删除") &&
+        movedItemFocus.label !== "移除小组件",
+      `Keyboard page move restored focus to an unsafe control: ${JSON.stringify(movedItemFocus)}`
     )
     await pageDots.first().click()
     await expectVisible(
@@ -1373,6 +1508,172 @@ const main = async () => {
       "return to retained first page"
     )
     await retainedIcon.waitFor({ state: "visible", timeout: 10_000 })
+    await retentionPage
+      .getByRole("button", { name: "编辑主页" })
+      .evaluate(button => button.click())
+    await retentionPage
+      .getByRole("button", { name: "完成", exact: true })
+      .waitFor({ state: "visible", timeout: 10_000 })
+
+    const multiPageOrderBefore = await retentionPage.evaluate(() =>
+      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    )
+    const multiPageViewport = await retentionPage
+      .getByRole("region", { name: "主页分页区域" })
+      .boundingBox()
+    const multiPageSources = retentionPage.locator(
+      '[data-home-page-grid="true"][aria-hidden="false"] [data-home-app-tile="true"]'
+    )
+    const multiPageSource = multiPageSources.nth(
+      Math.floor((await multiPageSources.count()) / 2)
+    )
+    const multiPageSourceBox = await multiPageSource.boundingBox()
+    const multiPageSourceId = await multiPageSource
+      .locator("xpath=ancestor::*[@data-home-item-id][1]")
+      .getAttribute("data-home-item-id")
+    assert(
+      multiPageViewport && multiPageSourceBox && multiPageSourceId,
+      "Multi-page drag source or viewport is unavailable"
+    )
+    await retentionPage.evaluate(itemId => {
+      window.__fluidityMultiPageDragProbe = document.querySelector(
+        `[data-home-item-id="${CSS.escape(itemId)}"]`
+      )
+    }, multiPageSourceId)
+    const multiPageStartX =
+      multiPageSourceBox.x + multiPageSourceBox.width / 2
+    const multiPageY = multiPageSourceBox.y + multiPageSourceBox.height / 2
+    await retentionPage.mouse.move(multiPageStartX, multiPageY)
+    await retentionPage.mouse.down()
+    await retentionPage.mouse.move(multiPageStartX + 8, multiPageY, {
+      steps: 2,
+    })
+    await retentionPage.waitForTimeout(80)
+    assert(
+      (await retentionPage.locator('[data-home-dragging="true"]').count()) ===
+        1,
+      "Multi-page drag did not activate"
+    )
+    const rightEdge = multiPageViewport.x + multiPageViewport.width - 8
+    await retentionPage.mouse.move(rightEdge, multiPageY, { steps: 10 })
+    try {
+      await retentionPage.waitForFunction(
+        () => {
+          const label = document
+            .querySelector('button[aria-current="page"]')
+            ?.getAttribute("aria-label")
+          return Number(label?.match(/\d+/)?.[0] ?? 0) >= 3
+        },
+        undefined,
+        { timeout: 10_000 }
+      )
+    } catch (error) {
+      const edgeDebug = await retentionPage.evaluate(({ x, y }) => {
+        const viewport = document
+          .querySelector('[aria-label="主页分页区域"]')
+          ?.getBoundingClientRect()
+        return {
+          pointer: { x, y },
+          viewport: viewport
+            ? {
+                left: viewport.left,
+                right: viewport.right,
+                top: viewport.top,
+                bottom: viewport.bottom,
+              }
+            : null,
+          page: document
+            .querySelector('button[aria-current="page"]')
+            ?.getAttribute("aria-label"),
+          dragging: document.querySelectorAll('[data-home-dragging="true"]')
+            .length,
+          overlay: document.querySelectorAll('[data-home-drag-overlay="true"]')
+            .length,
+        }
+      }, { x: rightEdge, y: multiPageY })
+      throw new Error(
+        `Continuous edge paging stopped early: ${JSON.stringify(edgeDebug)}`,
+        { cause: error }
+      )
+    }
+    const multiPageOverlayAtRight = await retentionPage
+      .locator('[data-home-drag-overlay="true"]')
+      .boundingBox()
+    assert(
+      multiPageOverlayAtRight &&
+        Math.abs(
+          multiPageOverlayAtRight.x + multiPageOverlayAtRight.width / 2 -
+            rightEdge
+        ) < 3,
+      "Dragged icon stopped following the pointer after multiple page turns"
+    )
+    assert(
+      (await retentionPage
+        .locator('[data-home-drag-overlay="true"] img')
+        .count()) === 0,
+      "App drag overlay recreated a favicon image"
+    )
+    assert(
+      await retentionPage.evaluate(
+        itemId =>
+          window.__fluidityMultiPageDragProbe ===
+          document.querySelector(
+            `[data-home-item-id="${CSS.escape(itemId)}"]`
+          ),
+        multiPageSourceId
+      ),
+      "Cross-page preview remounted the real icon"
+    )
+    const multiPageOrderDuring = await retentionPage.evaluate(() =>
+      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    )
+    assert(
+      JSON.stringify(multiPageOrderDuring) ===
+        JSON.stringify(multiPageOrderBefore),
+      "Edge preview persisted before the drag was released"
+    )
+
+    const pageBeforeVerticalExit = await retentionPage
+      .locator('button[aria-current="page"]')
+      .getAttribute("aria-label")
+    await retentionPage.mouse.move(
+      rightEdge,
+      multiPageViewport.y - 12,
+      { steps: 4 }
+    )
+    await retentionPage.waitForTimeout(900)
+    assert(
+      (await retentionPage
+        .locator('button[aria-current="page"]')
+        .getAttribute("aria-label")) === pageBeforeVerticalExit,
+      "Edge paging continued after the pointer left the viewport vertically"
+    )
+
+    const leftEdge = multiPageViewport.x + 8
+    await retentionPage.mouse.move(leftEdge, multiPageY, { steps: 10 })
+    await expectVisible(
+      retentionPage,
+      'button[aria-current="page"][aria-label="转到第 1 页"]',
+      "direct reverse edge dwell to first page"
+    )
+    await retentionPage.keyboard.press("Escape")
+    await retentionPage.mouse.up()
+    await retentionPage.waitForTimeout(300)
+    const multiPageOrderAfter = await retentionPage.evaluate(() =>
+      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    )
+    assert(
+      JSON.stringify(multiPageOrderAfter) ===
+        JSON.stringify(multiPageOrderBefore),
+      "Cancelling a multi-page drag changed the persisted order"
+    )
+    assert(
+      (await retentionPage.locator('[data-home-dragging="true"]').count()) ===
+          0 &&
+        (await retentionPage.locator('[data-home-drag-overlay="true"]').count()) ===
+          0,
+      "Multi-page drag left a dragging node or overlay behind"
+    )
     await retentionPage.close()
 
     assert(errors.length === 0, errors.join("\n"))
@@ -1395,6 +1696,7 @@ const main = async () => {
             "app_icon_drag_click_suppression",
             "compact_app_hit_target",
             "visited_page_icon_retention",
+            "continuous_multi_page_drag_reverse_cancel",
             "widget_keyboard_open",
             "widget_dialog_portal_gesture_isolation",
             "modal_blocks_edit_toolbar",
@@ -1404,7 +1706,7 @@ const main = async () => {
             "link_search_focus_restore",
             "rediscovery_hide_refresh_undo",
             "widget_long_press_drag_stable_size",
-            "widget_whole_card_drag_live_reflow",
+            "widget_whole_card_drag_stable_tree",
             "widget_grid_slot_containment",
             "compact_widget_content_containment",
             "compact_smart_entry_empty_action",
