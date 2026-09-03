@@ -20,7 +20,11 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core"
-import type { CollisionDetection } from "@dnd-kit/core"
+import type {
+  CollisionDetection,
+  PointerActivationConstraint,
+  PointerSensorProps,
+} from "@dnd-kit/core"
 import { SortableContext, useSortable } from "@dnd-kit/sortable"
 import type { SortingStrategy } from "@dnd-kit/sortable"
 import { CSS as DndCSS } from "@dnd-kit/utilities"
@@ -764,6 +768,7 @@ const PAGE_SNAP_TRANSITION =
   "transform 240ms cubic-bezier(0.22, 1, 0.36, 1)"
 const EDGE_PAGE_DWELL_MS = 420
 const EDGE_PAGE_TRANSITION_LOCK_MS = 280
+const EDGE_PAGE_TARGET_GUTTER_PX = 20
 const REORDER_INTENT_MS = 70
 const noHomeItemTransform: SortingStrategy = () => null
 const doNotAnimateHomeLayoutChange = () => false
@@ -883,7 +888,84 @@ const resolveHomeDropPosition = (
     ? "before"
     : "after"
 
+const findHomeDropTargetAtPoint = (
+  grid: HTMLElement | null | undefined,
+  activeId: string,
+  pointerX: number,
+  pointerY: number
+): { target: HTMLElement; rect: DOMRect } | null =>
+  grid
+    ? (Array.from(
+        grid.querySelectorAll<HTMLElement>(":scope > [data-home-item-id]")
+      )
+        .filter(target => target.dataset.homeItemId !== activeId)
+        .map(target => ({ target, rect: target.getBoundingClientRect() }))
+        .filter(
+          ({ rect }) =>
+            pointerX >= rect.left &&
+            pointerX <= rect.right &&
+            pointerY >= rect.top &&
+            pointerY <= rect.bottom
+        )
+        .sort((left, right) => {
+          const leftDistance = Math.hypot(
+            pointerX - (left.rect.left + left.rect.width / 2),
+            pointerY - (left.rect.top + left.rect.height / 2)
+          )
+          const rightDistance = Math.hypot(
+            pointerX - (right.rect.left + right.rect.width / 2),
+            pointerY - (right.rect.top + right.rect.height / 2)
+          )
+          return leftDistance - rightDistance
+        })[0] ?? null)
+    : null
+
+const isPointerInEdgeTurnGutter = (
+  pointerX: number,
+  bounds: DOMRect,
+  direction: -1 | 1
+): boolean =>
+  direction < 0
+    ? pointerX < bounds.left + EDGE_PAGE_TARGET_GUTTER_PX
+    : pointerX > bounds.right - EDGE_PAGE_TARGET_GUTTER_PX
+
+export const getHomePointerActivationConstraint = (
+  target: EventTarget | null,
+  pointerType: string,
+  editMode: boolean
+): PointerActivationConstraint => {
+  if (editMode) return { distance: 4 }
+  if (
+    pointerType !== "touch" &&
+    target instanceof Element &&
+    target.closest('[data-home-app-tile="true"]')
+  ) {
+    return { distance: 8 }
+  }
+  return { delay: 220, tolerance: 8 }
+}
+
 class HomePointerSensor extends PointerSensor {
+  constructor(props: PointerSensorProps) {
+    const target = props.event.target
+    const pointerType =
+      "pointerType" in props.event ? String(props.event.pointerType) : ""
+    const editMode =
+      target instanceof Element &&
+      !!target.closest('[data-home-editing="true"]')
+    super({
+      ...props,
+      options: {
+        ...props.options,
+        activationConstraint: getHomePointerActivationConstraint(
+          target,
+          pointerType,
+          editMode
+        ),
+      },
+    })
+  }
+
   static activators = [
     {
       eventName: "onPointerDown" as const,
@@ -929,6 +1011,17 @@ export const shouldActivateHomePointerDrag = (
     !target.closest(HOME_DRAG_ACTIVATOR_SELECTOR)
   )
 }
+
+export const shouldReservePointerForHomeItemDrag = (
+  target: EventTarget | null,
+  pointerType: string,
+  editMode: boolean
+): boolean =>
+  target instanceof Element &&
+  (editMode
+    ? !!target.closest('[data-home-item-kind="app"]')
+    : pointerType !== "touch" &&
+      !!target.closest('[data-home-app-tile="true"]'))
 
 const SortableItem = ({
   item,
@@ -1213,7 +1306,6 @@ export const HomeGrid = () => {
   const dragOrderRef = useRef<string[] | null>(null)
   const dragPageOrderRef = useRef<string[] | null>(null)
   const dropIntentRef = useRef<HomeDropIntent | null>(null)
-  const dropIntentPointerRef = useRef<{ x: number; y: number } | null>(null)
   const dragPointerRevisionRef = useRef(0)
   const dropIntentRevisionRef = useRef(-1)
   const itemDraggingRef = useRef(false)
@@ -1226,6 +1318,7 @@ export const HomeGrid = () => {
   const dragOriginPageRef = useRef<number | null>(null)
   const dragEscapeGuardRef = useRef(false)
   const edgePageDirectionRef = useRef<-1 | 0 | 1>(0)
+  const edgePageTransitionUntilRef = useRef(0)
   const edgePageScheduleRef = useRef<(direction: -1 | 1) => void>(() => undefined)
   const currentPageRef = useRef(0)
   const pagesLengthRef = useRef(1)
@@ -1399,14 +1492,8 @@ export const HomeGrid = () => {
     focusTarget?.focus({ preventScroll: true })
   }, [currentPage])
 
-  /* 编辑模式内即拖即走（iOS 手感）；平时按住 220ms 才触发，避免误拖 */
-  const sensors = useSensors(
-    useSensor(HomePointerSensor, {
-      activationConstraint: editMode
-        ? { distance: 4 }
-        : { delay: 220, tolerance: 8 },
-    })
-  )
+  /* 图标按位移拖，小组件按长按拖；编辑模式内统一即拖即走。 */
+  const sensors = useSensors(useSensor(HomePointerSensor))
   const detectHomeCollision = useCallback<CollisionDetection>(args => {
     const pointerCoordinates =
       dragPointerXRef.current !== null && dragPointerYRef.current !== null
@@ -1447,13 +1534,19 @@ export const HomeGrid = () => {
       }
       cancelLongPress()
       pressOriginRef.current = { x: e.clientX, y: e.clientY }
-      pageDragRef.current = {
-        pointerId: e.pointerId,
-        startX: e.clientX,
-        startY: e.clientY,
-        startedAt: performance.now(),
-        axis: "pending",
-      }
+      pageDragRef.current = shouldReservePointerForHomeItemDrag(
+        target,
+        e.pointerType,
+        editMode
+      )
+        ? null
+        : {
+            pointerId: e.pointerId,
+            startX: e.clientX,
+            startY: e.clientY,
+            startedAt: performance.now(),
+            axis: "pending",
+          }
       if (!editMode) {
         longPressRef.current = setTimeout(() => {
           suppressNextPageClickRef.current = true
@@ -1941,6 +2034,8 @@ export const HomeGrid = () => {
       dragPageOrderRef.current = nextOrder
       setMovePageNotice(null)
       setAnimatePage(true)
+      edgePageTransitionUntilRef.current =
+        performance.now() + EDGE_PAGE_TRANSITION_LOCK_MS
       currentPageRef.current = targetPage
       setCurrentPage(targetPage)
       return true
@@ -1962,9 +2057,19 @@ export const HomeGrid = () => {
 
   const clearDropIntent = useCallback(() => {
     dropIntentRef.current = null
-    dropIntentPointerRef.current = null
     dropIntentRevisionRef.current = -1
     setDropIntent(null)
+  }, [])
+
+  const settleEdgePageTransition = useCallback(() => {
+    if (edgePageTransitionUntilRef.current <= 0) return
+    edgePageTransitionUntilRef.current = 0
+    positionPageTrack(
+      pageTrackRef.current,
+      currentPageRef.current,
+      0,
+      false
+    )
   }, [])
 
   const scheduleEdgePageTurn = useCallback(
@@ -1988,13 +2093,10 @@ export const HomeGrid = () => {
           return
         }
         const bounds = viewport.getBoundingClientRect()
-        const edgeInset = Math.min(72, Math.max(48, bounds.width * 0.07))
         const stillAtRequestedEdge =
           pointerY >= bounds.top &&
           pointerY <= bounds.bottom &&
-          (direction < 0
-            ? pointerX < bounds.left + edgeInset
-            : pointerX > bounds.right - edgeInset)
+          isPointerInEdgeTurnGutter(pointerX, bounds, direction)
         if (!stillAtRequestedEdge) {
           clearEdgeTimer()
           return
@@ -2021,6 +2123,7 @@ export const HomeGrid = () => {
         )
         edgePageTimerRef.current = setTimeout(() => {
           edgePageTimerRef.current = null
+          edgePageTransitionUntilRef.current = 0
           if (
             itemDraggingRef.current &&
             edgePageDirectionRef.current === direction
@@ -2039,8 +2142,8 @@ export const HomeGrid = () => {
       clearEdgeTimer()
       clearReorderTimer()
       dropIntentRef.current = null
-      dropIntentPointerRef.current = null
       dropIntentRevisionRef.current = -1
+      edgePageTransitionUntilRef.current = 0
     },
     [clearEdgeTimer, clearReorderTimer]
   )
@@ -2052,6 +2155,7 @@ export const HomeGrid = () => {
       clearReorderTimer()
       clearDropIntent()
       pageDragRef.current = null
+      edgePageTransitionUntilRef.current = 0
       itemDraggingRef.current = true
       dragEscapeGuardRef.current = true
       const pointerX = getClientX(event.activatorEvent)
@@ -2104,12 +2208,48 @@ export const HomeGrid = () => {
 
   const handleDragOver = useCallback(
     ({ active, over }: DragOverEvent) => {
+      const activeId = String(active.id)
       if (edgePageDirectionRef.current !== 0) {
-        clearReorderTimer()
-        clearDropIntent()
-        return
+        const viewport = viewportRef.current
+        const pointerX = dragPointerXRef.current
+        const direction = edgePageDirectionRef.current
+        if (
+          !viewport ||
+          pointerX === null ||
+          isPointerInEdgeTurnGutter(
+            pointerX,
+            viewport.getBoundingClientRect(),
+            direction
+          )
+        ) {
+          clearReorderTimer()
+          clearDropIntent()
+          return
+        }
+        settleEdgePageTransition()
+        clearEdgeTimer()
       }
-      if (!over || active.id === over.id) {
+      const pointerX = dragPointerXRef.current
+      const pointerY = dragPointerYRef.current
+      const activePageGrid = pageTrackRef.current?.querySelector<HTMLElement>(
+        '[data-home-page-grid="true"][aria-hidden="false"]'
+      )
+      const pointerTarget =
+        pointerX !== null && pointerY !== null
+          ? findHomeDropTargetAtPoint(
+              activePageGrid,
+              activeId,
+              pointerX,
+              pointerY
+            )
+          : null
+      const overId =
+        pointerX !== null && pointerY !== null
+          ? pointerTarget?.target.dataset.homeItemId ?? null
+          : over && active.id !== over.id
+            ? String(over.id)
+            : null
+      if (!overId) {
         clearReorderTimer()
         clearDropIntent()
         if (dragPageOrderRef.current) {
@@ -2117,14 +2257,17 @@ export const HomeGrid = () => {
         }
         return
       }
-      const activeId = String(active.id)
-      const overId = String(over.id)
-      const visibleTarget = pageTrackRef.current?.querySelector<HTMLElement>(
-        `[data-home-page-grid="true"][aria-hidden="false"] [data-home-item-id="${CSS.escape(overId)}"]`
-      )
+      const visibleTarget =
+        pointerTarget?.target ??
+        pageTrackRef.current?.querySelector<HTMLElement>(
+          `[data-home-page-grid="true"][aria-hidden="false"] [data-home-item-id="${CSS.escape(overId)}"]`
+        )
       const position = resolveHomeDropPosition(
-        dragPointerXRef.current,
-        visibleTarget?.getBoundingClientRect() ?? over.rect
+        pointerX,
+        visibleTarget?.getBoundingClientRect() ?? over?.rect ?? {
+          left: pointerX ?? 0,
+          width: 0,
+        }
       )
       const nextOrder = getValidDropOrder(
         getLatestDragOrder(),
@@ -2141,7 +2284,6 @@ export const HomeGrid = () => {
       setMovePageNotice(null)
       const intent = { overId, position }
       const previousIntent = dropIntentRef.current
-      const intentPointer = dropIntentPointerRef.current
       if (
         previousIntent &&
         (previousIntent.overId !== overId ||
@@ -2151,34 +2293,11 @@ export const HomeGrid = () => {
         return
       }
       if (
-        previousIntent &&
-        (previousIntent.overId !== overId ||
-          previousIntent.position !== position) &&
-        intentPointer &&
-        dragPointerXRef.current !== null &&
-        dragPointerYRef.current !== null &&
-        Math.hypot(
-          dragPointerXRef.current - intentPointer.x,
-          dragPointerYRef.current - intentPointer.y
-        ) < 12
-      ) {
-        return
-      }
-      if (
         previousIntent?.overId !== overId ||
         previousIntent.position !== position
       ) {
         dropIntentRef.current = intent
         dropIntentRevisionRef.current = dragPointerRevisionRef.current
-        if (
-          dragPointerXRef.current !== null &&
-          dragPointerYRef.current !== null
-        ) {
-          dropIntentPointerRef.current = {
-            x: dragPointerXRef.current,
-            y: dragPointerYRef.current,
-          }
-        }
         setDropIntent(intent)
       }
       const intentKey = `${overId}:${position}`
@@ -2203,9 +2322,11 @@ export const HomeGrid = () => {
     },
     [
       clearDropIntent,
+      clearEdgeTimer,
       clearReorderTimer,
       getLatestDragOrder,
       getValidDropOrder,
+      settleEdgePageTransition,
     ]
   )
 
@@ -2233,15 +2354,16 @@ export const HomeGrid = () => {
         clearDropIntent()
         return
       }
-      const edgeInset = Math.min(72, Math.max(48, bounds.width * 0.07))
       const direction =
-        pointerX < bounds.left + edgeInset
+        pointerX < bounds.left + EDGE_PAGE_TARGET_GUTTER_PX
           ? -1
-          : pointerX > bounds.right - edgeInset
+          : pointerX > bounds.right - EDGE_PAGE_TARGET_GUTTER_PX
             ? 1
             : 0
       if (direction === 0) {
+        settleEdgePageTransition()
         clearEdgeTimer()
+        handleDragOver(event)
         return
       }
       clearReorderTimer()
@@ -2268,7 +2390,9 @@ export const HomeGrid = () => {
       clearDropIntent,
       clearEdgeTimer,
       clearReorderTimer,
+      handleDragOver,
       scheduleEdgePageTurn,
+      settleEdgePageTransition,
     ]
   )
 
@@ -2276,6 +2400,7 @@ export const HomeGrid = () => {
     (event: DragEndEvent) => {
       const { active } = event
       const activeId = String(active.id)
+      const releaseIntent = dropIntentRef.current
       const pointerX =
         dragPointerXRef.current ??
         (dragPointerStartXRef.current !== null
@@ -2299,34 +2424,12 @@ export const HomeGrid = () => {
           : false
       const releaseTarget =
         insideActivePage && pointerX !== null && pointerY !== null && activePageGrid
-          ? Array.from(
-              activePageGrid.querySelectorAll<HTMLElement>(
-                ":scope > [data-home-item-id]"
-              )
+          ? findHomeDropTargetAtPoint(
+              activePageGrid,
+              activeId,
+              pointerX,
+              pointerY
             )
-              .filter(target => target.dataset.homeItemId !== activeId)
-              .map(target => ({
-                target,
-                rect: target.getBoundingClientRect(),
-              }))
-              .filter(
-                ({ rect }) =>
-                  pointerX >= rect.left &&
-                  pointerX <= rect.right &&
-                  pointerY >= rect.top &&
-                  pointerY <= rect.bottom
-              )
-              .sort((left, right) => {
-                const leftDistance = Math.hypot(
-                  pointerX - (left.rect.left + left.rect.width / 2),
-                  pointerY - (left.rect.top + left.rect.height / 2)
-                )
-                const rightDistance = Math.hypot(
-                  pointerX - (right.rect.left + right.rect.width / 2),
-                  pointerY - (right.rect.top + right.rect.height / 2)
-                )
-                return leftDistance - rightDistance
-              })[0] ?? null
           : null
       const layoutChangedDuringDrag =
         dragLayoutRevisionRef.current !== layoutRevisionRef.current
@@ -2334,6 +2437,7 @@ export const HomeGrid = () => {
       clearEdgeTimer()
       clearReorderTimer()
       clearDropIntent()
+      edgePageTransitionUntilRef.current = 0
       itemDraggingRef.current = false
       dragEscapeGuardRef.current = false
       activeDragIdRef.current = null
@@ -2346,16 +2450,21 @@ export const HomeGrid = () => {
       let finalOrder = getLatestDragOrder()
       let shouldCommit = false
       let invalidDrop = false
+      const releasePosition = releaseTarget
+        ? resolveHomeDropPosition(pointerX, releaseTarget.rect)
+        : null
       if (
         !layoutChangedDuringDrag &&
-        releaseTarget?.target.dataset.homeItemId
+        releaseTarget?.target.dataset.homeItemId &&
+        releaseIntent?.overId === releaseTarget.target.dataset.homeItemId &&
+        releaseIntent.position === releasePosition
       ) {
         const overId = releaseTarget.target.dataset.homeItemId
         const candidate = getValidDropOrder(
           finalOrder,
           activeId,
           overId,
-          resolveHomeDropPosition(pointerX, releaseTarget.rect)
+          releaseIntent.position
         )
         if (candidate) {
           finalOrder = candidate
@@ -2411,6 +2520,7 @@ export const HomeGrid = () => {
     clearEdgeTimer()
     clearReorderTimer()
     clearDropIntent()
+    edgePageTransitionUntilRef.current = 0
     itemDraggingRef.current = false
     activeDragIdRef.current = null
     dragLayoutRevisionRef.current = null

@@ -422,6 +422,40 @@ const main = async () => {
     await startpage.setViewportSize(originalViewport)
     await startpage.waitForTimeout(280)
 
+    const normalWidgetHeading = startpage
+      .getByRole("heading", { name: "屏幕时间", exact: true })
+    const normalWidgetHeadingBox = await normalWidgetHeading.boundingBox()
+    const normalWidgetTrack = startpage.locator('[data-home-page-track="true"]')
+    const normalWidgetTrackBefore = await normalWidgetTrack.evaluate(track =>
+      new DOMMatrixReadOnly(getComputedStyle(track).transform).m41
+    )
+    assert(normalWidgetHeadingBox, "Normal-mode widget body is unavailable")
+    const normalWidgetX =
+      normalWidgetHeadingBox.x + normalWidgetHeadingBox.width / 2
+    const normalWidgetY =
+      normalWidgetHeadingBox.y + normalWidgetHeadingBox.height / 2
+    await startpage.mouse.move(normalWidgetX, normalWidgetY)
+    await startpage.mouse.down()
+    await startpage.mouse.move(normalWidgetX - 180, normalWidgetY, { steps: 6 })
+    const normalWidgetTrackDuring = await normalWidgetTrack.evaluate(track =>
+      new DOMMatrixReadOnly(getComputedStyle(track).transform).m41
+    )
+    assert(
+      normalWidgetTrackBefore - normalWidgetTrackDuring >= 120 &&
+        (await startpage.locator('[data-home-dragging="true"]').count()) === 0,
+      "A normal-mode widget-body page swipe turned into widget dragging"
+    )
+    await startpage.mouse.up()
+    await expectVisible(
+      startpage,
+      'button[aria-current="page"][aria-label="转到第 2 页"]',
+      "normal-mode widget-body page swipe"
+    )
+    await startpage
+      .getByRole("button", { name: "转到第 1 页" })
+      .click()
+    await startpage.waitForTimeout(280)
+
     const pageDots = startpage.getByRole("button", { name: /转到第 \d+ 页/ })
     assert((await pageDots.count()) >= 2, "Expected paginated home pages")
     await startpage.locator("body").click({ position: { x: 8, y: 320 } })
@@ -507,6 +541,25 @@ const main = async () => {
     })
     const pageBox = await pageRegion.boundingBox()
     assert(pageBox, "Home page drag region has no bounding box")
+    const findBlankGridPoint = grid =>
+      grid.evaluate(element => {
+        const bounds = element.getBoundingClientRect()
+        let best = null
+        let bestDistance = Number.POSITIVE_INFINITY
+        for (let y = bounds.top + 6; y < bounds.bottom - 6; y += 6) {
+          for (let x = bounds.left + 6; x < bounds.right - 6; x += 6) {
+            if (document.elementFromPoint(x, y) !== element) continue
+            const distance =
+              Math.abs(x - (bounds.left + bounds.width / 2)) +
+              Math.abs(y - (bounds.top + bounds.height / 2))
+            if (distance < bestDistance) {
+              best = { x, y }
+              bestDistance = distance
+            }
+          }
+        }
+        return best
+      })
     const secondPageGrid = startpage
       .locator('[data-home-page-grid="true"]')
       .nth(1)
@@ -563,34 +616,77 @@ const main = async () => {
       )
     const dragX = tileBox.x + tileBox.width / 2
     const dragY = tileBox.y + tileBox.height / 2
-    const beforeSmallDragX = await readTrackX()
+    const dragShell = dragTile.locator(
+      "xpath=ancestor::*[@data-home-item-kind='app'][1]"
+    )
+    const beforeIconDragX = await readTrackX()
     await startpage.mouse.move(dragX, dragY)
     await startpage.mouse.down()
     await startpage.mouse.move(dragX + 18, dragY, { steps: 3 })
-    const duringSmallDragX = await readTrackX()
+    await startpage.waitForTimeout(80)
     assert(
-      duringSmallDragX - beforeSmallDragX >= 12,
-      `Home page track did not follow a small pointer drag (${beforeSmallDragX} -> ${duringSmallDragX})`
+      (await dragShell.getAttribute("data-home-dragging")) === "true",
+      "A direct mouse drag on an app was stolen by page swipe"
     )
-    await startpage.waitForTimeout(120)
+    const duringIconDragX = await readTrackX()
+    assert(
+      Math.abs(duringIconDragX - beforeIconDragX) < 2,
+      `Dragging an app also moved the page track (${beforeIconDragX} -> ${duringIconDragX})`
+    )
+    await startpage.mouse.move(pageBox.x + 8, dragY, { steps: 10 })
+    await startpage.waitForTimeout(650)
+    await expectVisible(
+      startpage,
+      'button[aria-current="page"][aria-label="转到第 1 页"]',
+      "non-edit app drag edge page turn"
+    )
+    assert(
+      (await dragShell.getAttribute("data-home-dragging")) === "true",
+      "The held app drag ended while crossing into another page"
+    )
+    await startpage.keyboard.press("Escape")
     await startpage.mouse.up()
-    await startpage.waitForTimeout(280)
-    assert(
-      startpage.url() === `chrome-extension://${extensionId}/index.html`,
-      "Small drag on an app icon accidentally opened the link"
-    )
+    await startpage.waitForTimeout(300)
     await expectVisible(
       startpage,
       'button[aria-current="page"][aria-label="转到第 2 页"]',
-      "small icon drag snap-back"
+      "cancelled non-edit app drag rollback"
+    )
+    assert(
+      startpage.url() === `chrome-extension://${extensionId}/index.html`,
+      "Dragging an app icon accidentally opened the link"
+    )
+    await startpage.getByRole("button", { name: "完成", exact: true }).click()
+
+    const secondPageBlank = await findBlankGridPoint(secondPageGrid)
+    assert(secondPageBlank, "Second page has no blank swipe start point")
+    const beforeSmallDragX = await readTrackX()
+    await startpage.mouse.move(secondPageBlank.x, secondPageBlank.y)
+    await startpage.mouse.down()
+    await startpage.mouse.move(secondPageBlank.x + 18, secondPageBlank.y, {
+      steps: 3,
+    })
+    const duringSmallDragX = await readTrackX()
+    assert(
+      duringSmallDragX - beforeSmallDragX >= 12,
+      `Home page track did not follow a blank-space pointer drag (${beforeSmallDragX} -> ${duringSmallDragX})`
+    )
+    await startpage.mouse.up()
+    await startpage.waitForTimeout(280)
+    await expectVisible(
+      startpage,
+      'button[aria-current="page"][aria-label="转到第 2 页"]',
+      "small blank-space drag snap-back"
     )
 
     const beforeFullDragX = await readTrackX()
-    await startpage.mouse.move(dragX, dragY)
+    await startpage.mouse.move(secondPageBlank.x, secondPageBlank.y)
     await startpage.mouse.down()
-    await startpage.mouse.move(dragX + Math.max(180, pageBox.width * 0.2), dragY, {
-      steps: 6,
-    })
+    await startpage.mouse.move(
+      secondPageBlank.x + Math.max(180, pageBox.width * 0.2),
+      secondPageBlank.y,
+      { steps: 6 }
+    )
     const duringFullDragX = await readTrackX()
     assert(
       duringFullDragX - beforeFullDragX >= 150,
@@ -600,7 +696,7 @@ const main = async () => {
     await expectVisible(
       startpage,
       'button[aria-current="page"][aria-label="转到第 1 页"]',
-      "app-icon drag page navigation"
+      "blank-space drag page navigation"
     )
     await startpage.waitForTimeout(280)
 
@@ -694,12 +790,24 @@ const main = async () => {
         Math.abs(screenTimeBoxDuring.height - screenTimeBoxBefore.height) < 2,
       `Widget changed size while drag started (${screenTimeBoxBefore.width}x${screenTimeBoxBefore.height} -> ${screenTimeBoxDuring.width}x${screenTimeBoxDuring.height})`
     )
+    const rediscoveryCenterX =
+      rediscoveryBox.x + rediscoveryBox.width / 2
+    const rediscoveryCenterY =
+      rediscoveryBox.y + rediscoveryBox.height / 2
     await startpage.mouse.move(
-      rediscoveryBox.x + rediscoveryBox.width / 2,
-      rediscoveryBox.y + rediscoveryBox.height / 2,
+      rediscoveryCenterX - 4,
+      rediscoveryCenterY,
       { steps: 10 }
     )
-    await startpage.waitForTimeout(120)
+    await startpage.waitForTimeout(80)
+    const widgetDropPositionBeforeCrossing =
+      await rediscoveryShell.getAttribute("data-home-drop-position")
+    assert(
+      widgetDropPositionBeforeCrossing === "before",
+      `Long-pressed widget exposed ${widgetDropPositionBeforeCrossing ?? "no"} marker immediately before the target midpoint`
+    )
+    await startpage.mouse.move(rediscoveryCenterX + 4, rediscoveryCenterY)
+    await startpage.waitForTimeout(80)
     const screenTimeBoxMoving = await startpage
       .locator(
         '[data-home-drag-overlay-id="widget:screen-time"]'
@@ -737,6 +845,13 @@ const main = async () => {
         )) === 0,
       "Dragging a widget remounted or reflowed the real page tree"
     )
+    const widgetDropPosition = await rediscoveryShell.getAttribute(
+      "data-home-drop-position"
+    )
+    assert(
+      widgetDropPosition === "after",
+      `Long-pressed widget exposed ${widgetDropPosition ?? "no"} marker after crossing the target midpoint by 8px`
+    )
     await startpage.mouse.up()
     await startpage.waitForTimeout(240)
     const widgetOrderAfter = await startpage.evaluate(() =>
@@ -745,7 +860,7 @@ const main = async () => {
     )
     assert(
       JSON.stringify(widgetOrderAfter) !== JSON.stringify(widgetOrderBefore),
-      "Long-pressed widget did not persist its moved position"
+      `Long-pressed widget did not persist its ${widgetDropPosition} position`
     )
 
     const widgetEditSurface = screenTimeShell.locator(
@@ -772,25 +887,6 @@ const main = async () => {
     await startpage.mouse.up()
     await startpage.waitForTimeout(80)
 
-    const findBlankGridPoint = grid =>
-      grid.evaluate(element => {
-        const bounds = element.getBoundingClientRect()
-        let best = null
-        let bestDistance = Number.POSITIVE_INFINITY
-        for (let y = bounds.top + 6; y < bounds.bottom - 6; y += 6) {
-          for (let x = bounds.left + 6; x < bounds.right - 6; x += 6) {
-            if (document.elementFromPoint(x, y) !== element) continue
-            const distance =
-              Math.abs(x - (bounds.left + bounds.width / 2)) +
-              Math.abs(y - (bounds.top + bounds.height / 2))
-            if (distance < bestDistance) {
-              best = { x, y }
-              bestDistance = distance
-            }
-          }
-        }
-        return best
-      })
     const activeGrid = () =>
       startpage.locator(
         '[data-home-page-grid="true"][aria-hidden="false"]'
@@ -1022,9 +1118,17 @@ const main = async () => {
       secondPageAppCount >= 3,
       "Second page has too few app targets for an exact cross-page drop"
     )
-    const secondPageTarget = secondPageApps.nth(
-      Math.floor(secondPageAppCount / 2)
+    const secondPageTargetIndex = await secondPageApps.evaluateAll(apps =>
+      apps.reduce(
+        (best, app, index) => {
+          const rect = app.getBoundingClientRect()
+          const center = rect.left + rect.width / 2
+          return center > best.center ? { index, center } : best
+        },
+        { index: 0, center: Number.NEGATIVE_INFINITY }
+      ).index
     )
+    const secondPageTarget = secondPageApps.nth(secondPageTargetIndex)
     const secondPageTargetShell = secondPageTarget.locator(
       "xpath=ancestor::*[@data-home-item-kind='app'][1]"
     )
