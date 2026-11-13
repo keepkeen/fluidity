@@ -22,6 +22,7 @@ import {
   normalizeToHex,
 } from "../../utils/colorUtils"
 import { settingsLogger } from "../../utils/logger"
+import { writeLinkGroups } from "../../services/linkSync"
 
 // 新版 CSS 变量名常量（13 色系统）
 const CSS_BG_PRIMARY = "--bg-primary"
@@ -340,7 +341,7 @@ export const Links = {
     }
   },
 
-  set: (themes: linkGroup[]) => writeLocalJson(linkGroupsKey, themes),
+  set: (groups: linkGroup[]) => writeLinkGroups(groups, Links.getWithFallback()),
 
   parse: (linkGroups: string) => JSON.parse(linkGroups) as linkGroup[],
 }

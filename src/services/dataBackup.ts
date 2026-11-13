@@ -27,6 +27,15 @@ import {
 import { normalizeSearchRecords } from "./analytics"
 import { normalizeWidgetInstance } from "./widgetRegistry"
 import { HOME_LAYOUT_KEY, withHomeLayoutLock } from "./homeLayout"
+import {
+  LINK_GROUPS_KEY,
+  LINK_SYNC_KEY,
+  mergeLinkSyncStates,
+  normalizeLinkSyncState,
+  readLinkSyncState,
+  recordLinkChanges,
+} from "./linkSync"
+import type { linkGroup } from "../data/data"
 
 // 常量
 const AI_SETTINGS_KEY = "ai-settings"
@@ -40,6 +49,7 @@ const BACKUP_KEYS = {
     "search-settings",
     "themes",
     "link-groups",
+    LINK_SYNC_KEY,
     "design",
     "link-display-settings",
     WALLPAPER_SETTINGS_KEY,
@@ -158,7 +168,10 @@ const createImportResult = (): ImportResult => ({
   failedKeys: [],
 })
 
-const appendFailedKeys = (result: ImportResult, keys: readonly string[]): void => {
+const appendFailedKeys = (
+  result: ImportResult,
+  keys: readonly string[]
+): void => {
   result.failedKeys = [...new Set([...(result.failedKeys ?? []), ...keys])]
   result.rollbackComplete = result.failedKeys.length === 0
 }
@@ -196,10 +209,7 @@ export interface BackupPreview {
  * 获取所有需要备份的键
  */
 const getAllBackupKeys = (options: ExportOptions = {}): string[] => {
-  const {
-    includeAnalytics = true,
-    includeReports = true,
-  } = options
+  const { includeAnalytics = true, includeReports = true } = options
 
   let keys = [...BACKUP_KEYS.settings, ...BACKUP_KEYS.ai]
 
@@ -375,9 +385,13 @@ const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value)
 
 const hasOnlyStringValues = (value: unknown): value is Record<string, string> =>
-  isRecord(value) && Object.values(value).every(item => typeof item === "string")
+  isRecord(value) &&
+  Object.values(value).every(item => typeof item === "string")
 
-const requireRecord = (value: unknown, key: string): Record<string, unknown> => {
+const requireRecord = (
+  value: unknown,
+  key: string
+): Record<string, unknown> => {
   if (!isRecord(value)) throw new Error(`${key} 应为对象`)
   return value
 }
@@ -502,8 +516,7 @@ const normalizeHomeLayoutV1 = (value: unknown): unknown => {
       layout,
       field,
       item =>
-        Array.isArray(item) &&
-        item.every(entry => typeof entry === "string"),
+        Array.isArray(item) && item.every(entry => typeof entry === "string"),
       "fluidity.homeLayout.v1"
     )
   }
@@ -672,6 +685,8 @@ const normalizeKnownBackupValue = (key: string, value: unknown): unknown => {
   switch (key) {
     case "link-groups":
       return normalizeLinkGroups(value)
+    case LINK_SYNC_KEY:
+      return normalizeLinkSyncState(value)
     case AI_SETTINGS_KEY:
       return normalizeAISettings(value)
     case "fluidity.homeLayout.v2":
@@ -779,7 +794,7 @@ const normalizeKnownBackupValue = (key: string, value: unknown): unknown => {
   }
 }
 
-const normalizeBackupData = (backup: BackupData): BackupData => {
+export const normalizeBackupData = (backup: BackupData): BackupData => {
   const recognizedKeys = new Set([...getAllValidKeys(), ...CHROME_BACKUP_KEYS])
   const data = Object.fromEntries(
     Object.entries(backup.data).map(([key, value]) => [
@@ -842,7 +857,8 @@ const preserveLocalImages = (key: string, newValue: unknown): unknown => {
           ...incoming,
           localImageData: current.localImageData,
           // 导出时 local 来源被退回 preset，这里恢复本机的选择
-          source: incoming.source === "preset" ? current.source : incoming.source,
+          source:
+            incoming.source === "preset" ? current.source : incoming.source,
         }
       }
       return incoming
@@ -952,13 +968,34 @@ export const importData = (
   const transactionKeys = Object.keys(backup.data).filter(key =>
     getAllValidKeys().includes(key)
   )
+  if (LINK_GROUPS_KEY in backup.data) transactionKeys.push(LINK_SYNC_KEY)
   try {
     runLocalStorageTransaction(transactionKeys, () => {
-      Object.entries(backup.data).forEach(([key, value]) => {
+      const data = { ...backup.data }
+      if (LINK_GROUPS_KEY in data) {
+        if (overwrite || localStorage.getItem(LINK_GROUPS_KEY) === null) {
+          // A manual restore is a new user edit: retain old deletion history,
+          // while stamping intentional restores/replacements as newer edits.
+          data[LINK_SYNC_KEY] = recordLinkChanges(
+            JSON.parse(
+              localStorage.getItem(LINK_GROUPS_KEY) ?? "[]"
+            ) as linkGroup[],
+            data[LINK_GROUPS_KEY] as linkGroup[],
+            mergeLinkSyncStates(
+              readLinkSyncState(),
+              normalizeLinkSyncState(data[LINK_SYNC_KEY])
+            )
+          )
+        } else delete data[LINK_SYNC_KEY]
+      }
+      Object.entries(data).forEach(([key, value]) => {
         // Extension-owned chrome.storage keys are handled by importDataAsync.
         // They are valid backup fields and must not be reported as unknown.
         if (CHROME_BACKUP_KEYS.includes(key)) return
-        importSingleKey(key, value, result, { overwrite, skipApiKey })
+        importSingleKey(key, value, result, {
+          overwrite: key === LINK_SYNC_KEY && LINK_GROUPS_KEY in data ? true : overwrite,
+          skipApiKey,
+        })
       })
       if (result.errors.length > 0) throw new Error("IMPORT_ROLLBACK")
     })
@@ -1008,8 +1045,10 @@ const importDataAsyncUnlocked = async (
   let localSnapshots: Map<string, string | null>
   const chromeSnapshots = new Map<string, unknown>()
   try {
+    const localKeys = new Set(Object.keys(backup.data))
+    if (LINK_GROUPS_KEY in backup.data) localKeys.add(LINK_SYNC_KEY)
     localSnapshots = new Map(
-      Object.keys(backup.data)
+      [...localKeys]
         .filter(key => getAllValidKeys().includes(key))
         .map(key => [key, localStorage.getItem(key)] as const)
     )
@@ -1034,9 +1073,7 @@ const importDataAsyncUnlocked = async (
   // The following Chrome writes yield to other tabs/background tasks, so a
   // later rollback must not overwrite values that changed in the meantime.
   const localImportedValues = new Map(
-    localImportedKeys.map(
-      key => [key, localStorage.getItem(key)] as const
-    )
+    localImportedKeys.map(key => [key, localStorage.getItem(key)] as const)
   )
   let attemptedChromeImport = false
   const attemptedChromeKeys = new Set<string>()

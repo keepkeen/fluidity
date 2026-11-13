@@ -4,7 +4,9 @@ import {
   applyBackupValue,
   BackupData,
   exportDataAsync,
+  exportData,
   importDataAsync,
+  normalizeBackupData,
 } from "./dataBackup"
 import {
   getChromeLocal,
@@ -38,6 +40,13 @@ import {
 import { KeyTimestamps, planMerge } from "./syncMerge"
 import { getSyncRuntimeStatus, setSyncRuntimeStatus } from "./syncRuntime"
 import { emitSettingsApplied } from "./settingsEvents"
+import {
+  applyLinkSnapshot,
+  LINK_GROUPS_KEY,
+  LINK_SYNC_KEY,
+  normalizeLinkSyncState,
+} from "./linkSync"
+import type { linkGroup } from "../data/data"
 
 export type SyncInitContext = "startpage" | "popup"
 
@@ -146,6 +155,7 @@ const SYNCED_LOCAL_STORAGE_KEYS = new Set<string>([
   "search-settings",
   "themes",
   "link-groups",
+  LINK_SYNC_KEY,
   "design",
   "link-display-settings",
   "wallpaper-settings",
@@ -763,8 +773,16 @@ const mergeRemoteBackup = async (
   generation: number
 ): Promise<{ needsPush: boolean; appliedLocal: boolean }> => {
   return await withRemoteApplyLock(generation, async () => {
+    remote = normalizeBackupData(remote)
     const localBackup = await exportDataAsync()
     assertSyncGeneration(generation)
+    // Chrome storage reads above yield. Refresh links immediately before the
+    // synchronous merge/write so edits made during that await are preserved.
+    const freshLocal = exportData().data
+    for (const key of [LINK_GROUPS_KEY, LINK_SYNC_KEY]) {
+      if (key in freshLocal) localBackup.data[key] = freshLocal[key]
+      else delete localBackup.data[key]
+    }
     const plan = planMerge({
       localData: localBackup.data,
       localTimestamps: readKeyTimestamps(),
@@ -774,9 +792,26 @@ const mergeRemoteBackup = async (
     })
 
     let appliedLocal = false
+    const linkEntry = plan.find(entry => entry.key === LINK_GROUPS_KEY)
+    const metadataEntry = plan.find(entry => entry.key === LINK_SYNC_KEY)
+    if (linkEntry?.value !== undefined || metadataEntry?.value !== undefined) {
+      applyLinkSnapshot(
+        (linkEntry?.value ??
+          localBackup.data[LINK_GROUPS_KEY] ??
+          []) as linkGroup[],
+        normalizeLinkSyncState(
+          metadataEntry?.value ?? localBackup.data[LINK_SYNC_KEY]
+        )
+      )
+      appliedLocal = true
+    }
     for (const entry of plan) {
       assertSyncGeneration(generation)
-      if (entry.value !== undefined) {
+      if (
+        entry.value !== undefined &&
+        entry.key !== LINK_GROUPS_KEY &&
+        entry.key !== LINK_SYNC_KEY
+      ) {
         await applyBackupValue(entry.key, entry.value)
         assertSyncGeneration(generation)
         appliedLocal = true
@@ -1248,7 +1283,12 @@ const createLeaderController = (instanceId: string) => {
     if (isLeader()) localStorage.removeItem(LEADER_KEY)
   }
 
-  return { isLeader, ensureLeader: becomeLeader, ensureLeaderOrRequestPull, stop }
+  return {
+    isLeader,
+    ensureLeader: becomeLeader,
+    ensureLeaderOrRequestPull,
+    stop,
+  }
 }
 
 const createRequestHandler =
@@ -1296,9 +1336,9 @@ const createLocalChangeHandler =
 
 const createOnlineHandler =
   (isLeader: () => boolean, ensureLeader: () => boolean) => (): void => {
-  if (isLeader() || ensureLeader()) void pullNow().catch(() => undefined)
-  else requestLeaderAction("pull")
-}
+    if (isLeader() || ensureLeader()) void pullNow().catch(() => undefined)
+    else requestLeaderAction("pull")
+  }
 
 const createChromeStorageChangedHandler =
   (isLeader: () => boolean, ensureLeader: () => boolean) =>
@@ -1308,7 +1348,10 @@ const createChromeStorageChangedHandler =
   ) => {
     if (isRemoteApplyActive()) return
     if (areaName !== "local") return
-    if (!changes[BROWSER_USAGE_STORAGE_KEY] && !changes[BROWSER_USAGE_SETTINGS_KEY]) {
+    if (
+      !changes[BROWSER_USAGE_STORAGE_KEY] &&
+      !changes[BROWSER_USAGE_SETTINGS_KEY]
+    ) {
       return
     }
     for (const key of [BROWSER_USAGE_STORAGE_KEY, BROWSER_USAGE_SETTINGS_KEY]) {
@@ -1376,22 +1419,13 @@ export const startGistAutoSync = (context: SyncInitContext): (() => void) => {
     autoSyncRuntimeActive = true
     leader.ensureLeaderOrRequestPull()
 
-    const onRequest = createRequestHandler(
-      leader.isLeader,
-      leader.ensureLeader
-    )
+    const onRequest = createRequestHandler(leader.isLeader, leader.ensureLeader)
     const offLocal = onLocalStorageChange(
       createLocalChangeHandler(leader.isLeader, leader.ensureLeader)
     )
-    const onOnline = createOnlineHandler(
-      leader.isLeader,
-      leader.ensureLeader
-    )
+    const onOnline = createOnlineHandler(leader.isLeader, leader.ensureLeader)
     const offChrome = bindChromeStorageChangedListener(
-      createChromeStorageChangedHandler(
-        leader.isLeader,
-        leader.ensureLeader
-      )
+      createChromeStorageChangedHandler(leader.isLeader, leader.ensureLeader)
     )
 
     window.addEventListener("storage", onRequest)

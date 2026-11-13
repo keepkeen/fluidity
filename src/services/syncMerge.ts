@@ -13,6 +13,12 @@ import {
   SearchRecord,
 } from "./analytics"
 import { linkGroup } from "../data/data"
+import {
+  LINK_GROUPS_KEY,
+  LINK_SYNC_KEY,
+  mergeLinkSnapshots,
+  normalizeLinkSyncState,
+} from "./linkSync"
 
 export type KeyTimestamps = Record<string, number>
 
@@ -65,9 +71,7 @@ const mergePins = (newer: unknown, older: unknown): string[] => {
   const a = Array.isArray(newer) ? newer : []
   const b = Array.isArray(older) ? older : []
   return [
-    ...new Set(
-      [...a, ...b].filter((v): v is string => typeof v === "string")
-    ),
+    ...new Set([...a, ...b].filter((v): v is string => typeof v === "string")),
   ]
 }
 
@@ -293,6 +297,37 @@ export const planMerge = (options: {
   const keys = new Set([...Object.keys(localData), ...Object.keys(remoteData)])
   const plan: MergePlanEntry[] = []
 
+  if (keys.has(LINK_GROUPS_KEY)) {
+    const localTs = localTimestamps[LINK_GROUPS_KEY] ?? 0
+    const remoteTs = remoteTimestamps[LINK_GROUPS_KEY] ?? remoteFallbackTs
+    const local = (localData[LINK_GROUPS_KEY] ?? []) as linkGroup[]
+    const remote = (remoteData[LINK_GROUPS_KEY] ?? []) as linkGroup[]
+    const localState = normalizeLinkSyncState(localData[LINK_SYNC_KEY])
+    const remoteState = normalizeLinkSyncState(remoteData[LINK_SYNC_KEY])
+    const localFirst =
+      localTs > remoteTs ||
+      (localTs === remoteTs &&
+        stableSerialize(local) >= stableSerialize(remote))
+    const merged = localFirst
+      ? mergeLinkSnapshots(local, remote, localState, remoteState)
+      : mergeLinkSnapshots(remote, local, remoteState, localState)
+    for (const [key, value] of [
+      [LINK_GROUPS_KEY, merged.groups],
+      [LINK_SYNC_KEY, merged.state],
+    ] as const) {
+      plan.push({
+        key,
+        value:
+          stableSerialize(value) === stableSerialize(localData[key])
+            ? undefined
+            : value,
+        timestamp: Math.max(localTs, remoteTs),
+        needsPush: stableSerialize(value) !== stableSerialize(remoteData[key]),
+      })
+      keys.delete(key)
+    }
+  }
+
   for (const key of keys) {
     const localHas = key in localData
     const remoteHas = key in remoteData
@@ -320,11 +355,21 @@ export const planMerge = (options: {
     }
 
     if (remoteHas && !localHas) {
-      plan.push({ key, value: remoteData[key], timestamp: remoteTs, needsPush: false })
+      plan.push({
+        key,
+        value: remoteData[key],
+        timestamp: remoteTs,
+        needsPush: false,
+      })
     } else if (localHas && !remoteHas) {
       plan.push({ key, timestamp: localTs, needsPush: true })
     } else if (remoteTs > localTs) {
-      plan.push({ key, value: remoteData[key], timestamp: remoteTs, needsPush: false })
+      plan.push({
+        key,
+        value: remoteData[key],
+        timestamp: remoteTs,
+        needsPush: false,
+      })
     } else if (localTs > remoteTs) {
       plan.push({ key, timestamp: localTs, needsPush: true })
     } else {

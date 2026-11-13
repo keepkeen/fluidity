@@ -25,7 +25,8 @@ vi.mock("./gistApi", () => ({
   validateGitHubToken: vi.fn(),
 }))
 
-vi.mock("./dataBackup", () => ({
+vi.mock("./dataBackup", async importOriginal => ({
+  ...(await importOriginal<typeof import("./dataBackup")>()),
   applyBackupValue: applyBackupValueMock,
   exportDataAsync: exportDataAsyncMock,
   importDataAsync: importDataAsyncMock,
@@ -46,10 +47,12 @@ import {
   restoreConflictCopy,
   setSyncPasswordForSession,
 } from "./gistSync"
+import { exportData } from "./dataBackup"
+import { LINK_GROUPS_KEY, writeLinkGroups } from "./linkSync"
 
 const CONFIG_KEY = "fluidity.gistSync.config.v1"
 
-const deferred = <T,>() => {
+const deferred = <T>() => {
   let resolve!: (value: T) => void
   const promise = new Promise<T>(next => {
     resolve = next
@@ -83,7 +86,10 @@ describe("gist sync lifecycle", () => {
         runtime: { lastError: undefined },
         storage: {
           local: {
-            get: (keys: string[], callback: (value: Record<string, unknown>) => void) =>
+            get: (
+              keys: string[],
+              callback: (value: Record<string, unknown>) => void
+            ) =>
               callback(Object.fromEntries(keys.map(key => [key, data[key]]))),
             set: (values: Record<string, unknown>, callback: () => void) => {
               const changes = Object.fromEntries(
@@ -100,7 +106,8 @@ describe("gist sync lifecycle", () => {
             },
           },
           session: {
-            get: (_keys: string[], callback: (value: object) => void) => callback({}),
+            get: (_keys: string[], callback: (value: object) => void) =>
+              callback({}),
             remove: (_key: string, callback: () => void) => callback(),
           },
           onChanged: {
@@ -237,7 +244,7 @@ describe("gist sync lifecycle", () => {
         JSON.stringify({
           version: "1.0",
           exportDate: "old",
-          data: { design: { value: "old-remote" } },
+          data: { design: { name: "old-remote", colors: {}, image: "" } },
           keyTimestamps: { design: 100 },
         })
       )
@@ -245,7 +252,7 @@ describe("gist sync lifecycle", () => {
         JSON.stringify({
           version: "1.0",
           exportDate: "new",
-          data: { design: { value: "new-remote" } },
+          data: { design: { name: "new-remote", colors: {}, image: "" } },
           keyTimestamps: { design: 200 },
         })
       )
@@ -269,7 +276,9 @@ describe("gist sync lifecycle", () => {
     setSyncPasswordForSession("password")
 
     const firstPull = pullNow()
-    await vi.waitFor(() => expect(applyBackupValueMock).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() =>
+      expect(applyBackupValueMock).toHaveBeenCalledTimes(1)
+    )
 
     await disconnectGistSync()
     const disabled = data[CONFIG_KEY] as Record<string, unknown>
@@ -290,7 +299,43 @@ describe("gist sync lifecycle", () => {
     await secondPull
 
     expect(exportDataAsyncMock).toHaveBeenCalledTimes(2)
-    expect(localData.design).toEqual({ value: "new-remote" })
+    expect(localData.design).toEqual({
+      name: "new-remote",
+      colors: {},
+      image: "",
+    })
+  })
+
+  it("preserves a bookmark deletion made while a pull reads Chrome storage", async () => {
+    const initial = [{ title: "work", links: [
+      {label: "A", value: "https://a.example"},
+      {label: "B", value: "https://b.example"},
+    ] }]
+    writeLinkGroups(initial)
+    const staleLocal = exportData()
+    const pendingExport = deferred<typeof staleLocal>()
+    exportDataAsyncMock.mockReturnValueOnce(pendingExport.promise)
+    decryptMock.mockResolvedValue(JSON.stringify({
+      ...staleLocal,
+      data: {...staleLocal.data, [LINK_GROUPS_KEY]: [{...initial[0], links: [
+        ...initial[0].links, {label: "C", value: "https://c.example"},
+      ]}]},
+    }))
+    const envelope = {meta: {updatedAt: Date.now(), clientVersion: "test", deviceId: "remote"},
+      encryption: {algo: "AES-GCM", kdf: "PBKDF2", iterations: 200000, salt: "salt", iv: "iv"},
+      ciphertext: "ciphertext"}
+    getGistMock.mockResolvedValue({id: "gist-id", description: "backup",
+      files: {"fluidity.sync.v1.json": {content: JSON.stringify(envelope)}},
+      history: [{version: "head"}]})
+    setSyncPasswordForSession("password")
+    const pull = pullNow()
+    await vi.waitFor(() => expect(exportDataAsyncMock).toHaveBeenCalledTimes(1))
+    writeLinkGroups([{...initial[0], links: [initial[0].links[0]]}])
+    pendingExport.resolve(staleLocal)
+    await pull
+    expect(JSON.parse(localStorage.getItem(LINK_GROUPS_KEY) ?? "[]")).toEqual([
+      {title: "work", links: [initial[0].links[0], {label: "C", value: "https://c.example"}]},
+    ])
   })
 
   it("preserves cancellation when disconnecting during conflict decryption", async () => {

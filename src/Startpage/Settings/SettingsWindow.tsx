@@ -50,7 +50,7 @@ const SETTINGS_TRANSACTION_KEYS: Record<SettingsDomain, readonly string[]> = {
   design: ["design"],
   themes: ["themes"],
   search: ["search-settings"],
-  links: ["link-groups"],
+  links: ["link-groups", "fluidity.linkSync.v1"],
   homeLayout: [HOME_LAYOUT_KEY],
   linkDisplay: ["link-display-settings"],
   wallpaper: ["wallpaper-settings"],
