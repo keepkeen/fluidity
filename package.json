@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint ./src --ext .ts,.tsx",
     "lint:fix": "npm run lint -- --fix",
-    "verify": "npm run typecheck && npm run lint"
+    "verify": "npm run typecheck && npm run lint",
+    "test:e2e:home": "npm run build && node scripts/mv3-e2e.mjs --home-only"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -33,11 +34,11 @@
   "devDependencies": {
     "@emotion/babel-plugin": "^11.13.5",
     "@types/chrome": "^0.1.32",
-    "@types/node": "^24.13.1",
+    "@types/node": "^24.19.2",
     "@types/react": "^18.2.18",
     "@types/react-dom": "^18.2.7",
-    "@typescript-eslint/eslint-plugin": "^8.49.0",
-    "@typescript-eslint/parser": "^8.49.0",
+    "@typescript-eslint/eslint-plugin": "^8.72.2",
+    "@typescript-eslint/parser": "^8.72.2",
     "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^8.57.1",
     "eslint-plugin-jsx-a11y": "^6.10.2",
@@ -47,9 +48,9 @@
     "jsdom": "^29.1.1",
     "playwright": "^1.60.0",
     "typescript": "^5.7.3",
-    "vite": "^6.0.0",
+    "vite": "^6.4.6",
     "vite-plugin-checker": "^0.8.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.12"
   },
   "browserslist": [
     "defaults"
@@ -102,6 +103,11 @@
       "react/react-in-jsx-scope": "off",
       "sonarjs/cognitive-complexity": "off",
       "sonarjs/no-duplicate-string": "off"
+    }
+  },
+  "overrides": {
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.1"
     }
   }
 }

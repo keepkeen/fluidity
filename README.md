@@ -138,6 +138,7 @@
 - **书签导入**：通过可选 `bookmarks` 权限读取浏览器书签，导入后即可撤销权限。
 - **导入 / 导出**：本地备份会主动排除 AI API Key，恢复时也不会覆盖现有密钥。
 - **加密 Gist 同步**：AES-GCM + PBKDF2 本地加密，按数据键合并多设备变更，避免整个快照互相覆盖。
+- **链接删除同步**：分组与链接保留逐项版本和删除标记，旧快照不会把已删除的链接带回来；主动重新添加、撤销删除和恢复备份会产生新版本。参与同步的设备都应更新到支持删除标记的版本。
 
 ## 📦 安装
 
@@ -257,6 +258,9 @@ npm run build:extension
 # 首次运行前：npx playwright install chromium
 MV3_E2E_HEADLESS=1 npm run test:e2e:mv3
 
+# 主屏交互回归（37 项，不包含浏览器原生权限授权测试）
+MV3_E2E_HEADLESS=1 npm run test:e2e:home
+
 # 生成版本化 zip，输出到 dist/
 npm run build:zip
 ```
@@ -294,7 +298,8 @@ git diff --check
 
 - [ ] Chrome Web Store / Edge Add-ons 正式发布
 - [ ] 更完善的触屏与无障碍细节
-- [ ] 同步删除标记与冲突可视化
+- [x] 链接、分组的同步删除标记与逐项冲突合并
+- [ ] 同步冲突可视化
 - [ ] 社区主题与壁纸画廊
 
 欢迎通过 [Issues](https://github.com/keepkeen/fluidity/issues) 提交问题与建议，也欢迎 Fork 后发起 Pull Request。
