@@ -10,6 +10,46 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, "..")
 const extensionDir = path.join(rootDir, "build")
 const tempProfilePrefix = "fluidity-mv3-e2e-"
+const homeOnly = process.argv.includes("--home-only")
+const coreChecks = [
+  "service_worker",
+  "startpage",
+  "home_pagination",
+  "direct_bookmark_search",
+  "smart_search_chinese_pinyin_initials_fuzzy_history",
+  "slash_link_search",
+  "page_shortcut",
+  "direct_track_drag",
+  "app_icon_drag_click_suppression",
+  "compact_app_hit_target",
+  "visited_page_icon_retention",
+  "continuous_multi_page_drag_reverse_cancel",
+  "real_touch_long_press_follow_reorder_cancel_commit",
+  "widget_keyboard_open",
+  "widget_dialog_portal_gesture_isolation",
+  "modal_blocks_edit_toolbar",
+  "widget_action_long_press_click_suppression",
+  "widget_edit_surface_drag",
+  "widget_vertical_touch_scroll",
+  "link_search_focus_restore",
+  "rediscovery_hide_refresh_undo",
+  "widget_long_press_drag_stable_size",
+  "widget_whole_card_drag_stable_tree",
+  "widget_grid_slot_containment",
+  "compact_widget_content_containment",
+  "compact_smart_entry_empty_action",
+  "edit_mode_mouse_page_swipe",
+  "pointer_first_app_widget_drop_target",
+  "app_edge_dwell_cross_page_drop",
+  "app_edge_dwell_cancel_rollback",
+  "widget_gallery_add_resize",
+  "home_overview",
+  "page_shortcut_setting",
+  "settings_data",
+  "settings_ai",
+  "home_order_local_preview_apply",
+  "popup",
+]
 
 const assert = (condition, message) => {
   if (!condition) throw new Error(message)
@@ -191,9 +231,7 @@ const suppressFirstRunUi = async page => {
     const weekNumber = Math.ceil((days + startOfYear.getDay() + 1) / 7)
     const reportState = {
       dismissedWeeklyReport: `${now.getFullYear()}-W${pad(weekNumber)}`,
-      dismissedMonthlyReport: `${now.getFullYear()}-${pad(
-        now.getMonth() + 1
-      )}`,
+      dismissedMonthlyReport: `${now.getFullYear()}-${pad(now.getMonth() + 1)}`,
     }
 
     localStorage.setItem("fluidity-onboarding-completed", "true")
@@ -313,7 +351,9 @@ const main = async () => {
     })
     await screenTimeDetails.waitFor({ state: "visible", timeout: 10_000 })
     assert(
-      await screenTimeDetails.evaluate(dialog => dialog.parentElement === document.body),
+      await screenTimeDetails.evaluate(
+        dialog => dialog.parentElement === document.body
+      ),
       "Widget detail dialog is still trapped inside the transformed page track"
     )
     const dialogPageBefore = await startpage
@@ -325,11 +365,15 @@ const main = async () => {
     await screenTimeClose.focus()
     await startpage.keyboard.press("ArrowRight")
     assert(
-      (await startpage.locator('button[aria-current="page"]').getAttribute("aria-label")) ===
-        dialogPageBefore,
+      (await startpage
+        .locator('button[aria-current="page"]')
+        .getAttribute("aria-label")) === dialogPageBefore,
       "Arrow key inside a widget dialog changed the home page"
     )
-    const detailBox = await screenTimeDetails.locator(":scope > *").first().boundingBox()
+    const detailBox = await screenTimeDetails
+      .locator(":scope > *")
+      .first()
+      .boundingBox()
     assert(detailBox, "Widget detail dialog has no bounding box")
     await startpage.mouse.move(
       detailBox.x + detailBox.width / 2,
@@ -343,8 +387,9 @@ const main = async () => {
     )
     await startpage.mouse.up()
     assert(
-      (await startpage.locator('button[aria-current="page"]').getAttribute("aria-label")) ===
-        dialogPageBefore,
+      (await startpage
+        .locator('button[aria-current="page"]')
+        .getAttribute("aria-label")) === dialogPageBefore,
       "Horizontal pointer movement inside a widget dialog changed the home page"
     )
     await screenTimeClose.click()
@@ -355,7 +400,8 @@ const main = async () => {
     assert(
       (await initialScreenTimeShell
         .locator('[data-home-widget-content="true"]')
-        .evaluate(element => getComputedStyle(element).touchAction)) === "pan-y",
+        .evaluate(element => getComputedStyle(element).touchAction)) ===
+        "pan-y",
       "Widget content blocks vertical touch scrolling in normal mode"
     )
     assert(
@@ -363,7 +409,9 @@ const main = async () => {
       "Empty screen-time widget still displayed a TOP ranking"
     )
     assert(
-      (await initialScreenTimeShell.locator('[data-screen-time-trend="true"]').count()) === 0,
+      (await initialScreenTimeShell
+        .locator('[data-screen-time-trend="true"]')
+        .count()) === 0,
       "Empty screen-time widget still displayed an all-zero trend"
     )
 
@@ -379,7 +427,10 @@ const main = async () => {
     const editHomeBox = await startpage
       .getByRole("button", { name: "编辑主页" })
       .boundingBox()
-    assert(floatingSearchBox && editHomeBox, "Narrow-screen controls are unavailable")
+    assert(
+      floatingSearchBox && editHomeBox,
+      "Narrow-screen controls are unavailable"
+    )
     const controlsOverlap =
       floatingSearchBox.x < editHomeBox.x + editHomeBox.width &&
       floatingSearchBox.x + floatingSearchBox.width > editHomeBox.x &&
@@ -392,8 +443,9 @@ const main = async () => {
 
     const screenTimePageIndex = await initialScreenTimeShell.evaluate(shell =>
       Number(
-        shell.closest('[data-home-page-index]')?.getAttribute("data-home-page-index") ??
-          0
+        shell
+          .closest("[data-home-page-index]")
+          ?.getAttribute("data-home-page-index") ?? 0
       )
     )
     await startpage
@@ -414,18 +466,22 @@ const main = async () => {
     )
     await startpage.mouse.down()
     try {
-      await startpage.getByRole("button", { name: "完成", exact: true })
+      await startpage
+        .getByRole("button", { name: "完成", exact: true })
         .waitFor({ state: "visible", timeout: 2_000 })
     } catch (error) {
-      const pointerDebug = await startpage.evaluate(({ x, y }) => ({
-        editing: document
-          .querySelector("[data-home-editing]")
-          ?.getAttribute("data-home-editing"),
-        hit: document.elementFromPoint(x, y)?.outerHTML.slice(0, 240),
-      }), {
-        x: enableTrackingBox.x + enableTrackingBox.width / 2,
-        y: enableTrackingBox.y + enableTrackingBox.height / 2,
-      })
+      const pointerDebug = await startpage.evaluate(
+        ({ x, y }) => ({
+          editing: document
+            .querySelector("[data-home-editing]")
+            ?.getAttribute("data-home-editing"),
+          hit: document.elementFromPoint(x, y)?.outerHTML.slice(0, 240),
+        }),
+        {
+          x: enableTrackingBox.x + enableTrackingBox.width / 2,
+          y: enableTrackingBox.y + enableTrackingBox.height / 2,
+        }
+      )
       await startpage.mouse.up()
       throw new Error(
         `Long-pressing a widget action did not enter edit mode: ${JSON.stringify(pointerDebug)}`,
@@ -454,22 +510,25 @@ const main = async () => {
     await startpage.getByRole("button", { name: "完成", exact: true }).click()
     await startpage.waitForTimeout(80)
     const swipeEnableTrackingBox = await enableTrackingButton.boundingBox()
-    assert(swipeEnableTrackingBox, "Screen-time action disappeared after edit mode")
+    assert(
+      swipeEnableTrackingBox,
+      "Screen-time action disappeared after edit mode"
+    )
     const swipeStartX =
       swipeEnableTrackingBox.x + swipeEnableTrackingBox.width / 2
     const swipeStartY =
       swipeEnableTrackingBox.y + swipeEnableTrackingBox.height / 2
     const actionSwipeTrack = startpage.locator('[data-home-page-track="true"]')
-    const actionTrackBefore = await actionSwipeTrack.evaluate(track =>
-      new DOMMatrixReadOnly(getComputedStyle(track).transform).m41
+    const actionTrackBefore = await actionSwipeTrack.evaluate(
+      track => new DOMMatrixReadOnly(getComputedStyle(track).transform).m41
     )
     await startpage.mouse.move(swipeStartX, swipeStartY)
     await startpage.mouse.down()
     await startpage.mouse.move(Math.max(4, swipeStartX - 180), swipeStartY, {
       steps: 6,
     })
-    const actionTrackDuring = await actionSwipeTrack.evaluate(track =>
-      new DOMMatrixReadOnly(getComputedStyle(track).transform).m41
+    const actionTrackDuring = await actionSwipeTrack.evaluate(
+      track => new DOMMatrixReadOnly(getComputedStyle(track).transform).m41
     )
     assert(
       actionTrackBefore - actionTrackDuring >= 40,
@@ -497,12 +556,14 @@ const main = async () => {
     await startpage.setViewportSize(originalViewport)
     await startpage.waitForTimeout(280)
 
-    const normalWidgetHeading = startpage
-      .getByRole("heading", { name: "屏幕时间", exact: true })
+    const normalWidgetHeading = startpage.getByRole("heading", {
+      name: "屏幕时间",
+      exact: true,
+    })
     const normalWidgetHeadingBox = await normalWidgetHeading.boundingBox()
     const normalWidgetTrack = startpage.locator('[data-home-page-track="true"]')
-    const normalWidgetTrackBefore = await normalWidgetTrack.evaluate(track =>
-      new DOMMatrixReadOnly(getComputedStyle(track).transform).m41
+    const normalWidgetTrackBefore = await normalWidgetTrack.evaluate(
+      track => new DOMMatrixReadOnly(getComputedStyle(track).transform).m41
     )
     assert(normalWidgetHeadingBox, "Normal-mode widget body is unavailable")
     const normalWidgetX =
@@ -512,8 +573,8 @@ const main = async () => {
     await startpage.mouse.move(normalWidgetX, normalWidgetY)
     await startpage.mouse.down()
     await startpage.mouse.move(normalWidgetX - 180, normalWidgetY, { steps: 6 })
-    const normalWidgetTrackDuring = await normalWidgetTrack.evaluate(track =>
-      new DOMMatrixReadOnly(getComputedStyle(track).transform).m41
+    const normalWidgetTrackDuring = await normalWidgetTrack.evaluate(
+      track => new DOMMatrixReadOnly(getComputedStyle(track).transform).m41
     )
     assert(
       normalWidgetTrackBefore - normalWidgetTrackDuring >= 120 &&
@@ -526,9 +587,7 @@ const main = async () => {
       'button[aria-current="page"][aria-label="转到第 2 页"]',
       "normal-mode widget-body page swipe"
     )
-    await startpage
-      .getByRole("button", { name: "转到第 1 页" })
-      .click()
+    await startpage.getByRole("button", { name: "转到第 1 页" }).click()
     await startpage.waitForTimeout(280)
 
     const pageDots = startpage.getByRole("button", { name: /转到第 \d+ 页/ })
@@ -539,7 +598,10 @@ const main = async () => {
       name: "搜索",
       exact: true,
     })
-    assert((await homeSearch.inputValue()) === "blend", "Direct typing did not focus search")
+    assert(
+      (await homeSearch.inputValue()) === "blend",
+      "Direct typing did not focus search"
+    )
     await startpage
       .locator("ul")
       .getByText("Blender", { exact: true })
@@ -562,12 +624,15 @@ const main = async () => {
     })
     // Results mount after the dialog's opening effect. Wait until the last
     // focusable result exists before testing a round trip through the trap.
-    await paletteDialog.getByRole("button", { name: "删除链接 测试链接 59" })
+    await paletteDialog
+      .getByRole("button", { name: "删除链接 测试链接 59" })
       .waitFor({ state: "visible", timeout: 10_000 })
     await paletteInput.focus()
     await startpage.keyboard.press("Shift+Tab")
     assert(
-      await paletteDialog.evaluate(dialog => dialog.contains(document.activeElement)),
+      await paletteDialog.evaluate(dialog =>
+        dialog.contains(document.activeElement)
+      ),
       "Shift+Tab escaped the command palette"
     )
     await startpage.keyboard.press("Tab")
@@ -660,7 +725,9 @@ const main = async () => {
       "keyboard previous page"
     )
     assert(
-      await firstPageControl.evaluate(control => document.activeElement === control),
+      await firstPageControl.evaluate(
+        control => document.activeElement === control
+      ),
       "ArrowLeft did not focus the first control on the previous page"
     )
     await startpage.keyboard.press("ArrowRight")
@@ -690,8 +757,8 @@ const main = async () => {
     )
     const pageTrack = startpage.locator('[data-home-page-track="true"]')
     const readTrackX = () =>
-      pageTrack.evaluate(track =>
-        new DOMMatrixReadOnly(getComputedStyle(track).transform).m41
+      pageTrack.evaluate(
+        track => new DOMMatrixReadOnly(getComputedStyle(track).transform).m41
       )
     const dragX = tileBox.x + tileBox.width / 2
     const dragY = tileBox.y + tileBox.height / 2
@@ -784,7 +851,8 @@ const main = async () => {
       .evaluateAll(shells =>
         shells.flatMap(shell => {
           const heading = shell.querySelector("h3")
-          const card = heading?.parentElement?.parentElement?.parentElement?.parentElement
+          const card =
+            heading?.parentElement?.parentElement?.parentElement?.parentElement
           if (!card) return ["missing widget card"]
           const slotRect = shell.getBoundingClientRect()
           const cardRect = card.getBoundingClientRect()
@@ -795,7 +863,9 @@ const main = async () => {
             slotRect.left - cardRect.left,
             slotRect.top - cardRect.top
           )
-          return overflow > 1.5 ? [`${heading?.textContent ?? "widget"}: ${overflow}px`] : []
+          return overflow > 1.5
+            ? [`${heading?.textContent ?? "widget"}: ${overflow}px`]
+            : []
         })
       )
     assert(
@@ -824,9 +894,9 @@ const main = async () => {
       screenTimeHeadingBox && screenTimeBoxBefore && rediscoveryBox,
       "Widget drag source or target has no bounding box"
     )
-    const widgetOrderBefore = await startpage.evaluate(() =>
-      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}")
-        .order
+    const widgetOrderBefore = await startpage.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
     )
     await startpage.evaluate(() => {
       window.__fluidityWidgetDragProbe = document.querySelector(
@@ -869,15 +939,11 @@ const main = async () => {
         Math.abs(screenTimeBoxDuring.height - screenTimeBoxBefore.height) < 2,
       `Widget changed size while drag started (${screenTimeBoxBefore.width}x${screenTimeBoxBefore.height} -> ${screenTimeBoxDuring.width}x${screenTimeBoxDuring.height})`
     )
-    const rediscoveryCenterX =
-      rediscoveryBox.x + rediscoveryBox.width / 2
-    const rediscoveryCenterY =
-      rediscoveryBox.y + rediscoveryBox.height / 2
-    await startpage.mouse.move(
-      rediscoveryCenterX - 4,
-      rediscoveryCenterY,
-      { steps: 10 }
-    )
+    const rediscoveryCenterX = rediscoveryBox.x + rediscoveryBox.width / 2
+    const rediscoveryCenterY = rediscoveryBox.y + rediscoveryBox.height / 2
+    await startpage.mouse.move(rediscoveryCenterX - 4, rediscoveryCenterY, {
+      steps: 10,
+    })
     await startpage.waitForTimeout(80)
     const widgetDropPositionBeforeCrossing =
       await rediscoveryShell.getAttribute("data-home-drop-position")
@@ -899,9 +965,7 @@ const main = async () => {
       { timeout: 1_000 }
     )
     const screenTimeBoxMoving = await startpage
-      .locator(
-        '[data-home-drag-overlay-id="widget:screen-time"]'
-      )
+      .locator('[data-home-drag-overlay-id="widget:screen-time"]')
       .boundingBox()
     const rediscoveryBoxReflowed = await rediscoveryShell.boundingBox()
     const widgetTreeStayedMounted = await startpage.evaluate(
@@ -944,9 +1008,9 @@ const main = async () => {
     )
     await startpage.mouse.up()
     await startpage.waitForTimeout(240)
-    const widgetOrderAfter = await startpage.evaluate(() =>
-      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}")
-        .order
+    const widgetOrderAfter = await startpage.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
     )
     assert(
       JSON.stringify(widgetOrderAfter) !== JSON.stringify(widgetOrderBefore),
@@ -978,9 +1042,7 @@ const main = async () => {
     await startpage.waitForTimeout(80)
 
     const activeGrid = () =>
-      startpage.locator(
-        '[data-home-page-grid="true"][aria-hidden="false"]'
-      )
+      startpage.locator('[data-home-page-grid="true"][aria-hidden="false"]')
     const swipeGapLeft = await findBlankGridPoint(activeGrid())
     assert(swipeGapLeft, "First edit-mode page has no draggable grid gap")
     await startpage.mouse.move(swipeGapLeft.x, swipeGapLeft.y)
@@ -996,7 +1058,8 @@ const main = async () => {
       'button[aria-current="page"][aria-label="转到第 2 页"]',
       "edit-mode mouse swipe to second page"
     )
-    await startpage.getByRole("button", { name: "完成", exact: true })
+    await startpage
+      .getByRole("button", { name: "完成", exact: true })
       .waitFor({ state: "visible", timeout: 10_000 })
     await startpage.waitForTimeout(280)
     const swipeGapRight = await findBlankGridPoint(activeGrid())
@@ -1016,9 +1079,7 @@ const main = async () => {
     )
     await startpage.waitForTimeout(280)
 
-    const liveReorderApps = activeGrid().locator(
-      '[data-home-item-kind="app"]'
-    )
+    const liveReorderApps = activeGrid().locator('[data-home-item-kind="app"]')
     assert(
       (await liveReorderApps.count()) >= 2,
       "First page has too few apps for live reorder feedback"
@@ -1030,8 +1091,9 @@ const main = async () => {
     )
     const liveReorderTileBox = await liveReorderTile.boundingBox()
     const liveReorderTargetBefore = await liveReorderTarget.boundingBox()
-    const liveReorderPersistedBefore = await startpage.evaluate(() =>
-      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    const liveReorderPersistedBefore = await startpage.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
     )
     assert(
       liveReorderTileBox && liveReorderTargetBefore,
@@ -1068,8 +1130,9 @@ const main = async () => {
           null,
       "Adjacent app did not move aside while the pointer was still held"
     )
-    const liveReorderPersistedDuring = await startpage.evaluate(() =>
-      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    const liveReorderPersistedDuring = await startpage.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
     )
     assert(
       JSON.stringify(liveReorderPersistedDuring) ===
@@ -1080,8 +1143,9 @@ const main = async () => {
     await startpage.mouse.up()
     await startpage.waitForTimeout(260)
     const liveReorderTargetAfter = await liveReorderTarget.boundingBox()
-    const liveReorderPersistedAfter = await startpage.evaluate(() =>
-      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    const liveReorderPersistedAfter = await startpage.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
     )
     assert(
       liveReorderTargetAfter &&
@@ -1125,7 +1189,10 @@ const main = async () => {
       "Edit-mode app drag did not activate"
     )
     const widgetDropBoxDuring = await widgetDropShell.boundingBox()
-    assert(widgetDropBoxDuring, "Widget drop target moved out of the active grid")
+    assert(
+      widgetDropBoxDuring,
+      "Widget drop target moved out of the active grid"
+    )
     await startpage.mouse.move(
       widgetDropBoxDuring.x + 14,
       widgetDropBoxDuring.y + widgetDropBoxDuring.height / 2,
@@ -1144,9 +1211,16 @@ const main = async () => {
             )
             if (!item) return null
             const rect = item.getBoundingClientRect()
-            return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+            return {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height,
+            }
           })(),
-          pointerElement: document.elementFromPoint(x, y)?.outerHTML.slice(0, 180),
+          pointerElement: document
+            .elementFromPoint(x, y)
+            ?.outerHTML.slice(0, 180),
           dropTargets: Array.from(
             document.querySelectorAll('[data-home-drop-target="true"]')
           ).map(item => item.getAttribute("data-home-item-id")),
@@ -1164,9 +1238,9 @@ const main = async () => {
     await startpage.mouse.up()
     await startpage.waitForTimeout(240)
 
-    const cancelledEdgeOrderBefore = await startpage.evaluate(() =>
-      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}")
-        .order
+    const cancelledEdgeOrderBefore = await startpage.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
     )
     const cancelledEdgeTile = activeGrid()
       .locator('[data-home-app-tile="true"]')
@@ -1204,11 +1278,9 @@ const main = async () => {
       cancelledBlankPoint,
       "Cross-page cancel destination has no blank grid point"
     )
-    await startpage.mouse.move(
-      cancelledBlankPoint.x,
-      cancelledBlankPoint.y,
-      { steps: 8 }
-    )
+    await startpage.mouse.move(cancelledBlankPoint.x, cancelledBlankPoint.y, {
+      steps: 8,
+    })
     await startpage.waitForTimeout(120)
     assert(
       (await startpage.locator("[data-home-drop-position]").count()) === 0,
@@ -1221,9 +1293,9 @@ const main = async () => {
       'button[aria-current="page"][aria-label="转到第 1 页"]',
       "cross-page drag cancel rollback"
     )
-    const cancelledEdgeOrderAfter = await startpage.evaluate(() =>
-      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}")
-        .order
+    const cancelledEdgeOrderAfter = await startpage.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
     )
     assert(
       JSON.stringify(cancelledEdgeOrderAfter) ===
@@ -1247,8 +1319,9 @@ const main = async () => {
     const edgeDragShellById = startpage.locator(
       `[data-home-item-id=${JSON.stringify(edgeDragId)}]`
     )
-    const successfulEdgeOrderBefore = await startpage.evaluate(() =>
-      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    const successfulEdgeOrderBefore = await startpage.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
     )
     await startpage.mouse.move(
       edgeDragBox.x + edgeDragBox.width / 2,
@@ -1265,10 +1338,7 @@ const main = async () => {
       pageViewportBox.x + pageViewportBox.width - 8,
       Math.min(
         pageViewportBox.y + pageViewportBox.height - 24,
-        Math.max(
-          pageViewportBox.y + 24,
-          edgeDragBox.y + edgeDragBox.height / 2
-        )
+        Math.max(pageViewportBox.y + 24, edgeDragBox.y + edgeDragBox.height / 2)
       ),
       { steps: 10 }
     )
@@ -1297,8 +1367,9 @@ const main = async () => {
       (await startpage.locator("[data-home-drop-position]").count()) === 0,
       "Cross-page base slot incorrectly required another target"
     )
-    const crossPageOrderDuring = await startpage.evaluate(() =>
-      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    const crossPageOrderDuring = await startpage.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
     )
     assert(
       JSON.stringify(crossPageOrderDuring) ===
@@ -1307,8 +1378,9 @@ const main = async () => {
     )
     await startpage.mouse.up()
     await startpage.waitForTimeout(240)
-    const crossPagePersistedOrder = await startpage.evaluate(() =>
-      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    const crossPagePersistedOrder = await startpage.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
     )
     assertPermutation(
       successfulEdgeOrderBefore,
@@ -1342,10 +1414,14 @@ const main = async () => {
       return {
         itemId:
           active instanceof HTMLElement
-            ? active.closest("[data-home-item-id]")?.getAttribute("data-home-item-id")
+            ? active
+                .closest("[data-home-item-id]")
+                ?.getAttribute("data-home-item-id")
             : null,
         label:
-          active instanceof HTMLElement ? active.getAttribute("aria-label") : null,
+          active instanceof HTMLElement
+            ? active.getAttribute("aria-label")
+            : null,
       }
     }, edgeDragId)
     assert(
@@ -1365,8 +1441,9 @@ const main = async () => {
       '[data-home-app-tile="true"]'
     )
     const exactCrossPageSourceBox = await exactCrossPageSource.boundingBox()
-    const exactCrossPageOrderBefore = await startpage.evaluate(() =>
-      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    const exactCrossPageOrderBefore = await startpage.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
     )
     assert(exactCrossPageSourceBox, "Exact cross-page source is unavailable")
     await startpage.mouse.move(
@@ -1403,9 +1480,8 @@ const main = async () => {
     const exactCrossPageTargetShell = exactCrossPageTarget.locator(
       "xpath=ancestor::*[@data-home-item-kind='app'][1]"
     )
-    const exactCrossPageTargetId = await exactCrossPageTargetShell.getAttribute(
-      "data-home-item-id"
-    )
+    const exactCrossPageTargetId =
+      await exactCrossPageTargetShell.getAttribute("data-home-item-id")
     const exactCrossPageTargetBox = await exactCrossPageTarget.boundingBox()
     assert(
       exactCrossPageTargetId && exactCrossPageTargetBox,
@@ -1425,17 +1501,19 @@ const main = async () => {
     )
     assert(
       JSON.stringify(
-        await startpage.evaluate(() =>
-          JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}")
-            .order
+        await startpage.evaluate(
+          () =>
+            JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}")
+              .order
         )
       ) === JSON.stringify(exactCrossPageOrderBefore),
       "Exact cross-page target persisted before mouseup"
     )
     await startpage.mouse.up()
     await startpage.waitForTimeout(240)
-    const exactCrossPageOrderAfter = await startpage.evaluate(() =>
-      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    const exactCrossPageOrderAfter = await startpage.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
     )
     assertPermutation(
       exactCrossPageOrderBefore,
@@ -1483,10 +1561,7 @@ const main = async () => {
         group.links.some(link => link.label === label)
       )
     }, rediscoveryLabel)
-    assert(
-      keptInStorage,
-      "Rediscovery hide unexpectedly deleted the bookmark"
-    )
+    assert(keptInStorage, "Rediscovery hide unexpectedly deleted the bookmark")
     await startpage.getByRole("button", { name: "撤销", exact: true }).click()
     await rediscoveryCard
       .getByRole("button", { name: rediscoveryLabel, exact: true })
@@ -1508,9 +1583,11 @@ const main = async () => {
     await startpage.waitForTimeout(100)
     if ((await gallery.count()) === 0) {
       const state = await startpage.evaluate(() => ({
-        editing: document.querySelector("[data-home-editing]")?.getAttribute("data-home-editing"),
-        dialogs: Array.from(document.querySelectorAll('[role="dialog"]')).map(element =>
-          element.getAttribute("aria-label")
+        editing: document
+          .querySelector("[data-home-editing]")
+          ?.getAttribute("data-home-editing"),
+        dialogs: Array.from(document.querySelectorAll('[role="dialog"]')).map(
+          element => element.getAttribute("aria-label")
         ),
         toolbar: document.body.innerText.includes("组件\n总览\n完成"),
       }))
@@ -1519,31 +1596,33 @@ const main = async () => {
     await gallery.waitFor({ state: "visible", timeout: 10_000 })
     const componentButtonBox = await componentButton.boundingBox()
     assert(componentButtonBox, "Edit toolbar button has no bounding box")
-    const modalLayerState = await startpage.evaluate(({ x, y }) => {
-      const overlay = Array.from(
-        document.querySelectorAll('[data-fluidity-modal="true"]')
-      ).find(element => element.getAttribute("role") !== "dialog")
-      return {
-        overlayZIndex: overlay
-          ? Number.parseInt(getComputedStyle(overlay).zIndex, 10)
-          : 0,
-        toolbarHit: Boolean(
-          document
-            .elementFromPoint(x, y)
-            ?.closest("[data-home-edit-control]")
-        ),
+    const modalLayerState = await startpage.evaluate(
+      ({ x, y }) => {
+        const overlay = Array.from(
+          document.querySelectorAll('[data-fluidity-modal="true"]')
+        ).find(element => element.getAttribute("role") !== "dialog")
+        return {
+          overlayZIndex: overlay
+            ? Number.parseInt(getComputedStyle(overlay).zIndex, 10)
+            : 0,
+          toolbarHit: Boolean(
+            document.elementFromPoint(x, y)?.closest("[data-home-edit-control]")
+          ),
+        }
+      },
+      {
+        x: componentButtonBox.x + componentButtonBox.width / 2,
+        y: componentButtonBox.y + componentButtonBox.height / 2,
       }
-    }, {
-      x: componentButtonBox.x + componentButtonBox.width / 2,
-      y: componentButtonBox.y + componentButtonBox.height / 2,
-    })
+    )
     assert(
       modalLayerState.overlayZIndex > 1002 &&
         modalLayerState.overlayZIndex < 9998 &&
         !modalLayerState.toolbarHit,
       `Modal did not cover ordinary fixed UI: ${JSON.stringify(modalLayerState)}`
     )
-    await gallery.getByText("稍后读", { exact: true })
+    await gallery
+      .getByText("稍后读", { exact: true })
       .locator("xpath=..")
       .getByRole("button", { name: "添加到主屏", exact: true })
       .click()
@@ -1558,15 +1637,22 @@ const main = async () => {
       .getByRole("button", { name: "保存", exact: true })
       .click()
     await readLaterSettings.waitFor({ state: "hidden", timeout: 10_000 })
-    await startpage.getByText("稍后读", { exact: true }).first()
+    await startpage
+      .getByText("稍后读", { exact: true })
+      .first()
       .waitFor({ state: "visible", timeout: 10_000 })
     const addedWidget = await startpage.evaluate(() => {
-      const layout = JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}")
+      const layout = JSON.parse(
+        localStorage.getItem("fluidity.homeLayout.v2") ?? "{}"
+      )
       return Object.values(layout.widgets ?? {}).find(
         widget => widget.type === "read-later"
       )
     })
-    assert(addedWidget?.size === "wide", "Widget gallery/settings did not persist semantic size")
+    assert(
+      addedWidget?.size === "wide",
+      "Widget gallery/settings did not persist semantic size"
+    )
     const compactWidgetLayout = await startpage
       .locator(`[data-home-item-id="${addedWidget.instanceId}"]`)
       .evaluate(shell => {
@@ -1703,7 +1789,11 @@ const main = async () => {
     await settingsDialog
       .getByRole("button", { name: "数据", exact: true })
       .click()
-    await expectTextVisible(startpage, "浏览时长统计", "Usage tracking settings")
+    await expectTextVisible(
+      startpage,
+      "浏览时长统计",
+      "Usage tracking settings"
+    )
     await expectTextVisible(
       startpage,
       "云同步（GitHub Gist）",
@@ -1760,9 +1850,10 @@ const main = async () => {
     )
     assert(
       JSON.stringify(
-        await startpage.evaluate(() =>
-          JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}")
-            .order
+        await startpage.evaluate(
+          () =>
+            JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}")
+              .order
         )
       ) === JSON.stringify(localOrderFixture.order),
       "Local order preview wrote the layout before confirmation"
@@ -1772,9 +1863,10 @@ const main = async () => {
       .click()
     assert(
       JSON.stringify(
-        await startpage.evaluate(() =>
-          JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}")
-            .order
+        await startpage.evaluate(
+          () =>
+            JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}")
+              .order
         )
       ) === JSON.stringify(localOrderFixture.order),
       "Accepted order draft wrote the layout before Apply"
@@ -1783,8 +1875,9 @@ const main = async () => {
       .getByRole("button", { name: "应用更改", exact: true })
       .click()
     await startpage.waitForTimeout(240)
-    const appliedLocalOrder = await startpage.evaluate(() =>
-      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    const appliedLocalOrder = await startpage.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
     )
     assert(
       appliedLocalOrder.find(id => id.startsWith("app:")) ===
@@ -1933,8 +2026,9 @@ const main = async () => {
     )
     await retainedIcon.waitFor({ state: "visible", timeout: 10_000 })
 
-    const touchOrderBefore = await retentionPage.evaluate(() =>
-      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    const touchOrderBefore = await retentionPage.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
     )
     const touchExpectedItemIds = await retentionPage.evaluate(() => {
       const groups = JSON.parse(localStorage.getItem("link-groups") ?? "[]")
@@ -1965,14 +2059,12 @@ const main = async () => {
     const touchSourceBox = await touchSource.boundingBox()
     const touchSourceShellBox = await touchSourceShell.boundingBox()
     const touchNeighborBoxBefore = await touchNeighbor.boundingBox()
-    const touchSourceId = await touchSourceShell.getAttribute(
-      "data-home-item-id"
-    )
-    const touchNeighborId = await touchNeighborShell.getAttribute(
-      "data-home-item-id"
-    )
+    const touchSourceId =
+      await touchSourceShell.getAttribute("data-home-item-id")
+    const touchNeighborId =
+      await touchNeighborShell.getAttribute("data-home-item-id")
     assert(
-        touchViewport &&
+      touchViewport &&
         touchSourceBox &&
         touchSourceShellBox &&
         touchNeighborBoxBefore &&
@@ -1980,7 +2072,9 @@ const main = async () => {
         touchNeighborId,
       "Touch drag source, neighbor, or viewport is unavailable"
     )
-    const touchSession = await retentionPage.context().newCDPSession(retentionPage)
+    const touchSession = await retentionPage
+      .context()
+      .newCDPSession(retentionPage)
     const touchStart = {
       x: touchSourceBox.x + touchSourceBox.width / 2,
       y: touchSourceBox.y + touchSourceBox.height / 2,
@@ -2017,10 +2111,8 @@ const main = async () => {
     }
     for (let step = 1; step <= 5; step += 1) {
       await dispatchTouch("touchMove", {
-        x: touchStart.x +
-          ((touchNeighborPoint.x - touchStart.x) * step) / 5,
-        y: touchStart.y +
-          ((touchNeighborPoint.y - touchStart.y) * step) / 5,
+        x: touchStart.x + ((touchNeighborPoint.x - touchStart.x) * step) / 5,
+        y: touchStart.y + ((touchNeighborPoint.y - touchStart.y) * step) / 5,
       })
       await retentionPage.waitForTimeout(24)
     }
@@ -2032,19 +2124,19 @@ const main = async () => {
       .locator('[data-home-drag-overlay="true"]')
       .boundingBox()
     const expectedTouchOverlayOffset = {
-      x:
-        touchSourceShellBox.x + touchSourceShellBox.width / 2 - touchStart.x,
-      y:
-        touchSourceShellBox.y + touchSourceShellBox.height / 2 - touchStart.y,
+      x: touchSourceShellBox.x + touchSourceShellBox.width / 2 - touchStart.x,
+      y: touchSourceShellBox.y + touchSourceShellBox.height / 2 - touchStart.y,
     }
     assert(
       touchOverlayAtNeighbor &&
         Math.abs(
-          touchOverlayAtNeighbor.x + touchOverlayAtNeighbor.width / 2 -
+          touchOverlayAtNeighbor.x +
+            touchOverlayAtNeighbor.width / 2 -
             (touchNeighborPoint.x + expectedTouchOverlayOffset.x)
         ) < 10 &&
         Math.abs(
-          touchOverlayAtNeighbor.y + touchOverlayAtNeighbor.height / 2 -
+          touchOverlayAtNeighbor.y +
+            touchOverlayAtNeighbor.height / 2 -
             (touchNeighborPoint.y + expectedTouchOverlayOffset.y)
         ) < 10,
       "The dragged app did not follow the real touch point"
@@ -2073,8 +2165,9 @@ const main = async () => {
       'button[aria-current="page"][aria-label="转到第 1 页"]',
       "cancelled real-touch drag rollback"
     )
-    const touchOrderAfter = await retentionPage.evaluate(() =>
-      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    const touchOrderAfter = await retentionPage.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
     )
     assert(
       JSON.stringify(touchOrderAfter) === JSON.stringify(touchOrderBefore) &&
@@ -2133,8 +2226,9 @@ const main = async () => {
     }
     await dispatchTouch("touchEnd")
     await retentionPage.waitForTimeout(350)
-    const touchCommittedOrder = await retentionPage.evaluate(() =>
-      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    const touchCommittedOrder = await retentionPage.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
     )
     assertPermutation(
       touchExpectedItemIds,
@@ -2164,8 +2258,9 @@ const main = async () => {
     }
     await retentionDoneButton.waitFor({ state: "visible", timeout: 10_000 })
 
-    const multiPageOrderBefore = await retentionPage.evaluate(() =>
-      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    const multiPageOrderBefore = await retentionPage.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
     )
     const multiPageViewport = await retentionPage
       .getByRole("region", { name: "主页分页区域" })
@@ -2189,8 +2284,7 @@ const main = async () => {
         `[data-home-item-id="${CSS.escape(itemId)}"]`
       )
     }, multiPageSourceId)
-    const multiPageStartX =
-      multiPageSourceBox.x + multiPageSourceBox.width / 2
+    const multiPageStartX = multiPageSourceBox.x + multiPageSourceBox.width / 2
     const multiPageY = multiPageSourceBox.y + multiPageSourceBox.height / 2
     await retentionPage.mouse.move(multiPageStartX, multiPageY)
     await retentionPage.mouse.down()
@@ -2217,29 +2311,33 @@ const main = async () => {
         { timeout: 10_000 }
       )
     } catch (error) {
-      const edgeDebug = await retentionPage.evaluate(({ x, y }) => {
-        const viewport = document
-          .querySelector('[aria-label="主页分页区域"]')
-          ?.getBoundingClientRect()
-        return {
-          pointer: { x, y },
-          viewport: viewport
-            ? {
-                left: viewport.left,
-                right: viewport.right,
-                top: viewport.top,
-                bottom: viewport.bottom,
-              }
-            : null,
-          page: document
-            .querySelector('button[aria-current="page"]')
-            ?.getAttribute("aria-label"),
-          dragging: document.querySelectorAll('[data-home-dragging="true"]')
-            .length,
-          overlay: document.querySelectorAll('[data-home-drag-overlay="true"]')
-            .length,
-        }
-      }, { x: rightEdge, y: multiPageY })
+      const edgeDebug = await retentionPage.evaluate(
+        ({ x, y }) => {
+          const viewport = document
+            .querySelector('[aria-label="主页分页区域"]')
+            ?.getBoundingClientRect()
+          return {
+            pointer: { x, y },
+            viewport: viewport
+              ? {
+                  left: viewport.left,
+                  right: viewport.right,
+                  top: viewport.top,
+                  bottom: viewport.bottom,
+                }
+              : null,
+            page: document
+              .querySelector('button[aria-current="page"]')
+              ?.getAttribute("aria-label"),
+            dragging: document.querySelectorAll('[data-home-dragging="true"]')
+              .length,
+            overlay: document.querySelectorAll(
+              '[data-home-drag-overlay="true"]'
+            ).length,
+          }
+        },
+        { x: rightEdge, y: multiPageY }
+      )
       throw new Error(
         `Continuous edge paging stopped early: ${JSON.stringify(edgeDebug)}`,
         { cause: error }
@@ -2251,7 +2349,8 @@ const main = async () => {
     assert(
       multiPageOverlayAtRight &&
         Math.abs(
-          multiPageOverlayAtRight.x + multiPageOverlayAtRight.width / 2 -
+          multiPageOverlayAtRight.x +
+            multiPageOverlayAtRight.width / 2 -
             rightEdge
         ) < 3,
       "Dragged icon stopped following the pointer after multiple page turns"
@@ -2266,15 +2365,14 @@ const main = async () => {
       await retentionPage.evaluate(
         itemId =>
           window.__fluidityMultiPageDragProbe ===
-          document.querySelector(
-            `[data-home-item-id="${CSS.escape(itemId)}"]`
-          ),
+          document.querySelector(`[data-home-item-id="${CSS.escape(itemId)}"]`),
         multiPageSourceId
       ),
       "Cross-page preview remounted the real icon"
     )
-    const multiPageOrderDuring = await retentionPage.evaluate(() =>
-      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    const multiPageOrderDuring = await retentionPage.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
     )
     assert(
       JSON.stringify(multiPageOrderDuring) ===
@@ -2285,11 +2383,9 @@ const main = async () => {
     const pageBeforeVerticalExit = await retentionPage
       .locator('button[aria-current="page"]')
       .getAttribute("aria-label")
-    await retentionPage.mouse.move(
-      rightEdge,
-      multiPageViewport.y - 12,
-      { steps: 4 }
-    )
+    await retentionPage.mouse.move(rightEdge, multiPageViewport.y - 12, {
+      steps: 4,
+    })
     await retentionPage.waitForTimeout(900)
     assert(
       (await retentionPage
@@ -2308,8 +2404,9 @@ const main = async () => {
     await retentionPage.keyboard.press("Escape")
     await retentionPage.mouse.up()
     await retentionPage.waitForTimeout(300)
-    const multiPageOrderAfter = await retentionPage.evaluate(() =>
-      JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
+    const multiPageOrderAfter = await retentionPage.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("fluidity.homeLayout.v2") ?? "{}").order
     )
     assert(
       JSON.stringify(multiPageOrderAfter) ===
@@ -2318,12 +2415,33 @@ const main = async () => {
     )
     assert(
       (await retentionPage.locator('[data-home-dragging="true"]').count()) ===
-          0 &&
-        (await retentionPage.locator('[data-home-drag-overlay="true"]').count()) ===
-          0,
+        0 &&
+        (await retentionPage
+          .locator('[data-home-drag-overlay="true"]')
+          .count()) === 0,
       "Multi-page drag left a dragging node or overlay behind"
     )
     await retentionPage.close()
+
+    // The home suite exercises the complete drag/paging/settings paths without
+    // requiring a browser-owned optional-permission prompt to be accepted.
+    if (homeOnly) {
+      assert(errors.length === 0, errors.join("\n"))
+      console.log(
+        JSON.stringify(
+          {
+            ok: true,
+            scope: "home",
+            browser: browserPath,
+            extensionId,
+            checked: coreChecks,
+          },
+          null,
+          2
+        )
+      )
+      return
+    }
 
     const usageBrowserPage = await context.newPage()
     watchPageErrors(usageBrowserPage, "screen-time-page", errors)
@@ -2332,12 +2450,14 @@ const main = async () => {
     const initialPermissionWorker = [...context.serviceWorkers()]
       .reverse()
       .find(worker => new URL(worker.url()).host === extensionId)
-    assert(initialPermissionWorker, "Cannot inspect initial screen-time permissions")
-    const initiallyHadBroadHosts = await initialPermissionWorker.evaluate(
-      () =>
-        chrome.permissions.contains({
-          origins: ["http://*/*", "https://*/*"],
-        })
+    assert(
+      initialPermissionWorker,
+      "Cannot inspect initial screen-time permissions"
+    )
+    const initiallyHadBroadHosts = await initialPermissionWorker.evaluate(() =>
+      chrome.permissions.contains({
+        origins: ["http://*/*", "https://*/*"],
+      })
     )
     assert(
       !initiallyHadBroadHosts,
@@ -2351,9 +2471,7 @@ const main = async () => {
       `chrome-extension://${extensionId}/index.html?screen-time-e2e=1`
     )
     await usageSettingsPage.waitForLoadState("domcontentloaded")
-    await usageSettingsPage
-      .getByRole("button", { name: "打开设置" })
-      .click()
+    await usageSettingsPage.getByRole("button", { name: "打开设置" }).click()
     const usageSettingsDialog = usageSettingsPage.getByRole("dialog", {
       name: "设置",
     })
@@ -2477,8 +2595,8 @@ const main = async () => {
         liveUsageRuntime.store.current.lastTs >
           liveUsageRuntime.store.current.startTs &&
         Object.values(liveUsageRuntime.store?.days ?? {}).some(
-        day => Number(day?.byDomain?.["127.0.0.1"] ?? 0) > 0
-      ),
+          day => Number(day?.byDomain?.["127.0.0.1"] ?? 0) > 0
+        ),
       `Visible screen time was not attributed to the local HTTP page: ${JSON.stringify(liveUsageRuntime.store)}`
     )
     await startpage.waitForFunction(
@@ -2494,10 +2612,7 @@ const main = async () => {
     await usageBrowserPage.goto("about:blank")
     const stopDeadline = Date.now() + 6_000
     let stoppedUsageRuntime = await readUsageRuntime()
-    while (
-      stoppedUsageRuntime.store?.current &&
-      Date.now() < stopDeadline
-    ) {
+    while (stoppedUsageRuntime.store?.current && Date.now() < stopDeadline) {
       await usageBrowserPage.waitForTimeout(200)
       stoppedUsageRuntime = await readUsageRuntime()
     }
@@ -2518,45 +2633,10 @@ const main = async () => {
           ok: true,
           browser: browserPath,
           extensionId,
+          scope: "full",
           checked: [
-            "service_worker",
-            "startpage",
-            "home_pagination",
-            "direct_bookmark_search",
-            "smart_search_chinese_pinyin_initials_fuzzy_history",
-            "slash_link_search",
-            "page_shortcut",
-            "direct_track_drag",
-            "app_icon_drag_click_suppression",
-            "compact_app_hit_target",
-            "visited_page_icon_retention",
-            "continuous_multi_page_drag_reverse_cancel",
-            "real_touch_long_press_follow_reorder_cancel_commit",
-            "widget_keyboard_open",
-            "widget_dialog_portal_gesture_isolation",
-            "modal_blocks_edit_toolbar",
-            "widget_action_long_press_click_suppression",
-            "widget_edit_surface_drag",
-            "widget_vertical_touch_scroll",
-            "link_search_focus_restore",
-            "rediscovery_hide_refresh_undo",
-            "widget_long_press_drag_stable_size",
-            "widget_whole_card_drag_stable_tree",
-            "widget_grid_slot_containment",
-            "compact_widget_content_containment",
-            "compact_smart_entry_empty_action",
-            "edit_mode_mouse_page_swipe",
-            "pointer_first_app_widget_drop_target",
-            "app_edge_dwell_cross_page_drop",
-            "app_edge_dwell_cancel_rollback",
-            "widget_gallery_add_resize",
-            "home_overview",
-            "page_shortcut_setting",
-            "settings_data",
+            ...coreChecks,
             "screen_time_permission_live_heartbeat_widget_stop",
-            "settings_ai",
-            "home_order_local_preview_apply",
-            "popup",
           ],
         },
         null,

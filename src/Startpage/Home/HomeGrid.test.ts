@@ -1,25 +1,19 @@
+import { saveHomeOrderIfUnchanged } from "./useHomePersistence"
 import { describe, expect, it } from "vitest"
 
-import {
-  HOME_LAYOUT_KEY,
-  HomeLayoutState,
-} from "../../services/homeLayout"
+import { HOME_LAYOUT_KEY, HomeLayoutState } from "../../services/homeLayout"
 import {
   getHomePointerActivationConstraint,
   HOME_SCREEN_READER_INSTRUCTIONS,
   projectHomeDragPages,
-  saveHomeOrderIfUnchanged,
   shouldActivateHomePointerDrag,
   shouldActivateHomeTouchDrag,
   shouldCaptureHomeGestureFromTarget,
   shouldHandleHomePageArrowKey,
   shouldReservePointerForHomeItemDrag,
-} from "./HomeGrid"
+} from "./homeInteraction"
 
-const pointer = (
-  target: Element,
-  pointerType: "mouse" | "touch"
-) => ({
+const pointer = (target: Element, pointerType: "mouse" | "touch") => ({
   isPrimary: true,
   button: 0,
   pointerType,
@@ -105,10 +99,7 @@ describe("home pointer drag arbitration", () => {
     expect(
       shouldActivateHomeTouchDrag({
         target: widgetBody,
-        touches: [
-          { identifier: 1 },
-          { identifier: 2 },
-        ] as unknown as TouchList,
+        touches: [{ identifier: 1 }, { identifier: 2 }] as unknown as TouchList,
       })
     ).toBe(false)
   })
@@ -131,9 +122,7 @@ describe("home pointer drag arbitration", () => {
     icon.dataset.homeAppTile = "true"
     app.append(icon)
 
-    expect(shouldReservePointerForHomeItemDrag(icon, "mouse", false)).toBe(
-      true
-    )
+    expect(shouldReservePointerForHomeItemDrag(icon, "mouse", false)).toBe(true)
   })
 
   it("keeps blank-space mouse gestures and first-touch app gestures for paging", () => {
@@ -172,16 +161,17 @@ describe("home pointer drag arbitration", () => {
     expect(getHomePointerActivationConstraint(icon, "mouse", false)).toEqual({
       distance: 8,
     })
-    expect(
-      getHomePointerActivationConstraint(widget, "mouse", false)
-    ).toEqual({ delay: 220, tolerance: 8 })
+    expect(getHomePointerActivationConstraint(widget, "mouse", false)).toEqual({
+      delay: 220,
+      tolerance: 8,
+    })
     expect(getHomePointerActivationConstraint(label, "mouse", false)).toEqual({
       delay: 220,
       tolerance: 8,
     })
-    expect(getHomePointerActivationConstraint(widget, "mouse", true)).toEqual(
-      { distance: 4 }
-    )
+    expect(getHomePointerActivationConstraint(widget, "mouse", true)).toEqual({
+      distance: 4,
+    })
   })
 })
 
@@ -219,12 +209,10 @@ describe("conditional home order persistence", () => {
       })
     )
 
+    expect(saveHomeOrderIfUnchanged(layout(["stale"]), ["dragged"])).toBeNull()
     expect(
-      saveHomeOrderIfUnchanged(layout(["stale"]), ["dragged"])
-    ).toBeNull()
-    expect(JSON.parse(localStorage.getItem(HOME_LAYOUT_KEY) ?? "{}").order).toEqual([
-      "newer",
-    ])
+      JSON.parse(localStorage.getItem(HOME_LAYOUT_KEY) ?? "{}").order
+    ).toEqual(["newer"])
   })
 
   it("writes when the persisted order still matches the drag snapshot", () => {
@@ -239,10 +227,7 @@ describe("conditional home order persistence", () => {
     )
 
     expect(
-      saveHomeOrderIfUnchanged(
-        layout(["before"]),
-        ["after", "before"]
-      )?.order
+      saveHomeOrderIfUnchanged(layout(["before"]), ["after", "before"])?.order
     ).toEqual(["after", "before"])
   })
 
@@ -263,9 +248,7 @@ describe("conditional home order persistence", () => {
     })
     localStorage.setItem(HOME_LAYOUT_KEY, JSON.stringify(resized))
 
-    expect(
-      saveHomeOrderIfUnchanged(before, ["widget:one"])
-    ).toBeNull()
+    expect(saveHomeOrderIfUnchanged(before, ["widget:one"])).toBeNull()
     expect(
       JSON.parse(localStorage.getItem(HOME_LAYOUT_KEY) ?? "{}").widgets[
         "widget:one"

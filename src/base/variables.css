@@ -24,8 +24,9 @@
 	--home-surface: color-mix(in srgb, var(--bg-primary) 68%, transparent);
 	--home-surface-strong: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
 	--home-stroke: color-mix(in srgb, var(--text-primary) 16%, transparent);
-	--home-shadow: 0 10px 30px color-mix(in srgb, var(--bg-primary) 42%, transparent);
-	--home-shadow-pop: 0 22px 60px color-mix(in srgb, var(--bg-primary) 58%, transparent);
+	/* 阴影使用中性暗色，避免浅色主题把每个图标和卡片染成发光块。 */
+	--home-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+	--home-shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.24);
 	/* ===== 新版 13 色系统 ===== */
 
 	/* 背景层 */
