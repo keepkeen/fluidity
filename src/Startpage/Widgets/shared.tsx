@@ -23,12 +23,17 @@ export const WidgetRow = styled.div`
 
 export const WidgetRowButton = styled.button`
   min-width: 0;
+  min-height: 30px;
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--text-primary);
   text-align: left;
   cursor: pointer;
+
+  @media (pointer: coarse) {
+    min-height: 40px;
+  }
 
   :focus-visible {
     outline: 2px solid var(--accent);
@@ -63,6 +68,12 @@ export const WidgetRowMeta = styled.div`
 export const WidgetActions = styled.div`
   display: flex;
   gap: 3px;
+
+  @media (max-width: 520px) {
+    max-width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
 `
 
 export const WidgetIconButton = styled.button`
@@ -77,6 +88,12 @@ export const WidgetIconButton = styled.button`
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 0.7rem;
+
+  @media (pointer: coarse) {
+    width: 40px;
+    height: 40px;
+    font-size: 0.85rem;
+  }
 
   :hover,
   :focus-visible {
@@ -108,6 +125,11 @@ export const WidgetActionButton = styled.button`
   color: var(--text-primary);
   font: inherit;
   cursor: pointer;
+
+  @media (pointer: coarse) {
+    min-height: 40px;
+    padding-inline: 14px;
+  }
 
   :hover,
   :focus-visible {
@@ -173,12 +195,28 @@ export const DrawerHeader = styled.div`
   justify-content: space-between;
   gap: 12px;
   border-bottom: 1px solid var(--home-stroke);
+
+  > * {
+    min-width: 0;
+  }
+
+  @media (max-width: 520px) {
+    align-items: flex-start;
+    padding: 14px 12px;
+    gap: 8px;
+
+    > :first-child {
+      flex: 1 1 auto;
+      overflow: hidden;
+    }
+  }
 `
 
 export const DrawerTitle = styled.h2`
   margin: 0;
   color: var(--text-primary);
   font-size: 1.05rem;
+  overflow-wrap: anywhere;
 `
 
 export const DrawerBody = styled.div`
@@ -188,11 +226,17 @@ export const DrawerBody = styled.div`
 `
 
 export const DrawerClose = styled.button`
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
   border: 1px solid var(--home-stroke);
   border-radius: 50%;
   background: transparent;
   color: var(--text-primary);
   cursor: pointer;
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 `

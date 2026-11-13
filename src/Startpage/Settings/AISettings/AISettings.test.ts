@@ -23,6 +23,16 @@ describe("formatAIError", () => {
     ).toBe("认证失败（401）：Invalid API key.")
   })
 
+  it("redacts credentials echoed by an upstream provider", () => {
+    const result = formatAIError(
+      new Error(
+        'API 请求失败: 401 - {"error":{"message":"Authentication Fails, Your api key: ****bGXF is invalid"}}'
+      )
+    )
+    expect(result).toContain("api key=[已脱敏]")
+    expect(result).not.toContain("bGXF")
+  })
+
   it("shows endpoint validation errors without replacing them", () => {
     expect(
       formatAIError(new Error("API 地址必须使用 HTTPS；仅本机服务可使用 HTTP"))

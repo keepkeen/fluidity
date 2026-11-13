@@ -8,6 +8,9 @@ const LINK_GROUPS_KEY = "link-groups"
 const CACHE_EXPIRY_DAYS = 7
 const MAX_CACHE_ENTRIES = 500
 const ICON_LOAD_TIMEOUT_MS = 5000
+const MAX_CONCURRENT_FAVICON_LOOKUPS = 6
+const CACHE_WRITE_DEBOUNCE_MS = 180
+const LINK_GROUP_WRITE_DEBOUNCE_MS = 220
 
 interface FaviconCacheEntry {
   url: string | null // null 表示获取失败
@@ -20,6 +23,29 @@ type FaviconCache = Record<string, FaviconCacheEntry>
 let cachedRaw: string | null | undefined
 let cachedParsed: FaviconCache = {}
 const faviconInFlight = new Map<string, Promise<string | null>>()
+let faviconCacheGeneration = 0
+let activeFaviconLookups = 0
+const faviconLookupWaiters: Array<() => void> = []
+let pendingCacheSerialized: string | null = null
+let cacheWriteTimer: ReturnType<typeof setTimeout> | null = null
+const pendingLinkIcons = new Map<
+  string,
+  { faviconUrl: string; sourceSize: number }
+>()
+let linkGroupWriteTimer: ReturnType<typeof setTimeout> | null = null
+
+const withFaviconLookupSlot = async <T>(task: () => Promise<T>): Promise<T> => {
+  if (activeFaviconLookups >= MAX_CONCURRENT_FAVICON_LOOKUPS) {
+    await new Promise<void>(resolve => faviconLookupWaiters.push(resolve))
+  }
+  activeFaviconLookups += 1
+  try {
+    return await task()
+  } finally {
+    activeFaviconLookups -= 1
+    faviconLookupWaiters.shift()?.()
+  }
+}
 
 /**
  * 从 URL 提取域名
@@ -130,34 +156,52 @@ const tryUpdateLinkIconForDomain = (
   return true
 }
 
-const persistToLinkGroups = (
+const scheduleLinkGroupPersistence = (
   url: string,
   faviconUrl: string,
   sourceSize: number
 ): void => {
   const domain = extractDomain(url)
   if (!domain) return
-
-  const groups = readLinkGroups()
-  if (!groups) return
-
-  let changed = false
-  for (const group of groups) {
-    const links = getLinksFromGroup(group)
-    if (!links) continue
-    for (const link of links) {
-      if (tryUpdateLinkIconForDomain(link, domain, faviconUrl, sourceSize)) {
-        changed = true
+  const existing = pendingLinkIcons.get(domain)
+  if (!existing || existing.sourceSize <= sourceSize) {
+    pendingLinkIcons.set(domain, { faviconUrl, sourceSize })
+  }
+  if (linkGroupWriteTimer) return
+  linkGroupWriteTimer = setTimeout(() => {
+    linkGroupWriteTimer = null
+    const updates = [...pendingLinkIcons.entries()]
+    pendingLinkIcons.clear()
+    if (updates.length === 0) return
+    // Read and write the bookmark model once for the whole completion burst.
+    const groups = readLinkGroups()
+    if (!groups) return
+    let changed = false
+    for (const [domainName, update] of updates) {
+      for (const group of groups) {
+        const links = getLinksFromGroup(group)
+        if (!links) continue
+        for (const link of links) {
+          if (
+            tryUpdateLinkIconForDomain(
+              link,
+              domainName,
+              update.faviconUrl,
+              update.sourceSize
+            )
+          ) {
+            changed = true
+          }
+        }
       }
     }
-  }
-
-  if (!changed) return
-  try {
-    localStorage.setItem(LINK_GROUPS_KEY, JSON.stringify(groups))
-  } catch {
-    // ignore
-  }
+    if (!changed) return
+    try {
+      localStorage.setItem(LINK_GROUPS_KEY, JSON.stringify(groups))
+    } catch {
+      // The cache is optional; the rendered hook still has the resolved icon.
+    }
+  }, LINK_GROUP_WRITE_DEBOUNCE_MS)
 }
 
 /**
@@ -165,6 +209,7 @@ const persistToLinkGroups = (
  */
 const getCache = (): FaviconCache => {
   try {
+    if (pendingCacheSerialized !== null) return cachedParsed
     const data = localStorage.getItem(FAVICON_CACHE_KEY)
     if (data === cachedRaw) return cachedParsed
     cachedRaw = data
@@ -181,14 +226,21 @@ const getCache = (): FaviconCache => {
  * 保存缓存
  */
 const setCache = (cache: FaviconCache): void => {
-  try {
-    const serialized = JSON.stringify(cache)
-    localStorage.setItem(FAVICON_CACHE_KEY, serialized)
-    cachedRaw = serialized
-    cachedParsed = cache
-  } catch {
-    // localStorage 可能已满，忽略错误
-  }
+  cachedParsed = cache
+  pendingCacheSerialized = JSON.stringify(cache)
+  if (cacheWriteTimer) clearTimeout(cacheWriteTimer)
+  cacheWriteTimer = setTimeout(() => {
+    cacheWriteTimer = null
+    const serialized = pendingCacheSerialized
+    if (serialized === null) return
+    try {
+      localStorage.setItem(FAVICON_CACHE_KEY, serialized)
+      cachedRaw = serialized
+      pendingCacheSerialized = null
+    } catch {
+      // Keep the in-memory cache; a later update can retry persistence.
+    }
+  }, CACHE_WRITE_DEBOUNCE_MS)
 }
 
 /**
@@ -306,7 +358,7 @@ export const FaviconService = {
 
     // Only successful results belong in the link data model. A failed lookup
     // is useful as a short-lived cache marker but must not erase a saved icon.
-    if (faviconUrl) persistToLinkGroups(url, faviconUrl, nextSize)
+    if (faviconUrl) scheduleLinkGroupPersistence(url, faviconUrl, nextSize)
   },
 
   /**
@@ -346,33 +398,43 @@ export const FaviconService = {
     const requestKey = domain ? `${domain}:${sourceSize}` : `${url}:${sourceSize}`
     const existingRequest = faviconInFlight.get(requestKey)
     if (existingRequest) return existingRequest
+    const requestGeneration = faviconCacheGeneration
 
     const request = (async () => {
       const candidates = getFaviconCandidateUrls(url, sourceSize)
       if (candidates.length === 0) {
-        this.saveToCache(url, null, sourceSize)
+        if (requestGeneration === faviconCacheGeneration) {
+          this.saveToCache(url, null, sourceSize)
+        }
         return null
       }
 
-      for (const candidate of candidates) {
-        const ok = await this.checkFaviconAvailable(candidate)
-        if (ok) {
-          this.saveToCache(url, candidate, sourceSize)
-          const effective = this.getFromCache(url)
-          return effective === undefined ? candidate : effective
+      return await withFaviconLookupSlot(async () => {
+        if (requestGeneration !== faviconCacheGeneration) return null
+        for (const candidate of candidates) {
+          const ok = await this.checkFaviconAvailable(candidate)
+          if (requestGeneration !== faviconCacheGeneration) return null
+          if (ok) {
+            this.saveToCache(url, candidate, sourceSize)
+            const effective = this.getFromCache(url)
+            return effective === undefined ? candidate : effective
+          }
         }
-      }
 
-      this.saveToCache(url, null, sourceSize)
-      const effective = this.getFromCache(url)
-      return effective === undefined ? null : effective
+        if (requestGeneration !== faviconCacheGeneration) return null
+        this.saveToCache(url, null, sourceSize)
+        const effective = this.getFromCache(url)
+        return effective === undefined ? null : effective
+      })
     })()
 
     faviconInFlight.set(requestKey, request)
     try {
       return await request
     } finally {
-      faviconInFlight.delete(requestKey)
+      if (faviconInFlight.get(requestKey) === request) {
+        faviconInFlight.delete(requestKey)
+      }
     }
   },
 
@@ -380,6 +442,14 @@ export const FaviconService = {
    * 清除缓存
    */
   clearCache(): void {
+    faviconCacheGeneration += 1
+    faviconInFlight.clear()
+    if (cacheWriteTimer) clearTimeout(cacheWriteTimer)
+    if (linkGroupWriteTimer) clearTimeout(linkGroupWriteTimer)
+    cacheWriteTimer = null
+    linkGroupWriteTimer = null
+    pendingCacheSerialized = null
+    pendingLinkIcons.clear()
     localStorage.removeItem(FAVICON_CACHE_KEY)
     cachedRaw = null
     cachedParsed = {}

@@ -35,7 +35,10 @@ interface WidgetRendererProps {
   active: boolean
   linkGroups: linkGroup[]
   visibleAppUrls: string[]
-  onUpdate: (instance: WidgetInstance) => void
+  onUpdate: (
+    instance: WidgetInstance,
+    expected?: WidgetInstance
+  ) => Promise<string | null>
   onConfigure: () => void
   onAddBookmark: (item: LaterReadItem, groupTitle: string) => void
   onRequestLinkRemoval: (url: string, label: string) => void
@@ -61,7 +64,9 @@ export const WidgetRenderer = ({
           active={active}
           size={instance.size}
           config={instance.config}
-          onConfigChange={config => onUpdate({ ...instance, config })}
+          onConfigChange={config => {
+            void onUpdate({ ...instance, config }, instance)
+          }}
         />
       )
       break

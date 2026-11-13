@@ -1,6 +1,10 @@
 import { getChromeLocal, hasChromeStorage, setChromeLocal } from "./extensionStore"
 import { fetchWithTimeout } from "./http"
-import { ensureRssPermissionFor } from "./optionalPermissions"
+import {
+  ensureRssPermissionForWithStatus,
+  removeRssPermissionFor,
+  resolveRssPermissionOrigin,
+} from "./optionalPermissions"
 
 export const RSS_SUBSCRIPTIONS_KEY = "fluidity.rss.subscriptions.v1"
 export const RSS_READ_STATE_KEY = "fluidity.rss.readState.v1"
@@ -11,6 +15,61 @@ const MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 const MAX_SUBSCRIPTIONS = 20
 const MAX_ITEMS_PER_FEED = 50
 const DEFAULT_REFRESH_MINUTES = 30
+const MAX_CONCURRENT_REFRESHES = 4
+const TOMBSTONE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000
+const MAX_SUBSCRIPTION_RECORDS = 80
+const RSS_SUBSCRIPTIONS_LOCK = "fluidity:rss-subscriptions"
+const RSS_READ_STATE_LOCK = "fluidity:rss-read-state"
+const RSS_CACHE_LOCK = "fluidity:rss-cache"
+
+let subscriptionMutationQueue: Promise<void> = Promise.resolve()
+let readStateMutationQueue: Promise<void> = Promise.resolve()
+let cacheMutationQueue: Promise<void> = Promise.resolve()
+
+const withRssSubscriptionsLock = async <T>(
+  operation: () => T | Promise<T>
+): Promise<T> => {
+  if (typeof navigator !== "undefined" && navigator.locks?.request) {
+    return navigator.locks.request(RSS_SUBSCRIPTIONS_LOCK, operation)
+  }
+
+  const mutation = subscriptionMutationQueue.then(operation, operation)
+  subscriptionMutationQueue = mutation.then(
+    () => undefined,
+    () => undefined
+  )
+  return mutation
+}
+
+const withRssReadStateLock = async <T>(
+  operation: () => T | Promise<T>
+): Promise<T> => {
+  if (typeof navigator !== "undefined" && navigator.locks?.request) {
+    return navigator.locks.request(RSS_READ_STATE_LOCK, operation)
+  }
+
+  const mutation = readStateMutationQueue.then(operation, operation)
+  readStateMutationQueue = mutation.then(
+    () => undefined,
+    () => undefined
+  )
+  return mutation
+}
+
+const withRssCacheLock = async <T>(
+  operation: () => T | Promise<T>
+): Promise<T> => {
+  if (typeof navigator !== "undefined" && navigator.locks?.request) {
+    return navigator.locks.request(RSS_CACHE_LOCK, operation)
+  }
+
+  const mutation = cacheMutationQueue.then(operation, operation)
+  cacheMutationQueue = mutation.then(
+    () => undefined,
+    () => undefined
+  )
+  return mutation
+}
 
 export interface RssSubscription {
   id: string
@@ -111,8 +170,34 @@ export const readRssSubscriptions = (): RssSubscriptionStore => {
   }
 }
 
-export const writeRssSubscriptions = (store: RssSubscriptionStore): void => {
-  localStorage.setItem(RSS_SUBSCRIPTIONS_KEY, JSON.stringify(store))
+export const writeRssSubscriptions = (
+  store: RssSubscriptionStore,
+  now = Date.now()
+): void => {
+  const records = Object.values(store.subscriptions)
+  const activeSubscriptions = records
+    .filter(item => !item.deletedAt)
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+  const retainedTombstones = records
+    .filter(
+      item =>
+        Boolean(item.deletedAt) &&
+        now - (item.deletedAt ?? 0) <= TOMBSTONE_RETENTION_MS
+    )
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, Math.max(0, MAX_SUBSCRIPTION_RECORDS - activeSubscriptions.length))
+  // Tombstones are sync metadata. They may consume only the records left after
+  // every live subscription has been retained.
+  const subscriptions = [...activeSubscriptions, ...retainedTombstones]
+  localStorage.setItem(
+    RSS_SUBSCRIPTIONS_KEY,
+    JSON.stringify({
+      version: 1,
+      subscriptions: Object.fromEntries(
+        subscriptions.map(item => [item.id, item])
+      ),
+    })
+  )
   emitRssChanged()
 }
 
@@ -146,23 +231,25 @@ export const setRssItemRead = (
   item: Pick<RssItem, "id" | "feedId">,
   read: boolean,
   now = Date.now()
-): void => {
-  const state = readRssReadState()
-  state[item.id] = { read, updatedAt: now, feedId: item.feedId }
-  writeRssReadState(state)
-}
+): Promise<void> =>
+  withRssReadStateLock(() => {
+    const state = readRssReadState()
+    state[item.id] = { read, updatedAt: now, feedId: item.feedId }
+    writeRssReadState(state)
+  })
 
 export const setRssItemsRead = (
   items: Pick<RssItem, "id" | "feedId">[],
   read: boolean,
   now = Date.now()
-): void => {
-  const state = readRssReadState()
-  for (const item of items) {
-    state[item.id] = { read, updatedAt: now, feedId: item.feedId }
-  }
-  writeRssReadState(state)
-}
+): Promise<void> =>
+  withRssReadStateLock(() => {
+    const state = readRssReadState()
+    for (const item of items) {
+      state[item.id] = { read, updatedAt: now, feedId: item.feedId }
+    }
+    writeRssReadState(state)
+  })
 
 const localCacheFallbackKey = `${RSS_CACHE_KEY}.web`
 
@@ -189,30 +276,30 @@ export const writeRssCache = async (cache: RssCacheStore): Promise<void> => {
   emitRssChanged()
 }
 
-let cacheMutationQueue: Promise<void> = Promise.resolve()
-
 const writeRssFeedCache = async (
   feedId: string,
   feed: RssFeedCache
 ): Promise<void> => {
-  const mutation = cacheMutationQueue.then(async () => {
+  await writeRssFeedsCache([feed])
+}
+
+const writeRssFeedsCache = async (feeds: RssFeedCache[]): Promise<void> => {
+  await withRssCacheLock(async () => {
     const latest = await readRssCache()
-    latest.feeds[feedId] = feed
+    feeds.forEach(feed => {
+      latest.feeds[feed.feedId] = feed
+    })
     await writeRssCache(latest)
   })
-  cacheMutationQueue = mutation.catch(() => undefined)
-  await mutation
 }
 
 const removeRssFeedCache = async (feedId: string): Promise<void> => {
-  const mutation = cacheMutationQueue.then(async () => {
+  await withRssCacheLock(async () => {
     const latest = await readRssCache()
     if (!(feedId in latest.feeds)) return
     delete latest.feeds[feedId]
     await writeRssCache(latest)
   })
-  cacheMutationQueue = mutation.catch(() => undefined)
-  await mutation
 }
 
 const readResponseText = async (response: Response): Promise<string> => {
@@ -363,15 +450,23 @@ const backoffMs = (failureCount: number): number => {
 
 export const fetchRssSubscription = async (
   subscription: RssSubscription,
-  options: { force?: boolean; now?: number } = {}
+  options: {
+    force?: boolean
+    now?: number
+    signal?: AbortSignal
+    persist?: boolean
+    previous?: RssFeedCache
+  } = {}
 ): Promise<RssFeedCache> => {
-  const existingRequest = refreshInFlight.get(subscription.id)
+  const existingRequest = options.signal
+    ? undefined
+    : refreshInFlight.get(subscription.id)
   if (existingRequest) return existingRequest
 
   const request = (async () => {
     const now = options.now ?? Date.now()
-    const cache = await readRssCache()
-    const previous = cache.feeds[subscription.id]
+    const cache = options.previous ? null : await readRssCache()
+    const previous = options.previous ?? cache?.feeds[subscription.id]
     if (!options.force && previous && previous.nextRefreshAt > now) return previous
     const headers: Record<string, string> = {
       Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5",
@@ -387,6 +482,7 @@ export const fetchRssSubscription = async (
           credentials: "omit",
           referrerPolicy: "no-referrer",
           cache: "no-store",
+          signal: options.signal,
         },
         { timeoutMs: 15_000, retries: 1 }
       )
@@ -398,7 +494,7 @@ export const fetchRssSubscription = async (
           failureCount: 0,
           error: undefined,
         }
-        await writeRssFeedCache(subscription.id, next)
+        if (options.persist !== false) await writeRssFeedCache(subscription.id, next)
         return next
       }
       if (!response.ok) throw new Error(`订阅请求失败（HTTP ${response.status}）`)
@@ -416,7 +512,7 @@ export const fetchRssSubscription = async (
         failureCount: 0,
         items: parsed.items,
       }
-      await writeRssFeedCache(subscription.id, next)
+      if (options.persist !== false) await writeRssFeedCache(subscription.id, next)
       return next
     } catch (error) {
       const failureCount = (previous?.failureCount ?? 0) + 1
@@ -431,17 +527,33 @@ export const fetchRssSubscription = async (
         items: previous?.items ?? [],
         error: error instanceof Error ? error.message : "订阅刷新失败",
       }
-      await writeRssFeedCache(subscription.id, next)
+      if (options.signal?.aborted) throw error
+      if (options.persist !== false) await writeRssFeedCache(subscription.id, next)
       return next
     }
   })()
 
-  refreshInFlight.set(subscription.id, request)
+  if (!options.signal) refreshInFlight.set(subscription.id, request)
   try {
     return await request
   } finally {
-    refreshInFlight.delete(subscription.id)
+    if (!options.signal) refreshInFlight.delete(subscription.id)
   }
+}
+
+const rollbackUnusedRssPermission = async (url: string): Promise<boolean> =>
+  withRssSubscriptionsLock(async () => {
+    const origin = resolveRssPermissionOrigin(url)
+    const permissionInUse = listRssSubscriptions().some(
+      item => resolveRssPermissionOrigin(item.url) === origin
+    )
+    if (permissionInUse) return true
+    return removeRssPermissionFor(url)
+  })
+
+const permissionRollbackError = (error: unknown): Error => {
+  const message = error instanceof Error ? error.message : "RSS 操作失败"
+  return new Error(`${message}；且新授予的订阅域名权限未能撤回，请在扩展设置中检查`)
 }
 
 export const addRssSubscription = async (
@@ -449,81 +561,180 @@ export const addRssSubscription = async (
   now = Date.now()
 ): Promise<RssSubscription> => {
   const url = normalizeRssUrl(inputUrl)
-  const permitted = await ensureRssPermissionFor(url)
-  if (!permitted) throw new Error("没有获得该订阅域名的访问权限")
-  const store = readRssSubscriptions()
-  const activeCount = Object.values(store.subscriptions).filter(item => !item.deletedAt).length
-  if (activeCount >= MAX_SUBSCRIPTIONS) throw new Error("最多可以添加 20 个订阅源")
+  const permission = await ensureRssPermissionForWithStatus(url)
+  if (!permission.granted) throw new Error("没有获得该订阅域名的访问权限")
   const id = rssSubscriptionIdForUrl(url)
-  const existing = store.subscriptions[id]
-  const draft: RssSubscription = {
-    id,
-    url,
-    title: existing?.title || new URL(url).hostname,
-    enabled: true,
-    refreshMinutes: existing?.refreshMinutes ?? DEFAULT_REFRESH_MINUTES,
-    createdAt: existing?.createdAt ?? now,
-    updatedAt: now,
+  let committed = false
+
+  try {
+    const initial = readRssSubscriptions().subscriptions[id]
+    const draft: RssSubscription = {
+      id,
+      url,
+      title: initial?.title || new URL(url).hostname,
+      enabled: true,
+      refreshMinutes: initial?.refreshMinutes ?? DEFAULT_REFRESH_MINUTES,
+      createdAt: initial?.createdAt ?? now,
+      updatedAt: now,
+    }
+    // The network request intentionally runs outside the global mutation lock.
+    // Its result is committed only after re-reading the latest subscription store.
+    const preview = await fetchRssSubscription(draft, {
+      force: true,
+      now,
+      persist: false,
+    })
+    if (preview.error && preview.items.length === 0) throw new Error(preview.error)
+
+    const subscription = await withRssSubscriptionsLock(() => {
+      const store = readRssSubscriptions()
+      const existing = store.subscriptions[id]
+      const activeCount = Object.values(store.subscriptions).filter(
+        item => !item.deletedAt
+      ).length
+      if ((!existing || existing.deletedAt) && activeCount >= MAX_SUBSCRIPTIONS) {
+        throw new Error("最多可以添加 20 个订阅源")
+      }
+      const next: RssSubscription = {
+        ...draft,
+        title: preview.title || existing?.title || draft.title,
+        refreshMinutes: existing?.refreshMinutes ?? draft.refreshMinutes,
+        createdAt: existing?.createdAt ?? draft.createdAt,
+      }
+      store.subscriptions[id] = next
+      writeRssSubscriptions(store, now)
+      committed = true
+      return next
+    })
+    await writeRssFeedCache(id, preview)
+    return subscription
+  } catch (error) {
+    if (permission.newlyGranted && !committed) {
+      const rolledBack = await rollbackUnusedRssPermission(url)
+      if (!rolledBack) throw permissionRollbackError(error)
+    }
+    throw error
   }
-  const preview = await fetchRssSubscription(draft, { force: true, now })
-  if (preview.error && preview.items.length === 0) throw new Error(preview.error)
-  const subscription = { ...draft, title: preview.title || draft.title }
-  store.subscriptions[id] = subscription
-  writeRssSubscriptions(store)
-  return subscription
 }
 
-export const updateRssSubscription = (
+export const updateRssSubscription = async (
   id: string,
   patch: Partial<Pick<RssSubscription, "title" | "enabled" | "refreshMinutes">>,
   now = Date.now()
-): RssSubscription | null => {
-  const store = readRssSubscriptions()
-  const existing = store.subscriptions[id]
-  if (!existing || existing.deletedAt) return null
-  const refreshMinutes = [15, 30, 60, 180, 360].includes(Number(patch.refreshMinutes))
-    ? Number(patch.refreshMinutes)
-    : existing.refreshMinutes
-  const next = {
-    ...existing,
-    ...patch,
-    refreshMinutes,
-    title: patch.title?.trim() || existing.title,
-    updatedAt: now,
+): Promise<RssSubscription | null> =>
+  withRssSubscriptionsLock(() => {
+    const store = readRssSubscriptions()
+    const existing = store.subscriptions[id]
+    if (!existing || existing.deletedAt) return null
+    const refreshMinutes = [15, 30, 60, 180, 360].includes(
+      Number(patch.refreshMinutes)
+    )
+      ? Number(patch.refreshMinutes)
+      : existing.refreshMinutes
+    const next = {
+      ...existing,
+      ...patch,
+      refreshMinutes,
+      title: patch.title?.trim() || existing.title,
+      updatedAt: now,
+    }
+    store.subscriptions[id] = next
+    writeRssSubscriptions(store, now)
+    return next
+  })
+
+export const removeRssSubscription = async (
+  id: string,
+  now = Date.now()
+): Promise<RssSubscription | null> => {
+  let permissionRemovalFailed = false
+  const next = await withRssSubscriptionsLock(async () => {
+    const store = readRssSubscriptions()
+    const existing = store.subscriptions[id]
+    if (!existing) return null
+    const removed = { ...existing, deletedAt: now, updatedAt: now, enabled: false }
+    store.subscriptions[id] = removed
+    writeRssSubscriptions(store, now)
+
+    const removedOrigin = resolveRssPermissionOrigin(existing.url)
+    const originStillInUse = Object.values(store.subscriptions).some(
+      item =>
+        !item.deletedAt &&
+        item.id !== id &&
+        resolveRssPermissionOrigin(item.url) === removedOrigin
+    )
+    if (!originStillInUse) {
+      const hasRemovalApi =
+        typeof chrome !== "undefined" &&
+        Boolean(chrome.runtime?.id) &&
+        Boolean(chrome.permissions?.remove)
+      if (hasRemovalApi && !(await removeRssPermissionFor(existing.url))) {
+        permissionRemovalFailed = true
+      }
+    }
+    return removed
+  })
+  if (!next) return null
+
+  await withRssReadStateLock(() => {
+    const readState = readRssReadState()
+    let readStateChanged = false
+    for (const [itemId, marker] of Object.entries(readState)) {
+      if (marker.feedId !== id) continue
+      delete readState[itemId]
+      readStateChanged = true
+    }
+    if (readStateChanged) writeRssReadState(readState)
+  })
+  await removeRssFeedCache(id).catch(() => undefined)
+  if (permissionRemovalFailed) {
+    throw new Error("订阅已移除，但域名访问权限未能撤回，请在扩展设置中手动检查")
   }
-  store.subscriptions[id] = next
-  writeRssSubscriptions(store)
   return next
 }
 
-export const removeRssSubscription = (id: string, now = Date.now()): RssSubscription | null => {
-  const store = readRssSubscriptions()
-  const existing = store.subscriptions[id]
-  if (!existing) return null
-  const next = { ...existing, deletedAt: now, updatedAt: now, enabled: false }
-  store.subscriptions[id] = next
-  writeRssSubscriptions(store)
+export const restoreRssSubscription = async (
+  id: string,
+  now = Date.now()
+): Promise<RssSubscription | null> => {
+  const candidate = readRssSubscriptions().subscriptions[id]
+  if (!candidate) return null
+  const permission = await ensureRssPermissionForWithStatus(candidate.url)
+  if (!permission.granted) return null
+  let committed = false
+  let rollbackAttempted = false
 
-  const readState = readRssReadState()
-  let readStateChanged = false
-  for (const [itemId, marker] of Object.entries(readState)) {
-    if (marker.feedId !== id) continue
-    delete readState[itemId]
-    readStateChanged = true
+  try {
+    const restored = await withRssSubscriptionsLock(() => {
+      const store = readRssSubscriptions()
+      const existing = store.subscriptions[id]
+      if (!existing) return null
+      const next = {
+        ...existing,
+        deletedAt: undefined,
+        updatedAt: now,
+        enabled: true,
+      }
+      store.subscriptions[id] = next
+      writeRssSubscriptions(store, now)
+      committed = true
+      return next
+    })
+    if (!restored && permission.newlyGranted) {
+      rollbackAttempted = true
+      const rolledBack = await rollbackUnusedRssPermission(candidate.url)
+      if (!rolledBack) {
+        throw new Error("恢复失败，且新授予的订阅域名权限未能撤回，请在扩展设置中检查")
+      }
+    }
+    return restored
+  } catch (error) {
+    if (permission.newlyGranted && !committed && !rollbackAttempted) {
+      const rolledBack = await rollbackUnusedRssPermission(candidate.url)
+      if (!rolledBack) throw permissionRollbackError(error)
+    }
+    throw error
   }
-  if (readStateChanged) writeRssReadState(readState)
-  void removeRssFeedCache(id).catch(() => undefined)
-  return next
-}
-
-export const restoreRssSubscription = (id: string, now = Date.now()): RssSubscription | null => {
-  const store = readRssSubscriptions()
-  const existing = store.subscriptions[id]
-  if (!existing) return null
-  const next = { ...existing, deletedAt: undefined, updatedAt: now, enabled: true }
-  store.subscriptions[id] = next
-  writeRssSubscriptions(store)
-  return next
 }
 
 export const getRssItems = async (
@@ -551,17 +762,82 @@ export const getRssItems = async (
     .slice(0, 500)
 }
 
+export const getRssWidgetData = async (
+  subscriptionIds: string[],
+  options: { unreadOnly?: boolean } = {}
+): Promise<{
+  items: Array<RssItem & { feedTitle: string; read: boolean }>
+  allItems: Array<RssItem & { feedTitle: string; read: boolean }>
+  feeds: RssFeedCache[]
+}> => {
+  const [cache, readState] = await Promise.all([readRssCache(), Promise.resolve(readRssReadState())])
+  const subscriptions = readRssSubscriptions().subscriptions
+  const activeIds = subscriptionIds.filter(id => {
+    const subscription = subscriptions[id]
+    return Boolean(subscription?.enabled && !subscription.deletedAt)
+  })
+  const allItems = activeIds
+    .flatMap(id => {
+      const feed = cache.feeds[id]
+      return (feed?.items ?? []).map(item => ({
+        ...item,
+        feedTitle: feed.title,
+        read: Boolean(readState[item.id]?.read),
+      }))
+    })
+    .sort((a, b) => b.publishedAt - a.publishedAt)
+    .slice(0, 500)
+  return {
+    items: options.unreadOnly ? allItems.filter(item => !item.read) : allItems,
+    allItems,
+    feeds: activeIds.map(id => cache.feeds[id]).filter((feed): feed is RssFeedCache => Boolean(feed)),
+  }
+}
+
+const mapWithConcurrency = async <T, R>(
+  values: T[],
+  limit: number,
+  mapper: (value: T) => Promise<R>
+): Promise<R[]> => {
+  const results = new Array<R>(values.length)
+  let cursor = 0
+  const workers = Array.from(
+    { length: Math.min(limit, values.length) },
+    async () => {
+      while (cursor < values.length) {
+        const index = cursor
+        cursor += 1
+        results[index] = await mapper(values[index])
+      }
+    }
+  )
+  await Promise.all(workers)
+  return results
+}
+
 export const refreshRssSubscriptions = async (
   subscriptionIds: string[],
-  options: { force?: boolean } = {}
+  options: { force?: boolean; signal?: AbortSignal } = {}
 ): Promise<RssFeedCache[]> => {
   const store = readRssSubscriptions()
   const subscriptions = subscriptionIds
     .map(id => store.subscriptions[id])
     .filter((item): item is RssSubscription => Boolean(item?.enabled && !item.deletedAt))
-  return await Promise.all(
-    subscriptions.map(subscription => fetchRssSubscription(subscription, options))
+  if (subscriptions.length === 0) return []
+  const initialCache = await readRssCache()
+  const feeds = await mapWithConcurrency(
+    subscriptions,
+    MAX_CONCURRENT_REFRESHES,
+    subscription =>
+      fetchRssSubscription(subscription, {
+        ...options,
+        persist: false,
+        previous: initialCache.feeds[subscription.id],
+      })
   )
+  if (options.signal?.aborted) throw new DOMException("请求已取消", "AbortError")
+  await writeRssFeedsCache(feeds)
+  return feeds
 }
 
 export const subscribeRss = (listener: () => void): (() => void) => {

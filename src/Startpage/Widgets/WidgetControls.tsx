@@ -122,6 +122,14 @@ const Field = styled.label`
     color: var(--text-primary);
     font: inherit;
   }
+
+  @media (pointer: coarse) {
+    input,
+    select,
+    textarea {
+      min-height: 40px;
+    }
+  }
 `
 
 const SizeGrid = styled.div`
@@ -138,6 +146,10 @@ const SizeButton = styled.button<{ active: boolean }>`
   background: ${({ active }) => active ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent"};
   color: ${({ active }) => active ? "var(--accent)" : "var(--text-primary)"};
   cursor: pointer;
+
+  @media (pointer: coarse) {
+    min-height: 40px;
+  }
 `
 
 const FooterActions = styled.div`
@@ -227,7 +239,10 @@ interface WidgetSettingsProps {
   currentPage: number
   pageCount: number
   onClose: () => void
-  onSave: (instance: WidgetInstance) => void
+  onSave: (
+    instance: WidgetInstance,
+    expected: WidgetInstance
+  ) => Promise<string | null>
   onRemove: () => void
   onDuplicate: () => void
   onMovePage: (page: number) => void
@@ -247,9 +262,12 @@ export const WidgetSettings = ({
 }: WidgetSettingsProps) => {
   const definition = getWidgetDefinition(instance.type)
   const [draft, setDraft] = useState(instance)
+  const [baseline] = useState(instance)
   const [feedUrl, setFeedUrl] = useState("")
   const [feedStatus, setFeedStatus] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const subscriptions = listRssSubscriptions()
   const selectedSubscriptionIds = Array.isArray(draft.config.subscriptionIds)
     ? draft.config.subscriptionIds.filter((value): value is string => typeof value === "string")
@@ -273,6 +291,24 @@ export const WidgetSettings = ({
       setFeedStatus(error instanceof Error ? error.message : "添加订阅失败")
     } finally {
       setBusy(false)
+    }
+  }
+
+  const save = async () => {
+    if (saving) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const error = await onSave(draft, baseline)
+      if (error) {
+        setSaveError(error)
+        return
+      }
+      onClose()
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "保存组件失败")
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -383,9 +419,28 @@ export const WidgetSettings = ({
                       <select
                         aria-label={`${subscription.title}刷新间隔`}
                         value={subscription.refreshMinutes}
+                        disabled={busy}
                         onChange={event => {
-                          updateRssSubscription(subscription.id, { refreshMinutes: Number(event.target.value) })
-                          setFeedStatus(`已更新 ${subscription.title}`)
+                          const refreshMinutes = Number(event.target.value)
+                          setBusy(true)
+                          void updateRssSubscription(subscription.id, {
+                            refreshMinutes,
+                          })
+                            .then(updated => {
+                              setFeedStatus(
+                                updated
+                                  ? `已更新 ${subscription.title}`
+                                  : "订阅已在其他页面移除"
+                              )
+                            })
+                            .catch(error => {
+                              setFeedStatus(
+                                error instanceof Error
+                                  ? error.message
+                                  : "更新订阅失败"
+                              )
+                            })
+                            .finally(() => setBusy(false))
                         }}
                       >
                         <option value="15">15 分钟</option>
@@ -396,11 +451,60 @@ export const WidgetSettings = ({
                       </select>
                       <DangerButton
                         type="button"
+                        disabled={busy}
                         onClick={() => {
-                          const removed = removeRssSubscription(subscription.id)
-                          patchConfig({ subscriptionIds: selectedSubscriptionIds.filter(id => id !== subscription.id) })
-                          setFeedStatus(`已移除 ${subscription.title}`)
-                          if (removed) onUndoableAction("已移除订阅源", () => restoreRssSubscription(subscription.id))
+                          setBusy(true)
+                          void removeRssSubscription(subscription.id)
+                            .then(removed => {
+                              if (!removed) {
+                                setFeedStatus("订阅已在其他页面移除")
+                                return
+                              }
+                              patchConfig({
+                                subscriptionIds:
+                                  selectedSubscriptionIds.filter(
+                                    id => id !== subscription.id
+                                  ),
+                              })
+                              setFeedStatus(`已移除 ${subscription.title}`)
+                              onUndoableAction("已移除订阅源", () => {
+                                void restoreRssSubscription(
+                                  subscription.id
+                                )
+                                  .then(restored => {
+                                    if (!restored) {
+                                      setFeedStatus("恢复订阅失败")
+                                      return
+                                    }
+                                    patchConfig({
+                                      subscriptionIds: [
+                                        ...new Set([
+                                          ...selectedSubscriptionIds,
+                                          subscription.id,
+                                        ]),
+                                      ],
+                                    })
+                                    setFeedStatus(
+                                      `已恢复 ${subscription.title}`
+                                    )
+                                  })
+                                  .catch(error => {
+                                    setFeedStatus(
+                                      error instanceof Error
+                                        ? error.message
+                                        : "恢复订阅失败"
+                                    )
+                                  })
+                              })
+                            })
+                            .catch(error => {
+                              setFeedStatus(
+                                error instanceof Error
+                                  ? error.message
+                                  : "移除订阅失败"
+                              )
+                            })
+                            .finally(() => setBusy(false))
                         }}
                       >
                         移除订阅
@@ -432,9 +536,16 @@ export const WidgetSettings = ({
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <WidgetActionButton type="button" onClick={onClose}>取消</WidgetActionButton>
-              <WidgetActionButton type="button" onClick={() => { onSave(draft); onClose() }}>保存</WidgetActionButton>
+              <WidgetActionButton
+                type="button"
+                disabled={saving || busy}
+                onClick={() => void save()}
+              >
+                {saving ? "保存中…" : "保存"}
+              </WidgetActionButton>
             </div>
           </FooterActions>
+          {saveError && <WidgetRowMeta role="alert">{saveError}</WidgetRowMeta>}
         </DrawerBody>
       </DrawerCard>
     </Modal>

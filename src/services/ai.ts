@@ -10,6 +10,7 @@ import {
   normalizeDomainKey,
 } from "./browserUsage"
 import { fetchWithTimeout } from "./http"
+import { sanitizeAIPromptText } from "./aiPromptPrivacy"
 import {
   DEFAULT_AI_BASE_URL,
   resolveChatCompletionsUrl,
@@ -20,7 +21,10 @@ export { DEFAULT_AI_BASE_URL, resolveChatCompletionsUrl } from "./aiEndpoint"
 
 // AI 设置接口
 export interface AISettings {
+  /** AI 服务总开关；整理、主题等所有联网 AI 能力都依赖它。 */
   enabled: boolean
+  /** 是否使用 AI 生成主页问候；关闭后仍可使用其他 AI 能力。 */
+  greetingEnabled: boolean
   apiKey: string
   /** OpenAI 兼容接口地址（不含 /chat/completions 路径） */
   apiBaseUrl: string
@@ -59,17 +63,19 @@ const STORAGE_KEYS = {
 
 const DEFAULT_SETTINGS: AISettings = {
   enabled: false,
+  greetingEnabled: false,
   apiKey: "",
   apiBaseUrl: DEFAULT_AI_BASE_URL,
   model: "deepseek-chat",
   cacheMinutes: 60, // 默认缓存1小时
 
-  // 默认开启数据收集
-  collectLinkClicks: true,
+  // 点击分析默认关闭；搜索历史只保存在本机并直接支撑搜索建议。
+  // 是否把这些数据发送给模型由下面独立的 shareHabits 控制。
+  collectLinkClicks: false,
   collectSearchHistory: true,
 
-  // 默认开启使用习惯共享；浏览记录默认不共享
-  shareHabits: true,
+  // 任何发送给第三方模型的数据都默认关闭。
+  shareHabits: false,
   shareBrowserUsage: false,
 }
 
@@ -92,6 +98,7 @@ const getAIResponseCacheScope = (settings: AISettings): string =>
   JSON.stringify({
     version: 1,
     enabled: settings.enabled,
+    greetingEnabled: settings.greetingEnabled,
     apiBaseUrl: settings.apiBaseUrl.trim() || DEFAULT_AI_BASE_URL,
     model: settings.model.trim() || DEFAULT_SETTINGS.model,
     shareHabits: settings.shareHabits,
@@ -160,6 +167,18 @@ export const AISettingsManager = {
       const stored = JSON.parse(data) as Partial<AISettings> &
         Record<string, unknown>
       const merged = { ...DEFAULT_SETTINGS, ...stored }
+      // 迁移：旧版 enabled 同时表示“AI 服务”和“AI 问候”。只对确实
+      // 存在旧设置的用户继承该选择；没有存储的新用户仍保持默认关闭。
+      if (typeof stored.greetingEnabled !== "boolean") {
+        merged.greetingEnabled = Boolean(stored.enabled)
+      }
+      // 旧版本在字段缺失时按“开启”处理；只为已有旧设置延续该语义。
+      if (typeof stored.collectLinkClicks !== "boolean") {
+        merged.collectLinkClicks = true
+      }
+      if (typeof stored.collectSearchHistory !== "boolean") {
+        merged.collectSearchHistory = true
+      }
       // 迁移：旧版是 5 个独立共享开关；任一被关闭视为不共享，
       // 避免迁移悄悄扩大共享范围
       if (typeof stored.shareHabits !== "boolean") {
@@ -191,6 +210,7 @@ export const AISettingsManager = {
       current.apiBaseUrl.trim() !== next.apiBaseUrl ||
       current.model.trim() !== next.model ||
       current.enabled !== next.enabled ||
+      current.greetingEnabled !== next.greetingEnabled ||
       current.shareHabits !== next.shareHabits ||
       current.shareBrowserUsage !== next.shareBrowserUsage
 
@@ -260,6 +280,7 @@ export const callDeepSeekAPI = async (
     temperature?: number
     apiBaseUrl?: string
     timeoutMs?: number
+    signal?: AbortSignal
   }
 ): Promise<string> => {
   const maxTokens = options?.maxTokens ?? 100
@@ -299,6 +320,7 @@ export const callDeepSeekAPI = async (
         Authorization: `Bearer ${apiKey.trim()}`,
       },
       body: JSON.stringify(requestBody),
+      signal: options?.signal,
     },
     {
       timeoutMs: options?.timeoutMs ?? 30_000,
@@ -306,13 +328,25 @@ export const callDeepSeekAPI = async (
       retryDelayMs: 1000,
     }
   )
+  if (options?.signal?.aborted) {
+    throw new DOMException("请求已取消", "AbortError")
+  }
 
   if (!response.ok) {
-    const error = (await response.text()).slice(0, 1000)
-    throw new Error(`API 请求失败: ${response.status} - ${error}`)
+    const rawError = (await response.text()).slice(0, 4000)
+    const safeError = sanitizeAIPromptText(rawError, {
+      maxLength: 1000,
+      secrets: [apiKey],
+    })
+    throw new Error(
+      `API 请求失败: ${response.status} - ${safeError || "服务商未返回错误详情"}`
+    )
   }
 
   const data = (await response.json()) as DeepSeekResponse
+  if (options?.signal?.aborted) {
+    throw new DOMException("请求已取消", "AbortError")
+  }
   const message = data.choices?.[0]?.message
 
   // 优先使用 content
@@ -529,7 +563,7 @@ export const getAIGreeting = async (): Promise<{
   const settings = AISettingsManager.get()
 
   // 检查是否启用
-  if (!settings.enabled || !settings.apiKey) {
+  if (!settings.enabled || !settings.greetingEnabled || !settings.apiKey) {
     return {
       message: getDefaultGreeting(),
       fromCache: false,
@@ -543,11 +577,33 @@ export const getAIGreeting = async (): Promise<{
   try {
     const context = await buildGreetingContext(settings)
 
+    // Context collection is asynchronous. Re-check the live configuration so
+    // toggling AI/privacy off while it runs cannot send the already-collected
+    // context with stale authorization.
+    const requestSettings = AISettingsManager.get()
+    const settingsStillMatch =
+      requestSettings.enabled &&
+      requestSettings.greetingEnabled &&
+      requestSettings.apiKey.length > 0 &&
+      requestSettings.apiKey === settings.apiKey &&
+      requestSettings.apiBaseUrl === settings.apiBaseUrl &&
+      requestSettings.model === settings.model &&
+      requestSettings.shareHabits === settings.shareHabits &&
+      requestSettings.shareBrowserUsage === settings.shareBrowserUsage
+    if (!settingsStillMatch) {
+      return { message: getDefaultGreeting(), fromCache: false }
+    }
+
     const prompt = generatePromptV2(context)
-    const raw = await callDeepSeekAPI(settings.apiKey, prompt, settings.model, {
+    const raw = await callDeepSeekAPI(
+      requestSettings.apiKey,
+      prompt,
+      requestSettings.model,
+      {
       maxTokens: 220,
       temperature: 0.7,
-    })
+      }
+    )
 
     const { message } = parseGreetingPayload(raw)
 

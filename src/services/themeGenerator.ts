@@ -297,11 +297,20 @@ export const generateThemes = async (
   fromCache?: boolean
 }> => {
   const { maxRetries = 2, useCache = true } = options
-  const model = AISettingsManager.get().model
   const trimmedDescription = description.trim().slice(0, 200)
 
   if (!trimmedDescription) {
     return { themes: [], error: "请输入主题描述" }
+  }
+
+  // The master switch is a service boundary, not merely a UI preference.
+  // Check it before reading a provider-derived cache or constructing a prompt.
+  const settings = AISettingsManager.get()
+  if (!settings.enabled) {
+    return { themes: [], error: "AI 助手已关闭，请先在 AI 设置中开启" }
+  }
+  if (!settings.apiKey.trim()) {
+    return { themes: [], error: "请先在 AI 助手设置中配置 API Key" }
   }
 
   if (useCache) {
@@ -311,18 +320,23 @@ export const generateThemes = async (
     }
   }
 
-  const settings = AISettingsManager.get()
-
-  if (!settings.apiKey) {
-    return { themes: [], error: "请先在 AI 助手设置中配置 API Key" }
-  }
-
   const prompt = generateThemePrompt(trimmedDescription)
   let lastError: unknown = null
 
   for (let i = 0; i <= maxRetries; i++) {
+    const requestSettings = AISettingsManager.get()
+    if (!requestSettings.enabled) {
+      return { themes: [], error: "AI 助手已关闭，请先在 AI 设置中开启" }
+    }
+    if (!requestSettings.apiKey.trim()) {
+      return { themes: [], error: "请先在 AI 助手设置中配置 API Key" }
+    }
     try {
-      const themes = await tryGenerateThemes(settings.apiKey, prompt, model)
+      const themes = await tryGenerateThemes(
+        requestSettings.apiKey,
+        prompt,
+        requestSettings.model
+      )
       if (themes.length > 0) {
         cacheThemes(trimmedDescription, themes)
         return { themes, fromCache: false }

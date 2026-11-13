@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import {
   faCheckDouble,
@@ -12,9 +12,8 @@ import { Modal } from "../../components/Modal"
 import { WidgetCard } from "../../components/WidgetCard"
 import { navigateToLink } from "../../services/linkSearch"
 import {
-  getRssItems,
+  getRssWidgetData,
   listRssSubscriptions,
-  readRssCache,
   refreshRssSubscriptions,
   RssItem,
   setRssItemRead,
@@ -23,7 +22,7 @@ import {
 } from "../../services/rss"
 import { WidgetInstance } from "../../services/widgetRegistry"
 import {
-  ensureOriginPermissions,
+  ensureOriginPermissionsWithStatus,
   resolveRssPermissionOrigins,
 } from "../../services/optionalPermissions"
 import {
@@ -83,84 +82,177 @@ export const RssWidget = ({
   const [updatedAt, setUpdatedAt] = useState(0)
   const [showDetails, setShowDetails] = useState(false)
   const [detailsUnreadOnly, setDetailsUnreadOnly] = useState(unreadOnly)
+  const mountedRef = useRef(false)
+  const activeRef = useRef(active)
+  const refreshControllerRef = useRef<AbortController | null>(null)
+  const refreshPromiseRef = useRef<Promise<void> | null>(null)
+  const refreshQueuedRef = useRef(false)
+  const queuedRefreshForceRef = useRef(false)
+  const queuedPermissionRef = useRef<Promise<boolean> | undefined>(undefined)
+  const loadGenerationRef = useRef(0)
+  activeRef.current = active
 
-  const load = useCallback(async () => {
-    const [nextItems, nextAllItems, cache] = await Promise.all([
-      getRssItems(subscriptionIds, { unreadOnly }),
-      getRssItems(subscriptionIds, { unreadOnly: false }),
-      readRssCache(),
-    ])
-    setItems(nextItems)
-    setAllItems(nextAllItems)
-    const feeds = subscriptionIds.map(id => cache.feeds[id]).filter(Boolean)
-    setUpdatedAt(Math.max(0, ...feeds.map(feed => feed.fetchedAt)))
-    const failed = feeds.find(feed => feed.error)
-    setError(failed?.error ?? null)
-    setLoading(false)
+  const load = useCallback(async (signal?: AbortSignal) => {
+    const generation = ++loadGenerationRef.current
+    try {
+      const data = await getRssWidgetData(subscriptionIds, { unreadOnly })
+      if (
+        !mountedRef.current ||
+        signal?.aborted ||
+        generation !== loadGenerationRef.current
+      ) return
+      setItems(data.items)
+      setAllItems(data.allItems)
+      const feeds = data.feeds
+      setUpdatedAt(Math.max(0, ...feeds.map(feed => feed.fetchedAt)))
+      const failed = feeds.find(feed => feed.error)
+      setError(failed?.error ?? null)
+    } catch (loadError) {
+      if (
+        !mountedRef.current ||
+        signal?.aborted ||
+        generation !== loadGenerationRef.current
+      ) return
+      setError(loadError instanceof Error ? loadError.message : "RSS 缓存读取失败")
+    } finally {
+      if (
+        mountedRef.current &&
+        !signal?.aborted &&
+        generation === loadGenerationRef.current
+      ) {
+        setLoading(false)
+      }
+    }
   }, [subscriptionIds, unreadOnly])
 
+  const cancelRefresh = useCallback(() => {
+    refreshControllerRef.current?.abort()
+    refreshQueuedRef.current = false
+    queuedRefreshForceRef.current = false
+    queuedPermissionRef.current = undefined
+    if (mountedRef.current) setRefreshing(false)
+  }, [])
+
   const refresh = useCallback(
-    async (force = false) => {
-      if (subscriptionIds.length === 0) {
-        setLoading(false)
-        return
+    (force = false, permissionRequest?: Promise<boolean>): Promise<void> => {
+      if (refreshPromiseRef.current) {
+        refreshQueuedRef.current = true
+        queuedRefreshForceRef.current ||= force
+        if (force) queuedPermissionRef.current = permissionRequest
+        return refreshPromiseRef.current
       }
-      if (!navigator.onLine) {
-        setError("当前离线，正在显示已缓存内容")
-        await load()
-        return
+      if (!active || document.visibilityState !== "visible") {
+        return Promise.resolve()
       }
-      setRefreshing(true)
-      try {
-        if (force) {
-          const activeSubscriptions = listRssSubscriptions().filter(
-            subscription =>
-              subscription.enabled && subscriptionIds.includes(subscription.id)
-          )
-          let origins: string[]
-          try {
-            origins = resolveRssPermissionOrigins(
-              activeSubscriptions.map(subscription => subscription.url)
-            )
-          } catch {
-            setError("订阅地址无效，无法申请访问权限")
+
+      const controller = new AbortController()
+      refreshControllerRef.current = controller
+      const { signal } = controller
+      const request = (async () => {
+        // Yield once so the shared in-flight promise is installed before any
+        // synchronous early-return path reaches the cleanup block.
+        await Promise.resolve()
+        try {
+          if (signal.aborted) return
+          if (subscriptionIds.length === 0) {
+            if (mountedRef.current) setLoading(false)
             return
           }
-          if (
-            origins.length > 0 &&
-            !(await ensureOriginPermissions(origins))
-          ) {
-            setError("未授予订阅域名访问权限，无法刷新")
+          if (!navigator.onLine) {
+            if (mountedRef.current) {
+              setError("当前离线，正在显示已缓存内容")
+            }
+            await load(signal)
             return
+          }
+          if (mountedRef.current) setRefreshing(true)
+          if (force) {
+            if (!permissionRequest || !(await permissionRequest)) {
+              if (mountedRef.current && !signal.aborted) {
+                setError("未授予订阅域名访问权限，无法刷新")
+              }
+              return
+            }
+            if (signal.aborted) return
+          }
+          await refreshRssSubscriptions(subscriptionIds, { force, signal })
+          if (signal.aborted) return
+          await load(signal)
+        } catch (refreshError) {
+          if (signal.aborted || !mountedRef.current) return
+          setError(
+            refreshError instanceof Error
+              ? refreshError.message
+              : "RSS 刷新失败"
+          )
+        } finally {
+          if (refreshControllerRef.current === controller) {
+            refreshControllerRef.current = null
+            refreshPromiseRef.current = null
+            if (mountedRef.current) setRefreshing(false)
+            const refreshQueued = refreshQueuedRef.current
+            const queuedForce = queuedRefreshForceRef.current
+            const queuedPermission = queuedPermissionRef.current
+            refreshQueuedRef.current = false
+            queuedRefreshForceRef.current = false
+            queuedPermissionRef.current = undefined
+            if (
+              refreshQueued &&
+              mountedRef.current &&
+              activeRef.current &&
+              document.visibilityState === "visible"
+            ) {
+              void refresh(queuedForce, queuedPermission)
+            }
           }
         }
-        await refreshRssSubscriptions(subscriptionIds, { force })
-        await load()
-      } finally {
-        setRefreshing(false)
-      }
+      })()
+      refreshPromiseRef.current = request
+      return request
     },
-    [load, subscriptionIds]
+    [active, load, subscriptionIds]
   )
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      refreshControllerRef.current?.abort()
+      refreshControllerRef.current = null
+      refreshPromiseRef.current = null
+      refreshQueuedRef.current = false
+      queuedRefreshForceRef.current = false
+      queuedPermissionRef.current = undefined
+      loadGenerationRef.current += 1
+    }
+  }, [])
 
   useEffect(() => subscribeRss(() => void load()), [load])
 
   useEffect(() => {
     void load()
-    if (!active || document.visibilityState !== "visible") return
-    void refresh(false)
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refresh(false)
-    }, 60_000)
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void refresh(false)
+    const onVisibilityChange = () => {
+      if (!active || document.visibilityState !== "visible") {
+        cancelRefresh()
+        return
+      }
+      void refresh(false)
     }
-    document.addEventListener("visibilitychange", onVisible)
+    document.addEventListener("visibilitychange", onVisibilityChange)
+    if (active && document.visibilityState === "visible") {
+      void refresh(false)
+    }
+    const timer = active
+      ? window.setInterval(() => {
+          if (document.visibilityState === "visible") void refresh(false)
+        }, 60_000)
+      : null
     return () => {
-      clearInterval(timer)
-      document.removeEventListener("visibilitychange", onVisible)
+      cancelRefresh()
+      if (timer !== null) clearInterval(timer)
+      document.removeEventListener("visibilitychange", onVisibilityChange)
     }
-  }, [active, load, refresh])
+  }, [active, cancelRefresh, load, refresh])
 
   const configuredLimit = Math.max(1, Number(instance.config.itemLimit ?? 4))
   const limit =
@@ -175,17 +267,36 @@ export const RssWidget = ({
       subscription.enabled && subscriptionIds.includes(subscription.id)
   )
 
+  const requestManualRefresh = useCallback(() => {
+    let origins: string[]
+    try {
+      origins = resolveRssPermissionOrigins(
+        activeSubscriptions.map(subscription => subscription.url)
+      )
+    } catch {
+      setError("订阅地址无效，无法申请访问权限")
+      return
+    }
+    // This call intentionally happens in the button's synchronous click stack:
+    // Chrome may discard transient user activation after the first await.
+    const permissionRequest = origins.length > 0
+      ? ensureOriginPermissionsWithStatus(origins).then(result => result.granted)
+      : Promise.resolve(true)
+    void refresh(true, permissionRequest)
+  }, [activeSubscriptions, refresh])
+
   const openItem = (item: DisplayItem) => {
-    setRssItemRead(item, true)
+    void setRssItemRead(item, true)
     navigateToLink(item.url, item.title, item.feedTitle, true)
   }
 
   const markAllRead = () => {
     const previous = allItems.filter(item => item.read)
-    setRssItemsRead(allItems, true)
+    void setRssItemsRead(allItems, true)
     onUndoableAction("已将阅读流标为已读", () => {
-      setRssItemsRead(allItems, false)
-      setRssItemsRead(previous, true)
+      void setRssItemsRead(allItems, false).then(() =>
+        setRssItemsRead(previous, true)
+      )
     })
   }
 
@@ -208,7 +319,7 @@ export const RssWidget = ({
               aria-label="刷新 RSS"
               title="刷新"
               disabled={refreshing}
-              onClick={() => void refresh(true)}
+              onClick={requestManualRefresh}
             >
               <FontAwesomeIcon icon={faRotate} spin={refreshing} />
             </WidgetIconButton>
@@ -278,7 +389,7 @@ export const RssWidget = ({
                     <WidgetIconButton
                       type="button"
                       aria-label={item.read ? "恢复未读" : "标为已读"}
-                      onClick={() => setRssItemRead(item, !item.read)}
+                      onClick={() => void setRssItemRead(item, !item.read)}
                     >
                       <FontAwesomeIcon icon={item.read ? faRotateLeft : faCheckDouble} />
                     </WidgetIconButton>

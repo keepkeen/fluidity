@@ -17,6 +17,7 @@ import {
   DragStartEvent,
   PointerSensor,
   PointerSensorOptions,
+  TouchSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core"
@@ -24,6 +25,8 @@ import type {
   CollisionDetection,
   PointerActivationConstraint,
   PointerSensorProps,
+  SensorProps,
+  TouchSensorOptions,
 } from "@dnd-kit/core"
 import { SortableContext, useSortable } from "@dnd-kit/sortable"
 import type { SortingStrategy } from "@dnd-kit/sortable"
@@ -49,11 +52,15 @@ import { LinkAnalytics } from "../../services/analytics"
 import {
   addWidgetInstance,
   buildHomeItems,
+  getHomeLayoutFingerprint,
+  HOME_LAYOUT_KEY,
   HomeItem,
+  HomeLayoutState,
   removeWidgetInstance,
   readHomeLayout,
   saveHomeLayout,
-  updateWidgetInstance,
+  updateWidgetInstanceIfUnchanged,
+  withHomeLayoutLock,
 } from "../../services/homeLayout"
 import {
   getHomeGridMetrics,
@@ -155,6 +162,11 @@ const PageDots = styled.div`
   align-items: center;
   justify-content: center;
   gap: 0;
+
+  @media (pointer: coarse) and (max-width: 600px) {
+    box-sizing: border-box;
+    padding-inline: 44px;
+  }
 `
 
 const MovePageNotice = styled.div`
@@ -207,6 +219,17 @@ const PageDot = styled.button<{ active: boolean }>`
     outline: 2px solid var(--accent);
     outline-offset: 3px;
   }
+
+  @media (pointer: coarse) {
+    width: ${({ active }) => (active ? 44 : 40)}px;
+    height: 40px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    ::before {
+      transition: none;
+    }
+  }
 `
 
 const PagePosition = styled.span`
@@ -252,6 +275,11 @@ const PageEditButton = styled.button`
     border-color: var(--home-stroke);
     background: var(--home-surface-strong);
     outline: none;
+  }
+
+  @media (pointer: coarse) {
+    width: 40px;
+    height: 40px;
   }
 `
 
@@ -320,6 +348,44 @@ const ItemShell = styled.div<{
   &[data-home-drop-position="after"]::after {
     right: -8px;
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    animation-delay: 0ms;
+  }
+`
+
+const DragPreviewSlot = styled.div<{
+  col: number
+  row: number
+  previewOrder: number
+  kind: HomeItem["kind"]
+}>`
+  order: ${({ previewOrder }) => previewOrder};
+  grid-column: span ${({ col }) => col};
+  grid-row: span ${({ row }) => row};
+  min-width: 0;
+  min-height: 0;
+  pointer-events: none;
+  border: 1px dashed color-mix(in srgb, var(--accent) 52%, transparent);
+  border-radius: ${({ kind }) =>
+    kind === "app" ? "18px" : "var(--radius-main)"};
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--home-surface-strong) 55%, transparent);
+  opacity: 0.68;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &::after {
+    content: "";
+    width: ${({ kind }) => (kind === "app" ? "52px" : "72%")};
+    height: ${({ kind }) => (kind === "app" ? "52px" : "58%")};
+    border-radius: ${({ kind }) =>
+      kind === "app" ? "15px" : "calc(var(--radius-main) * 0.65)"};
+    background: color-mix(in srgb, var(--text-primary) 7%, transparent);
+  }
 `
 
 const DragPreview = styled.div`
@@ -348,6 +414,10 @@ const JiggleBox = styled.div<{ jiggling: boolean; delayIndex: number }>`
     jiggling ? "jiggle 0.28s ease-in-out infinite" : "none"};
   /* 负延迟：各条目从周期中段开始，立即错相 */
   animation-delay: ${({ delayIndex }) => -(delayIndex % 5) * 57}ms;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
 `
 
 const AppEntry = styled.div`
@@ -416,6 +486,10 @@ const AppIconBox = styled.span`
   ${AppTile}:focus-visible & {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
   }
 `
 
@@ -538,6 +612,17 @@ const RemoveBadge = styled.button`
     color: var(--accent-hover);
     border-color: var(--accent-hover);
   }
+
+  @media (pointer: coarse) {
+    top: -10px;
+    left: -10px;
+    width: 40px;
+    height: 40px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
 `
 
 const MovePageControls = styled.div`
@@ -552,6 +637,17 @@ const MovePageControls = styled.div`
   background: color-mix(in srgb, var(--bg-primary) 92%, transparent);
   box-shadow: var(--shadow-soft);
   animation: pop-in 0.2s ease both;
+
+  @media (pointer: coarse) {
+    top: 50%;
+    right: -10px;
+    flex-direction: column;
+    transform: translateY(-50%);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
 `
 
 const MovePageButton = styled.button`
@@ -573,6 +669,16 @@ const MovePageButton = styled.button`
   & + & {
     border-left: 1px solid var(--surface-border);
   }
+
+  @media (pointer: coarse) {
+    width: 40px;
+    height: 40px;
+
+    & + & {
+      border-top: 1px solid var(--surface-border);
+      border-left: 0;
+    }
+  }
 `
 
 const WidgetEditControls = styled.div`
@@ -586,6 +692,12 @@ const WidgetEditControls = styled.div`
   border-radius: 999px;
   background: color-mix(in srgb, var(--bg-primary) 94%, transparent);
   box-shadow: var(--shadow-soft);
+
+  @media (pointer: coarse) {
+    right: auto;
+    bottom: -10px;
+    left: -10px;
+  }
 `
 
 const WidgetEditButton = styled.button`
@@ -607,6 +719,11 @@ const WidgetEditButton = styled.button`
 
   & + & {
     border-left: 1px solid var(--surface-border);
+  }
+
+  @media (pointer: coarse) {
+    width: 40px;
+    height: 40px;
   }
 `
 
@@ -637,6 +754,58 @@ const DoneButton = styled.button`
 
   :hover {
     background: color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+`
+
+const EmptyHome = styled.div`
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 28px;
+  color: var(--text-secondary);
+  text-align: center;
+
+  h3,
+  p {
+    margin: 0;
+  }
+
+  h3 {
+    color: var(--text-primary);
+    font-size: 1rem;
+  }
+
+  p {
+    max-width: 360px;
+    font-size: 0.82rem;
+    line-height: 1.65;
+  }
+`
+
+const EmptyHomeAction = styled.button`
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 48%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+
+  :hover,
+  :focus-visible {
+    background: color-mix(in srgb, var(--accent) 24%, transparent);
+    outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    outline-offset: 2px;
   }
 `
 
@@ -769,9 +938,67 @@ const PAGE_SNAP_TRANSITION =
 const EDGE_PAGE_DWELL_MS = 420
 const EDGE_PAGE_TRANSITION_LOCK_MS = 280
 const EDGE_PAGE_TARGET_GUTTER_PX = 20
+const PAGE_DRAG_AXIS_THRESHOLD_PX = 10
 const REORDER_INTENT_MS = 70
+const REORDER_ANIMATION_MS = 180
 const noHomeItemTransform: SortingStrategy = () => null
 const doNotAnimateHomeLayoutChange = () => false
+
+const sameHomeOrder = (
+  left: string[] | null,
+  right: string[] | null
+): boolean =>
+  left === right ||
+  (!!left &&
+    !!right &&
+    left.length === right.length &&
+    left.every((id, index) => id === right[index]))
+
+export const saveHomeOrderIfUnchanged = (
+  expectedCurrentLayout: HomeLayoutState,
+  nextOrder: string[]
+): ReturnType<typeof readHomeLayout> | null => {
+  const latest = readHomeLayout()
+  if (
+    getHomeLayoutFingerprint(latest) !==
+    getHomeLayoutFingerprint(expectedCurrentLayout)
+  ) {
+    return null
+  }
+  const next = { ...latest, order: [...new Set(nextOrder)] }
+  saveHomeLayout(next)
+  return next
+}
+
+export interface HomeDragPageFrame<T> {
+  canonicalItems: readonly T[]
+  previewItems: readonly T[] | null
+}
+
+/**
+ * Keeps the canonical page containers mounted while a candidate order changes
+ * the packed page count. A missing preview page is intentionally empty; null
+ * is reserved for the non-dragging state where canonical content is visible.
+ */
+export const projectHomeDragPages = <T,>(
+  canonicalPages: readonly (readonly T[])[],
+  previewPages: readonly (readonly T[])[] | null
+): { frames: HomeDragPageFrame<T>[]; navigationPageCount: number } => {
+  const renderedPageCount = previewPages
+    ? Math.max(canonicalPages.length, previewPages.length)
+    : canonicalPages.length
+
+  return {
+    // A preview may temporarily collapse the last canonical page. Keep that
+    // page reachable so the user can reverse the edge turn or cancel back to
+    // the exact origin during the same drag session.
+    navigationPageCount: renderedPageCount,
+    frames: Array.from({ length: renderedPageCount }, (_, pageIndex) => ({
+      canonicalItems: canonicalPages[pageIndex] ?? [],
+      previewItems: previewPages ? (previewPages[pageIndex] ?? []) : null,
+    })),
+  }
+}
 
 const positionPageTrack = (
   track: HTMLDivElement | null,
@@ -790,10 +1017,12 @@ const positionPageTrack = (
 
 // ============ 可排序条目 ============
 
-const HOME_DRAG_IGNORE_SELECTOR =
+const HOME_GESTURE_INTERACTIVE_SELECTOR =
   "button, a, input, textarea, select, [contenteditable], [data-widget-interactive]"
 const HOME_DRAG_ACTIVATOR_SELECTOR =
   '[data-home-app-tile="true"], [data-home-drag-handle="true"]'
+const HOME_PAGE_GESTURE_EXCLUDED_SELECTOR =
+  '[data-fluidity-modal="true"], [data-home-widget-edit-surface="true"], [data-home-drag-handle="true"]'
 const HOME_PAGE_FOCUSABLE_SELECTOR = [
   "a[href]",
   "button:not([disabled])",
@@ -802,6 +1031,29 @@ const HOME_PAGE_FOCUSABLE_SELECTOR = [
   "textarea:not([disabled])",
   '[tabindex]:not([tabindex="-1"])',
 ].join(", ")
+
+export const HOME_SCREEN_READER_INSTRUCTIONS = {
+  draggable:
+    "使用指针按住并拖动应用图标；小组件请先长按进入编辑，再拖动其手柄。编辑模式下，可使用 Control 或 Command 加左右方向键在当前页调整顺序，也可使用移至上一页或移至下一页按钮跨页移动。",
+}
+
+/**
+ * Business controls never start item DnD. They still participate in the
+ * parent page gesture so a short press remains a click, a horizontal move
+ * pages, and an intentional long press enters the shared home edit mode.
+ * Explicit drag-only surfaces stay entirely under dnd-kit control.
+ */
+export const shouldCaptureHomeGestureFromTarget = (
+  target: EventTarget | null,
+  gesture: "item-drag" | "page"
+): boolean => {
+  if (!(target instanceof Element)) return true
+  if (gesture === "page") {
+    return !target.closest(HOME_PAGE_GESTURE_EXCLUDED_SELECTOR)
+  }
+  if (target.closest(HOME_DRAG_ACTIVATOR_SELECTOR)) return true
+  return !target.closest(HOME_GESTURE_INTERACTIVE_SELECTOR)
+}
 
 const isVisibleHomePageFocusTarget = (element: HTMLElement): boolean =>
   !element.closest('[hidden], [inert], [aria-hidden="true"]') &&
@@ -920,6 +1172,37 @@ const findHomeDropTargetAtPoint = (
         })[0] ?? null)
     : null
 
+const isPointInsideElement = (
+  element: Element | null | undefined,
+  pointerX: number,
+  pointerY: number
+): boolean => {
+  if (!(element instanceof HTMLElement)) return false
+  const rect = element.getBoundingClientRect()
+  return (
+    rect.width > 0 &&
+    rect.height > 0 &&
+    pointerX >= rect.left &&
+    pointerX <= rect.right &&
+    pointerY >= rect.top &&
+    pointerY <= rect.bottom
+  )
+}
+
+const isPointInsideActivePreviewSlot = (
+  grid: HTMLElement | null | undefined,
+  activeId: string,
+  pointerX: number,
+  pointerY: number
+): boolean => {
+  if (!grid) return false
+  const escapedId = CSS.escape(activeId)
+  return [
+    grid.querySelector(`[data-home-item-id="${escapedId}"]`),
+    grid.querySelector(`[data-home-preview-slot-id="${escapedId}"]`),
+  ].some(element => isPointInsideElement(element, pointerX, pointerY))
+}
+
 const isPointerInEdgeTurnGutter = (
   pointerX: number,
   bounds: DOMRect,
@@ -973,7 +1256,42 @@ class HomePointerSensor extends PointerSensor {
         { nativeEvent: event }: React.PointerEvent,
         { onActivation }: PointerSensorOptions
       ) => {
+        if (event.pointerType === "touch") return false
         if (!shouldActivateHomePointerDrag(event)) return false
+        onActivation?.({ event })
+        return true
+      },
+    },
+  ]
+}
+
+class HomeTouchSensor extends TouchSensor {
+  constructor(props: SensorProps<TouchSensorOptions>) {
+    const target = props.event.target
+    const editMode =
+      target instanceof Element &&
+      !!target.closest('[data-home-editing="true"]')
+    super({
+      ...props,
+      options: {
+        ...props.options,
+        activationConstraint: getHomePointerActivationConstraint(
+          target,
+          "touch",
+          editMode
+        ),
+      },
+    })
+  }
+
+  static activators = [
+    {
+      eventName: "onTouchStart" as const,
+      handler: (
+        { nativeEvent: event }: React.TouchEvent,
+        { onActivation }: PointerSensorOptions
+      ) => {
+        if (!shouldActivateHomeTouchDrag(event)) return false
         onActivation?.({ event })
         return true
       },
@@ -992,24 +1310,14 @@ export const shouldActivateHomePointerDrag = (
   event: HomePointerActivationEvent
 ): boolean => {
   if (!event.isPrimary || event.button !== 0) return false
-  const target = event.target
-  if (!(target instanceof Element)) return true
+  return shouldCaptureHomeGestureFromTarget(event.target, "item-drag")
+}
 
-  // On touch, the first long press only enters edit mode. touch-action is
-  // decided at pointerdown, so activating DnD in that same pan-y sequence can
-  // be cancelled by native scrolling. The next gesture starts on the edit
-  // surface under data-home-editing="true" and can drag reliably.
-  if (
-    event.pointerType === "touch" &&
-    !target.closest('[data-home-editing="true"]')
-  ) {
-    return false
-  }
-
-  return !(
-    target.closest(HOME_DRAG_IGNORE_SELECTOR) &&
-    !target.closest(HOME_DRAG_ACTIVATOR_SELECTOR)
-  )
+export const shouldActivateHomeTouchDrag = (
+  event: Pick<TouchEvent, "target" | "touches">
+): boolean => {
+  if (event.touches.length !== 1) return false
+  return shouldCaptureHomeGestureFromTarget(event.target, "item-drag")
 }
 
 export const shouldReservePointerForHomeItemDrag = (
@@ -1022,6 +1330,20 @@ export const shouldReservePointerForHomeItemDrag = (
     ? !!target.closest('[data-home-item-kind="app"]')
     : pointerType !== "touch" &&
       !!target.closest('[data-home-app-tile="true"]'))
+
+/**
+ * Bare arrow keys are a home-page navigation shortcut, not a global browser
+ * shortcut. Keep focused toolbar/settings controls in charge of their keys.
+ */
+export const shouldHandleHomePageArrowKey = (
+  target: EventTarget | null,
+  currentPage: number
+): boolean => {
+  if (!(target instanceof Element)) return true
+  if (target === document.body || target === document.documentElement) return true
+  const page = target.closest<HTMLElement>('[data-home-page-grid="true"]')
+  return page?.dataset.homePageIndex === String(currentPage)
+}
 
 const SortableItem = ({
   item,
@@ -1043,6 +1365,8 @@ const SortableItem = ({
   totalPages,
   onMovePage,
   dropPosition,
+  previewOrder,
+  previewHidden,
 }: {
   item: HomeItem
   index: number
@@ -1054,7 +1378,10 @@ const SortableItem = ({
   onOpen: (item: Extract<HomeItem, { kind: "app" }>) => void
   onRemove: (item: HomeItem) => void
   onConfigure: (instance: WidgetInstance) => void
-  onUpdateWidget: (instance: WidgetInstance) => void
+  onUpdateWidget: (
+    instance: WidgetInstance,
+    expected?: WidgetInstance
+  ) => Promise<string | null>
   onAddBookmark: (item: LaterReadItem, groupTitle: string) => void
   onUndoableAction: (message: string, undo: () => void) => void
   linkGroups: linkGroup[]
@@ -1063,6 +1390,8 @@ const SortableItem = ({
   totalPages: number
   onMovePage: (item: HomeItem, direction: -1 | 1) => void
   dropPosition: HomeDropPosition | null
+  previewOrder: number | null
+  previewHidden: boolean
 }) => {
   const {
     attributes,
@@ -1089,6 +1418,8 @@ const SortableItem = ({
       data-home-dragging={isDragging ? "true" : "false"}
       data-home-drop-target={isOver && !isDragging ? "true" : "false"}
       data-home-drop-position={dropPosition ?? undefined}
+      data-home-preview-order={previewOrder ?? undefined}
+      data-home-preview-hidden={previewHidden ? "true" : undefined}
       col={span.col}
       row={span.row}
       delayIndex={entranceIndex}
@@ -1102,6 +1433,8 @@ const SortableItem = ({
         willChange: isDragging ? "transform" : undefined,
         zIndex: isDragging ? 20 : undefined,
         opacity: isDragging ? 0 : 1,
+        order: previewOrder ?? undefined,
+        display: previewHidden ? "none" : undefined,
       }}
       {...(item.kind === "app" ? attributes : {})}
       {...listeners}
@@ -1185,6 +1518,7 @@ const SortableItem = ({
                   type="button"
                   data-home-drag-handle="true"
                   aria-label={`拖动${getWidgetDefinition(item.widget.type).title}`}
+                  aria-keyshortcuts="Control+ArrowLeft Control+ArrowRight Meta+ArrowLeft Meta+ArrowRight"
                   title="拖动小组件"
                   {...attributes}
                 >
@@ -1229,6 +1563,11 @@ const SortableItem = ({
               type="button"
               data-home-app-tile="true"
               aria-label={item.label}
+              aria-keyshortcuts={
+                editMode
+                  ? "Control+ArrowLeft Control+ArrowRight Meta+ArrowLeft Meta+ArrowRight"
+                  : undefined
+              }
               title={item.url}
               onClick={() => {
                 if (!editMode) onOpen(item)
@@ -1278,6 +1617,7 @@ export const HomeGrid = () => {
   const [settingsInstanceId, setSettingsInstanceId] = useState<string | null>(null)
   const [dropIntent, setDropIntent] = useState<HomeDropIntent | null>(null)
   const [dragSnapshot, setDragSnapshot] = useState<HomeDragSnapshot | null>(null)
+  const [dragPreviewOrder, setDragPreviewOrder] = useState<string[] | null>(null)
   const [undoAction, setUndoAction] = useState<{
     message: string
     undo: () => void
@@ -1305,6 +1645,12 @@ export const HomeGrid = () => {
   const reorderTargetRef = useRef<string | null>(null)
   const dragOrderRef = useRef<string[] | null>(null)
   const dragPageOrderRef = useRef<string[] | null>(null)
+  const dragPreviewOrderRef = useRef<string[] | null>(null)
+  const dragPreviewIntentRef = useRef<HomeDropIntent | null>(null)
+  const dragPreviewRectsRef = useRef<Map<
+    string,
+    { left: number; top: number }
+  > | null>(null)
   const dropIntentRef = useRef<HomeDropIntent | null>(null)
   const dragPointerRevisionRef = useRef(0)
   const dropIntentRevisionRef = useRef(-1)
@@ -1326,6 +1672,9 @@ export const HomeGrid = () => {
   const gridMetricsRef = useRef<HomeGridMetrics>({ columns: 9, rows: 5 })
   const layoutRevisionRef = useRef(0)
   const dragLayoutRevisionRef = useRef<number | null>(null)
+  const dragPersistedLayoutRef = useRef<HomeLayoutState | null>(null)
+  const dragPersistedItemIdsRef = useRef<string[] | null>(null)
+  const externalLayoutPendingRef = useRef(false)
 
   // 入场动画结束后移除 animation，避免重排移动 DOM 时动画重启闪烁
   useEffect(() => {
@@ -1338,16 +1687,36 @@ export const HomeGrid = () => {
     [linkGroups, layout]
   )
   /*
-   * 拖动时保持真实页面树不变。跨 PageGrid 重挂条目会让 favicon 与小组件
-   * 重新挂载（甚至重发网络请求）；预览顺序只保存在 ref，松手后一次性提交。
+   * 拖动时保持真实页面树不变。候选顺序通过 CSS grid order 与轻量跨页
+   * 占位投影，避免 favicon/小组件重挂载；松手后才一次性提交真实顺序。
    */
   const items = layoutItems
   const pages = useMemo(
     () => paginateHomeItems(items, gridMetrics),
     [items, gridMetrics]
   )
+  const dragPreviewPages = useMemo(() => {
+    if (!dragPreviewOrder) return null
+    const itemById = new Map(items.map(item => [item.id, item]))
+    const seen = new Set<string>()
+    const orderedItems = dragPreviewOrder.flatMap(id => {
+      const item = itemById.get(id)
+      if (!item || seen.has(id)) return []
+      seen.add(id)
+      return [item]
+    })
+    items.forEach(item => {
+      if (!seen.has(item.id)) orderedItems.push(item)
+    })
+    return paginateHomeItems(orderedItems, gridMetrics)
+  }, [dragPreviewOrder, gridMetrics, items])
+  const dragPageProjection = useMemo(
+    () => projectHomeDragPages(pages, dragPreviewPages),
+    [dragPreviewPages, pages]
+  )
+  const navigationPageCount = dragPageProjection.navigationPageCount
   currentPageRef.current = currentPage
-  pagesLengthRef.current = pages.length
+  pagesLengthRef.current = navigationPageCount
   itemsRef.current = items
   gridMetricsRef.current = gridMetrics
   const itemIndexById = useMemo(
@@ -1365,8 +1734,13 @@ export const HomeGrid = () => {
     () => new Set([0, 1])
   )
   const visiblePageIndices = useMemo(
-    () => getVisiblePageIndices(pages.length, currentPage),
-    [currentPage, pages.length]
+    () =>
+      getVisiblePageIndices(
+        navigationPageCount,
+        currentPage,
+        gridMetrics.columns <= 4 ? 5 : 7
+      ),
+    [currentPage, gridMetrics.columns, navigationPageCount]
   )
   const widgetCounts = useMemo(() => {
     const counts: Partial<Record<WidgetType, number>> = {}
@@ -1378,6 +1752,88 @@ export const HomeGrid = () => {
   const settingsInstance = settingsInstanceId
     ? layout.widgets[settingsInstanceId] ?? null
     : null
+
+  const captureDragPreviewRects = useCallback(() => {
+    const page = pageTrackRef.current?.querySelector<HTMLElement>(
+      `[data-home-page-index="${currentPageRef.current}"]`
+    )
+    if (!page) {
+      dragPreviewRectsRef.current = null
+      return
+    }
+    dragPreviewRectsRef.current = new Map(
+      Array.from(
+        page.querySelectorAll<HTMLElement>(
+          ":scope > [data-home-item-id]:not([data-home-preview-hidden='true'])"
+        )
+      ).flatMap(element => {
+        const id = element.dataset.homeItemId
+        const rect = element.getBoundingClientRect()
+        return id && rect.width > 0 && rect.height > 0
+          ? [[id, { left: rect.left, top: rect.top }] as const]
+          : []
+      })
+    )
+  }, [])
+
+  const updateDragPreviewOrder = useCallback(
+    (order: string[] | null) => {
+      if (sameHomeOrder(dragPreviewOrderRef.current, order)) return
+      captureDragPreviewRects()
+      const next = order ? [...order] : null
+      dragPreviewOrderRef.current = next
+      setDragPreviewOrder(next)
+    },
+    [captureDragPreviewRects]
+  )
+
+  const restoreDragPagePreview = useCallback(() => {
+    const pageOrder = dragPageOrderRef.current
+    if (!pageOrder) return
+    dragPreviewIntentRef.current = null
+    dragOrderRef.current = pageOrder
+    updateDragPreviewOrder(pageOrder)
+  }, [updateDragPreviewOrder])
+
+  useLayoutEffect(() => {
+    const previousRects = dragPreviewRectsRef.current
+    dragPreviewRectsRef.current = null
+    if (!previousRects || previousRects.size === 0) return
+    if (
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      return
+    }
+    const page = pageTrackRef.current?.querySelector<HTMLElement>(
+      `[data-home-page-index="${currentPage}"]`
+    )
+    if (!page) return
+    const activeId = activeDragIdRef.current
+    page
+      .querySelectorAll<HTMLElement>(
+        ":scope > [data-home-item-id]:not([data-home-preview-hidden='true'])"
+      )
+      .forEach(element => {
+        const id = element.dataset.homeItemId
+        const previous = id ? previousRects.get(id) : null
+        if (!id || id === activeId || !previous || !element.animate) return
+        const current = element.getBoundingClientRect()
+        const deltaX = previous.left - current.left
+        const deltaY = previous.top - current.top
+        if (Math.hypot(deltaX, deltaY) < 1) return
+        element.animate(
+          [
+            { transform: `translate3d(${deltaX}px, ${deltaY}px, 0)` },
+            { transform: "translate3d(0, 0, 0)" },
+          ],
+          {
+            duration: REORDER_ANIMATION_MS,
+            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+          }
+        )
+      })
+  }, [currentPage, dragPreviewOrder])
 
   useEffect(() => {
     if (!undoAction) return
@@ -1397,6 +1853,38 @@ export const HomeGrid = () => {
       dragPointerXRef.current = event.clientX
       dragPointerYRef.current = event.clientY
       dragPointerRevisionRef.current += 1
+
+      // PointerSensor can coalesce its React onDragMove callback while the
+      // pointer is travelling quickly. Arm the first edge turn from the native
+      // capture listener as well, then let the self-rescheduling edge state
+      // machine handle a pointer that remains stationary at the gutter.
+      const viewport = viewportRef.current
+      if (!viewport) return
+      const bounds = viewport.getBoundingClientRect()
+      const withinViewportY =
+        event.clientY >= bounds.top && event.clientY <= bounds.bottom
+      const direction = !withinViewportY
+        ? 0
+        : event.clientX < bounds.left + EDGE_PAGE_TARGET_GUTTER_PX
+          ? -1
+          : event.clientX > bounds.right - EDGE_PAGE_TARGET_GUTTER_PX
+            ? 1
+            : 0
+      if (direction === 0) {
+        if (edgePageTimerRef.current) {
+          clearTimeout(edgePageTimerRef.current)
+          edgePageTimerRef.current = null
+        }
+        edgePageDirectionRef.current = 0
+        return
+      }
+      if (
+        edgePageTimerRef.current &&
+        edgePageDirectionRef.current === direction
+      ) {
+        return
+      }
+      edgePageScheduleRef.current(direction)
     }
     document.addEventListener("pointermove", trackPointer, true)
     return () => document.removeEventListener("pointermove", trackPointer, true)
@@ -1418,20 +1906,23 @@ export const HomeGrid = () => {
   }, [])
 
   useEffect(() => {
-    const maximumPage = Math.max(0, pages.length - 1)
+    const maximumPage = Math.max(0, navigationPageCount - 1)
     if (currentPage <= maximumPage) return
     currentPageRef.current = maximumPage
     setCurrentPage(maximumPage)
-  }, [currentPage, pages.length])
+  }, [currentPage, navigationPageCount])
 
   useEffect(() => {
     setMountedPageIndices(previous => {
       const next = new Set(
-        [...previous].filter(pageIndex => pageIndex < pages.length)
+        [...previous].filter(
+          pageIndex => pageIndex < dragPageProjection.frames.length
+        )
       )
       for (
         let pageIndex = Math.max(0, currentPage - 1);
-        pageIndex <= Math.min(pages.length - 1, currentPage + 1);
+        pageIndex <=
+        Math.min(dragPageProjection.frames.length - 1, currentPage + 1);
         pageIndex += 1
       ) {
         next.add(pageIndex)
@@ -1441,7 +1932,7 @@ export const HomeGrid = () => {
         [...next].every(pageIndex => previous.has(pageIndex))
       return unchanged ? previous : next
     })
-  }, [currentPage, pages.length])
+  }, [currentPage, dragPageProjection.frames.length])
 
   useLayoutEffect(() => {
     positionPageTrack(pageTrackRef.current, currentPage, 0, animatePage)
@@ -1493,7 +1984,10 @@ export const HomeGrid = () => {
   }, [currentPage])
 
   /* 图标按位移拖，小组件按长按拖；编辑模式内统一即拖即走。 */
-  const sensors = useSensors(useSensor(HomePointerSensor))
+  const sensors = useSensors(
+    useSensor(HomePointerSensor),
+    useSensor(HomeTouchSensor)
+  )
   const detectHomeCollision = useCallback<CollisionDetection>(args => {
     const pointerCoordinates =
       dragPointerXRef.current !== null && dragPointerYRef.current !== null
@@ -1515,23 +2009,17 @@ export const HomeGrid = () => {
     (direction: -1 | 1) => {
       setAnimatePage(true)
       setCurrentPage(page =>
-        Math.min(pages.length - 1, Math.max(0, page + direction))
+        Math.min(navigationPageCount - 1, Math.max(0, page + direction))
       )
     },
-    [pages.length]
+    [navigationPageCount]
   )
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (!e.isPrimary || e.button !== 0) return
-      const target = e.target as HTMLElement
-      if (
-        target.closest(
-          'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [data-fluidity-modal="true"], [data-home-widget-edit-surface="true"], [data-home-drag-handle="true"]'
-        )
-      ) {
-        return
-      }
+      const target = e.target
+      if (!shouldCaptureHomeGestureFromTarget(target, "page")) return
       cancelLongPress()
       pressOriginRef.current = { x: e.clientX, y: e.clientY }
       pageDragRef.current = shouldReservePointerForHomeItemDrag(
@@ -1588,7 +2076,14 @@ export const HomeGrid = () => {
       const dy = e.clientY - drag.startY
 
       if (drag.axis === "pending") {
-        if (Math.max(Math.abs(dx), Math.abs(dy)) < 5) return
+        // DnD's delayed long-press tolerance is 8px. Paging must not claim the
+        // same 5–8px band and then hand the gesture to item dragging.
+        if (
+          Math.max(Math.abs(dx), Math.abs(dy)) <
+          PAGE_DRAG_AXIS_THRESHOLD_PX
+        ) {
+          return
+        }
         if (Math.abs(dy) > Math.abs(dx) * 1.15) {
           drag.axis = "vertical"
           return
@@ -1607,7 +2102,8 @@ export const HomeGrid = () => {
       if (drag.axis !== "horizontal") return
       e.preventDefault()
       const atLeadingEdge = currentPage === 0 && dx > 0
-      const atTrailingEdge = currentPage === pages.length - 1 && dx < 0
+      const atTrailingEdge =
+        currentPage === navigationPageCount - 1 && dx < 0
       positionPageTrack(
         pageTrackRef.current,
         currentPage,
@@ -1615,18 +2111,18 @@ export const HomeGrid = () => {
         false
       )
     },
-    [cancelLongPress, currentPage, pages.length]
+    [cancelLongPress, currentPage, navigationPageCount]
   )
 
-  const finishPageDrag = useCallback(
-    (e: React.PointerEvent, cancelled = false) => {
+  const finishPageDragAt = useCallback(
+    (pointerId: number, clientX: number, cancelled = false) => {
       cancelLongPress()
       const drag = pageDragRef.current
       pageDragRef.current = null
-      if (!drag || drag.pointerId !== e.pointerId) return
+      if (!drag || drag.pointerId !== pointerId) return
 
       if (drag.axis === "horizontal") {
-        const dx = e.clientX - drag.startX
+        const dx = clientX - drag.startX
         const elapsed = Math.max(1, performance.now() - drag.startedAt)
         const velocity = dx / elapsed
         const viewportWidth = viewportRef.current?.clientWidth ?? 0
@@ -1634,7 +2130,7 @@ export const HomeGrid = () => {
           Math.abs(dx) >= Math.max(48, viewportWidth * 0.13)
         const passedFlick = Math.abs(dx) >= 20 && Math.abs(velocity) >= 0.45
         const canChange =
-          dx < 0 ? currentPage < pages.length - 1 : currentPage > 0
+          dx < 0 ? currentPage < navigationPageCount - 1 : currentPage > 0
 
         const targetPage =
           !cancelled && canChange && (passedDistance || passedFlick)
@@ -1651,6 +2147,13 @@ export const HomeGrid = () => {
         setIsPageDragging(false)
         positionPageTrack(pageTrackRef.current, currentPage, 0, true)
       }
+    },
+    [cancelLongPress, currentPage, navigationPageCount]
+  )
+
+  const finishPageDrag = useCallback(
+    (e: React.PointerEvent, cancelled = false) => {
+      finishPageDragAt(e.pointerId, e.clientX, cancelled)
 
       try {
         if (e.currentTarget.hasPointerCapture(e.pointerId)) {
@@ -1660,8 +2163,23 @@ export const HomeGrid = () => {
         // ignore
       }
     },
-    [cancelLongPress, currentPage, pages.length]
+    [finishPageDragAt]
   )
+
+  // Pointer capture can be denied by the browser when a swipe starts on a
+  // nested business control. Always settle a page gesture on document-level
+  // release so dragging outside the viewport cannot leave it half-finished.
+  useEffect(() => {
+    const finish = (event: PointerEvent) => {
+      finishPageDragAt(event.pointerId, event.clientX, event.type === "pointercancel")
+    }
+    document.addEventListener("pointerup", finish, true)
+    document.addEventListener("pointercancel", finish, true)
+    return () => {
+      document.removeEventListener("pointerup", finish, true)
+      document.removeEventListener("pointercancel", finish, true)
+    }
+  }, [finishPageDragAt])
 
   const handlePageClickCapture = useCallback(
     (event: React.MouseEvent) => {
@@ -1694,16 +2212,36 @@ export const HomeGrid = () => {
     [cancelLongPress]
   )
 
-  // 设置里"重置主屏布局"等外部改动 → 即时刷新
+  // 设置、其他新标签页或同步写入的布局变更 → 即时刷新。拖动中只标记
+  // revision，松手时放弃过期投影，再读取最新状态，避免覆盖另一页的修改。
   useEffect(() => {
     const refresh = () => {
       layoutRevisionRef.current += 1
+      if (itemDraggingRef.current) {
+        externalLayoutPendingRef.current = true
+        return
+      }
+      externalLayoutPendingRef.current = false
       setLayout(readHomeLayout())
       setLinkGroups(Links.getWithFallback())
     }
+    const onStorage = (event: StorageEvent) => {
+      if (event.storageArea !== localStorage) return
+      if (
+        event.key !== null &&
+        event.key !== HOME_LAYOUT_KEY &&
+        event.key !== "link-groups"
+      ) {
+        return
+      }
+      refresh()
+    }
     window.addEventListener("fluidity-home-layout-changed", refresh)
-    return () =>
+    window.addEventListener("storage", onStorage)
+    return () => {
       window.removeEventListener("fluidity-home-layout-changed", refresh)
+      window.removeEventListener("storage", onStorage)
+    }
   }, [])
 
   // iOS 式：点击网格空隙或网格外的壁纸区域退出编辑
@@ -1771,6 +2309,13 @@ export const HomeGrid = () => {
         return
       }
 
+      if (
+        (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
+        !shouldHandleHomePageArrowKey(target, currentPage)
+      ) {
+        return
+      }
+
       if (event.key === "ArrowLeft" && currentPage > 0) {
         event.preventDefault()
         const activePage =
@@ -1787,7 +2332,10 @@ export const HomeGrid = () => {
         setCurrentPage(page => page - 1)
         return
       }
-      if (event.key === "ArrowRight" && currentPage < pages.length - 1) {
+      if (
+        event.key === "ArrowRight" &&
+        currentPage < navigationPageCount - 1
+      ) {
         event.preventDefault()
         const activePage =
           document.activeElement instanceof HTMLElement
@@ -1815,7 +2363,7 @@ export const HomeGrid = () => {
       if (!modifierPressed) return
 
       const page = Number(match[1]) - 1
-      if (page < 0 || page >= pages.length) return
+      if (page < 0 || page >= navigationPageCount) return
       event.preventDefault()
       const activePage =
         document.activeElement instanceof HTMLElement
@@ -1841,7 +2389,7 @@ export const HomeGrid = () => {
     galleryOpen,
     layout.pageShortcutModifier,
     overviewOpen,
-    pages.length,
+    navigationPageCount,
     settingsInstanceId,
   ])
 
@@ -1881,23 +2429,52 @@ export const HomeGrid = () => {
   }, [editMode])
 
   const commitLayout = useCallback(
-    (
+    async (
       updater:
         | typeof layout
         | ((current: typeof layout) => typeof layout)
     ) => {
-      setLayout(current => {
-        const next = typeof updater === "function" ? updater(current) : updater
+      return withHomeLayoutLock(() => {
+        // Always base a partial update on the newest persisted value. This is
+        // important when another start-page tab changed widgets or shortcuts.
+        const latest = readHomeLayout()
+        const next = typeof updater === "function" ? updater(latest) : updater
         saveHomeLayout(next)
+        setLayout(next)
         return next
       })
     },
     []
   )
 
-  const persistOrder = useCallback(
-    (order: string[]) => commitLayout(current => ({ ...current, order })),
-    [commitLayout]
+  const persistOrderIfUnchanged = useCallback(
+    async (
+      expectedCurrentLayout: HomeLayoutState,
+      expectedItemIds: string[],
+      nextOrder: string[]
+    ) => {
+      return withHomeLayoutLock(() => {
+        const latest = readHomeLayout()
+        if (
+          getHomeLayoutFingerprint(latest) !==
+          getHomeLayoutFingerprint(expectedCurrentLayout)
+        ) {
+          return null
+        }
+        const latestItemIds = buildHomeItems(
+          Links.getWithFallback(),
+          latest,
+          LinkAnalytics.get(),
+          Date.now()
+        ).map(item => item.id)
+        if (!sameHomeOrder(latestItemIds, expectedItemIds)) return null
+
+        const next = saveHomeOrderIfUnchanged(expectedCurrentLayout, nextOrder)
+        if (next) setLayout(next)
+        return next
+      })
+    },
+    []
   )
 
   const showUndo = useCallback((message: string, undo: () => void) => {
@@ -1910,9 +2487,35 @@ export const HomeGrid = () => {
     })
   }, [])
 
+  const restoreOrderSnapshot = useCallback(
+    async (
+      expectedCurrentLayout: HomeLayoutState,
+      expectedItemIds: string[],
+      previousOrder: string[],
+      onRestored?: () => void
+    ): Promise<boolean> => {
+      if (
+        !(await persistOrderIfUnchanged(
+          expectedCurrentLayout,
+          expectedItemIds,
+          previousOrder
+        ))
+      ) {
+        setMovePageNotice("布局已在其他页面更新，为避免覆盖新顺序，本次未撤销")
+        return false
+      }
+      onRestored?.()
+      return true
+    },
+    [persistOrderIfUnchanged]
+  )
+
   const moveItemToPage = useCallback(
-    (itemId: string, targetPage: number): boolean => {
+    async (itemId: string, targetPage: number): Promise<boolean> => {
       if (targetPage < 0 || targetPage >= pages.length) return false
+      const sourcePage = pages.findIndex(pageItems =>
+        pageItems.some(item => item.id === itemId)
+      )
       const nextOrder = getOrderForItemOnPage(
         items,
         gridMetrics,
@@ -1924,16 +2527,56 @@ export const HomeGrid = () => {
         return false
       }
       setMovePageNotice(null)
-      persistOrder(nextOrder)
+      const previousOrder = items.map(item => item.id)
+      const movedItem = items.find(item => item.id === itemId)
+      const persistedLayout = await persistOrderIfUnchanged(
+        layout,
+        previousOrder,
+        nextOrder
+      )
+      if (!persistedLayout) {
+        setLayout(readHomeLayout())
+        setMovePageNotice("布局已在其他页面更新，本次移动未保存")
+        return false
+      }
       setAnimatePage(true)
       setCurrentPage(targetPage)
+      if (!sameHomeOrder(previousOrder, nextOrder)) {
+        const label =
+          movedItem?.kind === "app"
+            ? movedItem.label
+            : movedItem
+              ? getWidgetDefinition(movedItem.widget.type).title
+              : "条目"
+        showUndo(`已移动${label}到第 ${targetPage + 1} 页`, () => {
+          restoreOrderSnapshot(
+            persistedLayout,
+            previousOrder,
+            previousOrder,
+            () => {
+              if (sourcePage >= 0) {
+                setAnimatePage(true)
+                setCurrentPage(sourcePage)
+              }
+            }
+          )
+        })
+      }
       return true
     },
-    [gridMetrics, items, pages.length, persistOrder]
+    [
+      gridMetrics,
+      items,
+      layout,
+      pages,
+      persistOrderIfUnchanged,
+      restoreOrderSnapshot,
+      showUndo,
+    ]
   )
 
   const handleMovePage = useCallback(
-    (item: HomeItem, direction: -1 | 1) => {
+    async (item: HomeItem, direction: -1 | 1) => {
       const sourcePage = pages.findIndex(pageItems =>
         pageItems.some(candidate => candidate.id === item.id)
       )
@@ -1952,12 +2595,100 @@ export const HomeGrid = () => {
           itemId: item.id,
         }
       }
-      if (!moveItemToPage(item.id, targetPage)) {
+      if (!(await moveItemToPage(item.id, targetPage))) {
         pendingMovedItemFocusRef.current = null
       }
     },
     [moveItemToPage, pages]
   )
+
+  const moveItemWithinPage = useCallback(
+    async (itemId: string, direction: -1 | 1): Promise<boolean> => {
+      const pageIndex = pages.findIndex(pageItems =>
+        pageItems.some(item => item.id === itemId)
+      )
+      const pageItems = pages[pageIndex]
+      if (!pageItems) return false
+      const itemIndex = pageItems.findIndex(item => item.id === itemId)
+      const adjacent = pageItems[itemIndex + direction]
+      if (itemIndex < 0 || !adjacent) return false
+
+      const previousOrder = items.map(item => item.id)
+      const nextOrder = getOrderForRelativeDropOnPage(
+        items,
+        gridMetrics,
+        itemId,
+        adjacent.id,
+        direction < 0 ? "before" : "after",
+        pageIndex
+      )
+      if (!nextOrder) {
+        setMovePageNotice("这个位置空间不足，请改用拖动调整")
+        return false
+      }
+
+      const movedItem = items.find(item => item.id === itemId)
+      const label =
+        movedItem?.kind === "app"
+          ? movedItem.label
+          : movedItem
+            ? getWidgetDefinition(movedItem.widget.type).title
+            : "条目"
+      const persistedLayout = await persistOrderIfUnchanged(
+        layout,
+        previousOrder,
+        nextOrder
+      )
+      if (!persistedLayout) {
+        setLayout(readHomeLayout())
+        setMovePageNotice("布局已在其他页面更新，本次调整未保存")
+        return false
+      }
+      setMovePageNotice(
+        `${label}已${direction < 0 ? "前移" : "后移"}，可撤销`
+      )
+      showUndo(`已${direction < 0 ? "前移" : "后移"}${label}`, () => {
+        restoreOrderSnapshot(persistedLayout, previousOrder, previousOrder)
+      })
+      return true
+    },
+    [
+      gridMetrics,
+      items,
+      layout,
+      pages,
+      persistOrderIfUnchanged,
+      restoreOrderSnapshot,
+      showUndo,
+    ]
+  )
+
+  // 编辑模式下为当前焦点条目提供不依赖指针的页内重排。
+  useEffect(() => {
+    if (!editMode) return
+    const onKey = (event: KeyboardEvent) => {
+      if (
+        event.isComposing ||
+        (!event.ctrlKey && !event.metaKey) ||
+        (event.key !== "ArrowLeft" && event.key !== "ArrowRight")
+      ) {
+        return
+      }
+      const target = event.target
+      if (!(target instanceof HTMLElement)) return
+      if (target.closest('[role="dialog"], [data-fluidity-modal="true"]')) {
+        return
+      }
+      const item = target.closest<HTMLElement>("[data-home-item-id]")
+      const itemId = item?.dataset.homeItemId
+      if (!itemId) return
+      event.preventDefault()
+      event.stopPropagation()
+      void moveItemWithinPage(itemId, event.key === "ArrowLeft" ? -1 : 1)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [editMode, moveItemWithinPage])
 
   const getLatestDragOrder = useCallback((): string[] => {
     const currentIds = itemsRef.current.map(item => item.id)
@@ -2030,8 +2761,10 @@ export const HomeGrid = () => {
       }
 
       dragDestinationPageRef.current = targetPage
+      dragPreviewIntentRef.current = null
       dragOrderRef.current = nextOrder
       dragPageOrderRef.current = nextOrder
+      updateDragPreviewOrder(nextOrder)
       setMovePageNotice(null)
       setAnimatePage(true)
       edgePageTransitionUntilRef.current =
@@ -2040,7 +2773,7 @@ export const HomeGrid = () => {
       setCurrentPage(targetPage)
       return true
     },
-    [getLatestDragOrder]
+    [getLatestDragOrder, updateDragPreviewOrder]
   )
 
   const clearEdgeTimer = useCallback(() => {
@@ -2142,6 +2875,7 @@ export const HomeGrid = () => {
       clearEdgeTimer()
       clearReorderTimer()
       dropIntentRef.current = null
+      dragPreviewIntentRef.current = null
       dropIntentRevisionRef.current = -1
       edgePageTransitionUntilRef.current = 0
     },
@@ -2154,6 +2888,8 @@ export const HomeGrid = () => {
       clearEdgeTimer()
       clearReorderTimer()
       clearDropIntent()
+      updateDragPreviewOrder(null)
+      dragPreviewIntentRef.current = null
       pageDragRef.current = null
       edgePageTransitionUntilRef.current = 0
       itemDraggingRef.current = true
@@ -2172,6 +2908,8 @@ export const HomeGrid = () => {
       const activeId = String(event.active.id)
       activeDragIdRef.current = activeId
       dragLayoutRevisionRef.current = layoutRevisionRef.current
+      dragPersistedLayoutRef.current = layout
+      dragPersistedItemIdsRef.current = items.map(item => item.id)
       const draggedItem = items.find(item => item.id === activeId)
       setDragSnapshot(
         draggedItem
@@ -2203,6 +2941,8 @@ export const HomeGrid = () => {
       clearEdgeTimer,
       clearReorderTimer,
       items,
+      layout,
+      updateDragPreviewOrder,
     ]
   )
 
@@ -2243,18 +2983,57 @@ export const HomeGrid = () => {
               pointerY
             )
           : null
+      const pointerInsidePreviewSlot =
+        pointerX !== null &&
+        pointerY !== null &&
+        isPointInsideActivePreviewSlot(
+          activePageGrid,
+          activeId,
+          pointerX,
+          pointerY
+        )
       const overId =
         pointerX !== null && pointerY !== null
           ? pointerTarget?.target.dataset.homeItemId ?? null
           : over && active.id !== over.id
             ? String(over.id)
             : null
+      // The active placeholder is the exact position currently previewed by
+      // the grid. During the short FLIP animation a neighbour's visual rect
+      // can cross that placeholder; do not let that transient overlap create
+      // a new relative target underneath the pointer. Keeping the placeholder
+      // sticky is what makes cross-page placement feel like an iOS home screen.
+      if (pointerInsidePreviewSlot) {
+        clearReorderTimer()
+        const previewIntent = dragPreviewIntentRef.current
+        const currentIntent = dropIntentRef.current
+        if (
+          previewIntent &&
+          currentIntent?.overId === previewIntent.overId &&
+          currentIntent.position === previewIntent.position
+        ) {
+          return
+        }
+        if (!previewIntent) {
+          clearDropIntent()
+          restoreDragPagePreview()
+          return
+        }
+      }
       if (!overId) {
         clearReorderTimer()
-        clearDropIntent()
-        if (dragPageOrderRef.current) {
-          dragOrderRef.current = dragPageOrderRef.current
+        const previewIntent = dragPreviewIntentRef.current
+        const currentIntent = dropIntentRef.current
+        if (
+          pointerInsidePreviewSlot &&
+          previewIntent &&
+          currentIntent?.overId === previewIntent.overId &&
+          currentIntent.position === previewIntent.position
+        ) {
+          return
         }
+        clearDropIntent()
+        restoreDragPagePreview()
         return
       }
       const visibleTarget =
@@ -2278,6 +3057,7 @@ export const HomeGrid = () => {
       if (!nextOrder) {
         clearReorderTimer()
         clearDropIntent()
+        restoreDragPagePreview()
         setMovePageNotice("这个位置空间不足，请换一侧或其他条目")
         return
       }
@@ -2317,7 +3097,9 @@ export const HomeGrid = () => {
       reorderTargetRef.current = intentKey
       reorderTimerRef.current = setTimeout(() => {
         reorderTimerRef.current = null
+        dragPreviewIntentRef.current = intent
         dragOrderRef.current = nextOrder
+        updateDragPreviewOrder(nextOrder)
       }, REORDER_INTENT_MS)
     },
     [
@@ -2326,7 +3108,9 @@ export const HomeGrid = () => {
       clearReorderTimer,
       getLatestDragOrder,
       getValidDropOrder,
+      restoreDragPagePreview,
       settleEdgePageTransition,
+      updateDragPreviewOrder,
     ]
   )
 
@@ -2352,6 +3136,7 @@ export const HomeGrid = () => {
         clearEdgeTimer()
         clearReorderTimer()
         clearDropIntent()
+        restoreDragPagePreview()
         return
       }
       const direction =
@@ -2368,6 +3153,7 @@ export const HomeGrid = () => {
       }
       clearReorderTimer()
       clearDropIntent()
+      restoreDragPagePreview()
       const targetPage = currentPageRef.current + direction
       if (
         targetPage < 0 ||
@@ -2391,16 +3177,18 @@ export const HomeGrid = () => {
       clearEdgeTimer,
       clearReorderTimer,
       handleDragOver,
+      restoreDragPagePreview,
       scheduleEdgePageTurn,
       settleEdgePageTransition,
     ]
   )
 
   const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
+    async (event: DragEndEvent) => {
       const { active } = event
       const activeId = String(active.id)
       const releaseIntent = dropIntentRef.current
+      const releasePreviewIntent = dragPreviewIntentRef.current
       const pointerX =
         dragPointerXRef.current ??
         (dragPointerStartXRef.current !== null
@@ -2431,17 +3219,37 @@ export const HomeGrid = () => {
               pointerY
             )
           : null
+      const releaseOnPreviewSlot =
+        insideActivePage &&
+        pointerX !== null &&
+        pointerY !== null &&
+        isPointInsideActivePreviewSlot(
+          activePageGrid,
+          activeId,
+          pointerX,
+          pointerY
+        )
       const layoutChangedDuringDrag =
         dragLayoutRevisionRef.current !== layoutRevisionRef.current
+      const persistedLayoutAtDragStart = dragPersistedLayoutRef.current
+      const persistedItemIdsAtDragStart = dragPersistedItemIdsRef.current
+      const originPage = dragOriginPageRef.current
+      const destinationPage = dragDestinationPageRef.current
+      const previousOrder = itemsRef.current.map(item => item.id)
+      const movedItem = itemsRef.current.find(item => item.id === activeId)
 
       clearEdgeTimer()
       clearReorderTimer()
       clearDropIntent()
+      updateDragPreviewOrder(null)
+      dragPreviewIntentRef.current = null
       edgePageTransitionUntilRef.current = 0
       itemDraggingRef.current = false
       dragEscapeGuardRef.current = false
       activeDragIdRef.current = null
       dragLayoutRevisionRef.current = null
+      dragPersistedLayoutRef.current = null
+      dragPersistedItemIdsRef.current = null
       dragPointerStartXRef.current = null
       dragPointerStartYRef.current = null
       dragPointerXRef.current = null
@@ -2453,17 +3261,33 @@ export const HomeGrid = () => {
       const releasePosition = releaseTarget
         ? resolveHomeDropPosition(pointerX, releaseTarget.rect)
         : null
-      if (
-        !layoutChangedDuringDrag &&
-        releaseTarget?.target.dataset.homeItemId &&
-        releaseIntent?.overId === releaseTarget.target.dataset.homeItemId &&
+      const releaseMatchesIntentTarget =
+        !!releaseIntent &&
+        releaseTarget?.target.dataset.homeItemId === releaseIntent.overId &&
         releaseIntent.position === releasePosition
+      const releaseMatchesCrossPageBase =
+        !releaseIntent &&
+        releaseOnPreviewSlot &&
+        originPage !== null &&
+        destinationPage !== null &&
+        destinationPage !== originPage &&
+        !!dragPageOrderRef.current
+      if (!layoutChangedDuringDrag && releaseMatchesCrossPageBase) {
+        dragOrderRef.current = dragPageOrderRef.current
+        finalOrder = getLatestDragOrder()
+        shouldCommit = finalOrder.includes(activeId)
+      } else if (
+        !layoutChangedDuringDrag &&
+        releaseIntent &&
+        (releaseMatchesIntentTarget ||
+          (releaseOnPreviewSlot &&
+            releasePreviewIntent?.overId === releaseIntent.overId &&
+            releasePreviewIntent.position === releaseIntent.position))
       ) {
-        const overId = releaseTarget.target.dataset.homeItemId
         const candidate = getValidDropOrder(
           finalOrder,
           activeId,
-          overId,
+          releaseIntent.overId,
           releaseIntent.position
         )
         if (candidate) {
@@ -2474,8 +3298,6 @@ export const HomeGrid = () => {
         }
       }
 
-      const originPage = dragOriginPageRef.current
-      const destinationPage = dragDestinationPageRef.current
       dragDestinationPageRef.current = null
       dragOriginPageRef.current = null
       dragOrderRef.current = null
@@ -2498,13 +3320,54 @@ export const HomeGrid = () => {
           setCurrentPage(restoredPage)
         }
         if (layoutChangedDuringDrag) {
+          externalLayoutPendingRef.current = false
+          setLayout(readHomeLayout())
+          setLinkGroups(Links.getWithFallback())
           setMovePageNotice("布局已在其他位置更新，本次拖动未保存")
         } else if (invalidDrop) {
           setMovePageNotice("这个位置空间不足，请换一侧或其他条目")
         }
         return
       }
-      persistOrder(finalOrder)
+      if (sameHomeOrder(previousOrder, finalOrder)) return
+      if (!persistedLayoutAtDragStart || !persistedItemIdsAtDragStart) {
+        externalLayoutPendingRef.current = false
+        setLayout(readHomeLayout())
+        setLinkGroups(Links.getWithFallback())
+        setMovePageNotice("布局状态已变化，本次拖动未保存")
+        return
+      }
+      const persistedLayout = await persistOrderIfUnchanged(
+        persistedLayoutAtDragStart,
+        persistedItemIdsAtDragStart,
+        finalOrder
+      )
+      if (!persistedLayout) {
+        externalLayoutPendingRef.current = false
+        setLayout(readHomeLayout())
+        setLinkGroups(Links.getWithFallback())
+        setMovePageNotice("布局已在其他页面更新，本次拖动未保存")
+        return
+      }
+      const label =
+        movedItem?.kind === "app"
+          ? movedItem.label
+          : movedItem
+            ? getWidgetDefinition(movedItem.widget.type).title
+            : "条目"
+      showUndo(`已移动${label}`, () => {
+        restoreOrderSnapshot(
+          persistedLayout,
+          persistedItemIdsAtDragStart,
+          previousOrder,
+          () => {
+            if (originPage !== null) {
+              setAnimatePage(true)
+              setCurrentPage(originPage)
+            }
+          }
+        )
+      })
     },
     [
       clearDropIntent,
@@ -2512,7 +3375,10 @@ export const HomeGrid = () => {
       clearReorderTimer,
       getValidDropOrder,
       getLatestDragOrder,
-      persistOrder,
+      persistOrderIfUnchanged,
+      restoreOrderSnapshot,
+      showUndo,
+      updateDragPreviewOrder,
     ]
   )
 
@@ -2520,14 +3386,26 @@ export const HomeGrid = () => {
     clearEdgeTimer()
     clearReorderTimer()
     clearDropIntent()
+    updateDragPreviewOrder(null)
+    dragPreviewIntentRef.current = null
     edgePageTransitionUntilRef.current = 0
     itemDraggingRef.current = false
     activeDragIdRef.current = null
     dragLayoutRevisionRef.current = null
+    dragPersistedLayoutRef.current = null
+    dragPersistedItemIdsRef.current = null
     dragPointerStartXRef.current = null
     dragPointerStartYRef.current = null
     dragPointerXRef.current = null
     dragPointerYRef.current = null
+
+    const loadedExternalLayout = externalLayoutPendingRef.current
+    if (loadedExternalLayout) {
+      externalLayoutPendingRef.current = false
+      setLayout(readHomeLayout())
+      setLinkGroups(Links.getWithFallback())
+      setMovePageNotice("已载入其他页面保存的最新布局")
+    }
 
     if (dragOriginPageRef.current !== null) {
       const restoredPage = Math.min(
@@ -2538,7 +3416,7 @@ export const HomeGrid = () => {
       currentPageRef.current = restoredPage
       setCurrentPage(restoredPage)
     }
-    setMovePageNotice(null)
+    if (!loadedExternalLayout) setMovePageNotice(null)
 
     dragDestinationPageRef.current = null
     dragOriginPageRef.current = null
@@ -2549,7 +3427,12 @@ export const HomeGrid = () => {
       dragEscapeGuardRef.current = false
       suppressNextPageClickRef.current = false
     }, 0)
-  }, [clearDropIntent, clearEdgeTimer, clearReorderTimer])
+  }, [
+    clearDropIntent,
+    clearEdgeTimer,
+    clearReorderTimer,
+    updateDragPreviewOrder,
+  ])
 
   const handleOpen = useCallback(
     (item: Extract<HomeItem, { kind: "app" }>) => {
@@ -2559,19 +3442,38 @@ export const HomeGrid = () => {
   )
 
   const handleRemove = useCallback(
-    (item: HomeItem) => {
+    async (item: HomeItem) => {
       if (item.kind === "widget") {
-        const removed = item.widget
-        const orderIndex = layout.order.indexOf(item.id)
-        commitLayout(current => removeWidgetInstance(current, item.id))
+        const removal = await withHomeLayoutLock(() => {
+          const latest = readHomeLayout()
+          const removed = latest.widgets[item.id]
+          if (!removed) {
+            setLayout(latest)
+            return null
+          }
+          const orderIndex = Math.max(0, latest.order.indexOf(item.id))
+          const next = removeWidgetInstance(latest, item.id)
+          saveHomeLayout(next)
+          setLayout(next)
+          return { removed, orderIndex }
+        })
+        if (!removal) {
+          setMovePageNotice("组件已在其他页面被移除")
+          setSettingsInstanceId(null)
+          return
+        }
         setSettingsInstanceId(null)
-        showUndo(`已移除${getWidgetDefinition(removed.type).title}`, () => {
-          commitLayout(current => {
+        showUndo(`已移除${getWidgetDefinition(removal.removed.type).title}`, () => {
+          void commitLayout(current => {
+            if (current.widgets[removal.removed.instanceId]) return current
             const order = [...current.order]
-            order.splice(Math.max(0, orderIndex), 0, removed.instanceId)
+            order.splice(removal.orderIndex, 0, removal.removed.instanceId)
             return {
               ...current,
-              widgets: { ...current.widgets, [removed.instanceId]: removed },
+              widgets: {
+                ...current.widgets,
+                [removal.removed.instanceId]: removal.removed,
+              },
               order: [...new Set(order)],
             }
           })
@@ -2580,30 +3482,58 @@ export const HomeGrid = () => {
       }
       setDeleteTarget({ url: item.url, label: item.label })
     },
-    [commitLayout, layout.order, showUndo]
+    [commitLayout, showUndo]
   )
 
   const handleAddWidget = useCallback(
-    (type: WidgetType, size: WidgetSize) => {
-      const result = addWidgetInstance(layout, type, { size })
-      if (!result) return
-      commitLayout(result.state)
+    async (type: WidgetType, size: WidgetSize) => {
+      const addedInstance = await withHomeLayoutLock(() => {
+        const latest = readHomeLayout()
+        const result = addWidgetInstance(latest, type, { size })
+        if (!result) return null
+        saveHomeLayout(result.state)
+        setLayout(result.state)
+        return result.instance
+      })
+      if (!addedInstance) return
       setGalleryOpen(false)
       setEditMode(true)
-      setSettingsInstanceId(result.instance.instanceId)
+      setSettingsInstanceId(addedInstance.instanceId)
     },
-    [commitLayout, layout]
+    []
   )
 
   const handleUpdateWidget = useCallback(
-    (instance: WidgetInstance) =>
-      commitLayout(current => updateWidgetInstance(current, instance)),
-    [commitLayout]
+    async (
+      instance: WidgetInstance,
+      expected: WidgetInstance
+    ): Promise<string | null> => {
+      try {
+        return await withHomeLayoutLock(() => {
+          const latest = readHomeLayout()
+          const next = updateWidgetInstanceIfUnchanged(
+            latest,
+            expected,
+            instance
+          )
+          if (!next) {
+            setLayout(latest)
+            return "组件已在其他页面被修改或移除，请重新打开后再编辑"
+          }
+          saveHomeLayout(next)
+          setLayout(next)
+          return null
+        })
+      } catch (error) {
+        return error instanceof Error ? error.message : "保存组件失败"
+      }
+    },
+    []
   )
 
   const handleDuplicateWidget = useCallback(
     (instance: WidgetInstance) => {
-      commitLayout(current => {
+      void commitLayout(current => {
         const result = addWidgetInstance(current, instance.type, {
           size: instance.size,
           config: instance.config,
@@ -2617,9 +3547,15 @@ export const HomeGrid = () => {
 
   const handleAddBookmark = useCallback(
     (item: LaterReadItem, groupTitle: string) => {
-      setLinkGroups(current => {
-        if (current.some(group => group.links.some(link => link.value === item.url))) {
-          return current
+      void withHomeLayoutLock(() => {
+        const current = Links.getWithFallback()
+        if (
+          current.some(group =>
+            group.links.some(link => link.value === item.url)
+          )
+        ) {
+          setLinkGroups(current)
+          return
         }
         const groupExists = current.some(group => group.title === groupTitle)
         const next = groupExists
@@ -2627,7 +3563,10 @@ export const HomeGrid = () => {
               group.title === groupTitle
                 ? {
                     ...group,
-                    links: [...group.links, { label: item.title, value: item.url }],
+                    links: [
+                      ...group.links,
+                      { label: item.title, value: item.url },
+                    ],
                   }
                 : group
             )
@@ -2639,7 +3578,7 @@ export const HomeGrid = () => {
               },
             ]
         Links.set(next)
-        return next
+        setLinkGroups(next)
       })
     },
     []
@@ -2647,28 +3586,43 @@ export const HomeGrid = () => {
 
   const confirmDelete = useCallback(() => {
     if (!deleteTarget) return
-    const previous = Links.getWithFallback()
-    const groups = previous
-      .map((group, groupIndex) => ({
-        ...group,
-        links:
-          deleteTarget.groupIndex === groupIndex &&
-          deleteTarget.linkIndex !== undefined &&
-          group.links[deleteTarget.linkIndex]?.value === deleteTarget.url
-            ? group.links.filter(
-                (_link, linkIndex) => linkIndex !== deleteTarget.linkIndex
-              )
-            : deleteTarget.groupIndex === undefined
-              ? group.links.filter(link => link.value !== deleteTarget.url)
-              : group.links,
-      }))
-      .filter(group => group.links.length > 0)
-    Links.set(groups)
-    setLinkGroups(groups)
+    const target = deleteTarget
     setDeleteTarget(null)
-    showUndo(`已删除${deleteTarget.label}`, () => {
-      Links.set(previous)
-      setLinkGroups(previous)
+    void withHomeLayoutLock(() => {
+      const previous = Links.getWithFallback()
+      const groups = previous
+        .map((group, groupIndex) => ({
+          ...group,
+          links:
+            target.groupIndex === groupIndex &&
+            target.linkIndex !== undefined &&
+            group.links[target.linkIndex]?.value === target.url
+              ? group.links.filter(
+                  (_link, linkIndex) => linkIndex !== target.linkIndex
+                )
+              : target.groupIndex === undefined
+                ? group.links.filter(link => link.value !== target.url)
+                : group.links,
+        }))
+        .filter(group => group.links.length > 0)
+      Links.set(groups)
+      setLinkGroups(groups)
+      return { previous, groups }
+    }).then(({ previous, groups }) => {
+      showUndo(`已删除${target.label}`, () => {
+        void withHomeLayoutLock(() => {
+          const current = Links.getWithFallback()
+          if (JSON.stringify(current) !== JSON.stringify(groups)) {
+            setLinkGroups(current)
+            setMovePageNotice(
+              "链接已在其他页面更新，为避免覆盖新内容，本次未撤销"
+            )
+            return
+          }
+          Links.set(previous)
+          setLinkGroups(previous)
+        })
+      })
     })
   }, [deleteTarget, showUndo])
 
@@ -2700,6 +3654,9 @@ export const HomeGrid = () => {
     <>
       <DndContext
         sensors={sensors}
+        accessibility={{
+          screenReaderInstructions: HOME_SCREEN_READER_INSTRUCTIONS,
+        }}
         collisionDetection={detectHomeCollision}
         onDragStart={handleDragStart}
         onDragMove={handleDragMove}
@@ -2724,59 +3681,150 @@ export const HomeGrid = () => {
               onPointerUp={event => finishPageDrag(event)}
               onPointerCancel={event => finishPageDrag(event, true)}
               onPointerMove={handlePointerMove}
-              onPointerLeave={cancelLongPress}
+              onPointerLeave={event => {
+                // Layout can shift while asynchronous widget data arrives.
+                // Do not cancel a stationary long-press merely because the
+                // viewport moved under the pointer; cancel only when the
+                // pointer is actually outside its current bounds.
+                const bounds = event.currentTarget.getBoundingClientRect()
+                if (
+                  event.clientX < bounds.left ||
+                  event.clientX > bounds.right ||
+                  event.clientY < bounds.top ||
+                  event.clientY > bounds.bottom
+                ) {
+                  cancelLongPress()
+                }
+              }}
               onClickCapture={handlePageClickCapture}
               onDragStart={event => event.preventDefault()}
               onWheel={handleWheel}
             >
               <PageTrack ref={pageTrackRef} data-home-page-track="true">
-                {pages.map((pageItems, pageIndex) => (
-                  <PageGrid
-                    key={`page-${pageIndex}`}
-                    columns={gridMetrics.columns}
-                    rows={gridMetrics.rows}
-                    data-home-page-grid="true"
-                    data-home-page-index={pageIndex}
-                    aria-hidden={pageIndex !== currentPage}
-                    {...(pageIndex !== currentPage ? { inert: "" } : {})}
-                  >
-                    {(mountedPageIndices.has(pageIndex) ||
-                      Math.abs(pageIndex - currentPage) <= 1) &&
-                      pageItems.map(item => {
-                        const index = itemIndexById.get(item.id) ?? 0
-                        return (
-                          <SortableItem
-                            key={item.id}
-                            item={item}
-                            index={index}
-                            editMode={editMode}
-                            settled={settled}
-                            gridMetrics={gridMetrics}
-                            active={pageIndex === currentPage}
-                            visibleAppUrls={visibleAppUrlsByPage[pageIndex] ?? []}
-                            onOpen={handleOpen}
-                            onRemove={handleRemove}
-                            onConfigure={instance =>
-                              setSettingsInstanceId(instance.instanceId)
-                            }
-                            onUpdateWidget={handleUpdateWidget}
-                            onAddBookmark={handleAddBookmark}
-                            onUndoableAction={showUndo}
-                            linkGroups={linkGroups}
-                            onRequestLinkRemoval={requestLinkRemoval}
-                            pageIndex={pageIndex}
-                            totalPages={pages.length}
-                            onMovePage={handleMovePage}
-                            dropPosition={
-                              dropIntent?.overId === item.id
-                                ? dropIntent.position
-                                : null
-                            }
-                          />
-                        )
-                      })}
-                  </PageGrid>
-                ))}
+                {dragPageProjection.frames.map(
+                  ({ canonicalItems: pageItems, previewItems }, pageIndex) => {
+                  const previewIndexById = previewItems
+                    ? new Map(
+                        previewItems.map((item, index) => [item.id, index])
+                      )
+                    : null
+                  const canonicalIds = new Set(pageItems.map(item => item.id))
+                  const previewSlots = previewItems
+                    ? previewItems.filter(item => !canonicalIds.has(item.id))
+                    : []
+                  const mounted =
+                    mountedPageIndices.has(pageIndex) ||
+                    Math.abs(pageIndex - currentPage) <= 1
+
+                  return (
+                    <PageGrid
+                      key={`page-${pageIndex}`}
+                      columns={gridMetrics.columns}
+                      rows={gridMetrics.rows}
+                      data-home-page-grid="true"
+                      data-home-page-index={pageIndex}
+                      aria-hidden={pageIndex !== currentPage}
+                      {...(pageIndex !== currentPage ? { inert: "" } : {})}
+                    >
+                      {mounted &&
+                        pageIndex === currentPage &&
+                        pageItems.length === 0 &&
+                        (!previewItems || previewItems.length === 0) && (
+                          <EmptyHome data-home-edit-control>
+                            <h3>这一页还是空的</h3>
+                            <p>
+                              可以从右上角设置导入或添加标签，也可以先放入一个已有小组件。
+                            </p>
+                            <EmptyHomeAction
+                              type="button"
+                              onPointerDown={event => event.stopPropagation()}
+                              onClick={() => setGalleryOpen(true)}
+                            >
+                              添加小组件
+                            </EmptyHomeAction>
+                          </EmptyHome>
+                        )}
+                      {mounted &&
+                        pageItems.map(item => {
+                          const index = itemIndexById.get(item.id) ?? 0
+                          return (
+                            <SortableItem
+                              key={item.id}
+                              item={item}
+                              index={index}
+                              editMode={editMode}
+                              settled={settled}
+                              gridMetrics={gridMetrics}
+                              active={pageIndex === currentPage}
+                              visibleAppUrls={
+                                visibleAppUrlsByPage[pageIndex] ?? []
+                              }
+                              onOpen={handleOpen}
+                              onRemove={handleRemove}
+                              onConfigure={instance =>
+                                setSettingsInstanceId(instance.instanceId)
+                              }
+                              onUpdateWidget={async (
+                                instance,
+                                expected
+                              ) => {
+                                if (item.kind !== "widget") {
+                                  return "应用图标不能保存为小组件"
+                                }
+                                const error = await handleUpdateWidget(
+                                  instance,
+                                  expected ?? item.widget
+                                )
+                                if (error) setMovePageNotice(error)
+                                return error
+                              }}
+                              onAddBookmark={handleAddBookmark}
+                              onUndoableAction={showUndo}
+                              linkGroups={linkGroups}
+                              onRequestLinkRemoval={requestLinkRemoval}
+                              pageIndex={pageIndex}
+                              totalPages={navigationPageCount}
+                              onMovePage={handleMovePage}
+                              dropPosition={
+                                dropIntent?.overId === item.id
+                                  ? dropIntent.position
+                                  : null
+                              }
+                              previewOrder={
+                                previewIndexById?.get(item.id) ?? null
+                              }
+                              previewHidden={
+                                !!previewIndexById &&
+                                !previewIndexById.has(item.id)
+                              }
+                            />
+                          )
+                        })}
+                      {mounted &&
+                        previewSlots.map(item => {
+                          const span = cellSpan(item, gridMetrics)
+                          return (
+                            <DragPreviewSlot
+                              key={`preview-slot:${item.id}`}
+                              data-home-preview-slot-id={item.id}
+                              data-home-preview-slot-active={
+                                activeDragIdRef.current === item.id
+                                  ? "true"
+                                  : undefined
+                              }
+                              col={span.col}
+                              row={span.row}
+                              previewOrder={previewIndexById?.get(item.id) ?? 0}
+                              kind={item.kind}
+                              aria-hidden="true"
+                              {...{ inert: "" }}
+                            />
+                          )
+                        })}
+                    </PageGrid>
+                    )
+                  }
+                )}
               </PageTrack>
             </PageViewport>
 
@@ -2807,7 +3855,7 @@ export const HomeGrid = () => {
                 )
               })}
               <PagePosition aria-live="polite">
-                第 {currentPage + 1} 页，共 {pages.length} 页
+                第 {currentPage + 1} 页，共 {navigationPageCount} 页
               </PagePosition>
               {!editMode && (
                 <PageEditButton

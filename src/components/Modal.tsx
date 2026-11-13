@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useRef } from "react"
+import { ReactNode, useEffect, useLayoutEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 
 import styled from "@emotion/styled"
@@ -35,7 +35,64 @@ const DialogContainer = styled.div`
   > * {
     pointer-events: auto;
   }
+
+  /* A child modal's overlay must visually cover the parent dialog as well as
+     making it inert. All overlays share 9000 and later portals paint last. */
+  &[inert] {
+    z-index: 8999;
+  }
 `
+
+export const isTopmostModal = (container: HTMLElement): boolean => {
+  const dialogs = document.querySelectorAll<HTMLElement>(
+    '[data-fluidity-modal-dialog="true"]'
+  )
+  return dialogs[dialogs.length - 1] === container
+}
+
+interface IsolationSnapshot {
+  ariaHidden: string | null
+  inert: boolean
+}
+
+const isolationSnapshots = new WeakMap<HTMLElement, IsolationSnapshot>()
+
+const restoreDialogIsolation = (dialog: HTMLElement): void => {
+  const snapshot = isolationSnapshots.get(dialog)
+  if (!snapshot) return
+  if (snapshot.ariaHidden === null) dialog.removeAttribute("aria-hidden")
+  else dialog.setAttribute("aria-hidden", snapshot.ariaHidden)
+  if (snapshot.inert) dialog.setAttribute("inert", "")
+  else dialog.removeAttribute("inert")
+  isolationSnapshots.delete(dialog)
+}
+
+/** Keeps assistive technology and pointer/focus navigation inside the top layer. */
+export const syncModalAccessibility = (excluding?: HTMLElement): void => {
+  const dialogs = Array.from(
+    document.querySelectorAll<HTMLElement>(
+      '[data-fluidity-modal-dialog="true"]'
+    )
+  ).filter(dialog => dialog !== excluding)
+  const topmost = dialogs[dialogs.length - 1]
+
+  dialogs.forEach(dialog => {
+    if (dialog === topmost) {
+      restoreDialogIsolation(dialog)
+      return
+    }
+    if (!isolationSnapshots.has(dialog)) {
+      isolationSnapshots.set(dialog, {
+        ariaHidden: dialog.getAttribute("aria-hidden"),
+        inert: dialog.hasAttribute("inert"),
+      })
+    }
+    dialog.setAttribute("aria-hidden", "true")
+    dialog.setAttribute("inert", "")
+  })
+
+  if (excluding) restoreDialogIsolation(excluding)
+}
 
 const FOCUSABLE_SELECTOR = [
   "a[href]",
@@ -85,6 +142,16 @@ export const Modal = ({
     onCloseRef.current = onClose
   })
 
+  useLayoutEffect(() => {
+    const container = containerRef.current
+    syncModalAccessibility()
+    return () => {
+      if (container) {
+        syncModalAccessibility(container)
+      }
+    }
+  }, [])
+
   useEffect(() => {
     const previouslyFocused =
       document.activeElement instanceof HTMLElement
@@ -102,6 +169,7 @@ export const Modal = ({
     initial?.focus()
 
     const onKeyDown = (e: KeyboardEvent) => {
+      if (!containerRef.current || !isTopmostModal(containerRef.current)) return
       if (e.key === "Escape") {
         e.stopPropagation()
         onCloseRef.current()
@@ -151,6 +219,7 @@ export const Modal = ({
       <DialogContainer
         ref={containerRef}
         data-fluidity-modal="true"
+        data-fluidity-modal-dialog="true"
         role="dialog"
         aria-modal="true"
         aria-label={label}

@@ -219,5 +219,6 @@ describe("getOrderForItemOnPage", () => {
 describe("getVisiblePageIndices", () => {
   it("keeps long page lists compact around the current page", () => {
     expect(getVisiblePageIndices(30, 14)).toEqual([0, 12, 13, 14, 15, 16, 29])
+    expect(getVisiblePageIndices(30, 14, 5)).toEqual([0, 13, 14, 15, 29])
   })
 })

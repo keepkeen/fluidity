@@ -8,7 +8,7 @@ import {
   setBrowserUsageSettings,
 } from "./browserUsageSettings"
 
-const installChrome = (response: { ok: boolean; error?: string }) => {
+const installChrome = (response?: { ok: boolean; error?: string }) => {
   const data: Record<string, unknown> = {
     [BROWSER_USAGE_SETTINGS_KEY]: DEFAULT_BROWSER_USAGE_SETTINGS,
   }
@@ -20,7 +20,7 @@ const installChrome = (response: { ok: boolean; error?: string }) => {
         lastError: undefined,
         sendMessage: (
           _message: unknown,
-          callback: (value: { ok: boolean; error?: string }) => void
+          callback: (value?: { ok: boolean; error?: string }) => void
         ) => callback(response),
       },
       storage: {
@@ -76,6 +76,21 @@ describe("setBrowserUsageSettings", () => {
     })
 
     expect(data[BROWSER_USAGE_SETTINGS_KEY]).toMatchObject({ enabled: true })
+  })
+
+  it("rolls back when the message channel closes without confirmation", async () => {
+    const data = installChrome(undefined)
+
+    await expect(
+      setBrowserUsageSettings({
+        ...DEFAULT_BROWSER_USAGE_SETTINGS,
+        enabled: true,
+      })
+    ).rejects.toThrow("未确认设置结果")
+
+    expect(data[BROWSER_USAGE_SETTINGS_KEY]).toEqual(
+      DEFAULT_BROWSER_USAGE_SETTINGS
+    )
   })
 })
 

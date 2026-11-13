@@ -10,8 +10,10 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
 import {
   downloadBackup,
-  importFromFile,
   getDataStats,
+  inspectBackupFile,
+  importDataAsync,
+  BackupPreview,
   ImportResult,
 } from "../../../services/dataBackup"
 import { AISettingsManager } from "../../../services/ai"
@@ -178,10 +180,22 @@ const getSyncStatusCopy = (options: {
   }
 }
 
-export const DataSettings: React.FC = () => {
+interface DataSettingsProps {
+  hasUnsavedChanges?: boolean
+  onReplacementBusyChange?: (busy: boolean) => void
+}
+
+const UNSAVED_DRAFT_MESSAGE =
+  "当前还有未应用的设置草稿。请先点击“应用更改”或“放弃更改”，再执行会替换本地数据的操作。"
+
+export const DataSettings: React.FC<DataSettingsProps> = ({
+  hasUnsavedChanges = false,
+  onReplacementBusyChange,
+}) => {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [includeApiKey, setIncludeApiKey] = useState(false)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const [backupPreview, setBackupPreview] = useState<BackupPreview | null>(null)
   const [isExporting, setIsExporting] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [usageSettings, setUsageSettingsState] =
@@ -298,8 +312,16 @@ export const DataSettings: React.FC = () => {
     setUsageBusy(true)
     try {
       if (enabled) {
-        const alreadyGranted = await hasBrowserUsagePermissions()
-        const granted = await requestBrowserUsagePermissions()
+        // Start request synchronously from the click so Chrome's transient
+        // user activation is retained. The pre-existing permission check runs
+        // in parallel and is used only to decide whether a failed save may
+        // safely revoke the newly granted broad hosts.
+        const existingPermissionCheck = hasBrowserUsagePermissions()
+        const permissionRequest = requestBrowserUsagePermissions()
+        const [alreadyGranted, granted] = await Promise.all([
+          existingPermissionCheck,
+          permissionRequest,
+        ])
         if (!granted) {
           setUsageError("需要授予网站访问权限后才能统计浏览时长")
           return
@@ -389,11 +411,16 @@ export const DataSettings: React.FC = () => {
   }
 
   const handleResetApplication = async (): Promise<void> => {
+    if (hasUnsavedChanges) {
+      setResetError(UNSAVED_DRAFT_MESSAGE)
+      return
+    }
     const confirmed = window.confirm(
       "确定要清除全部设置吗？链接、主题、统计、同步配置和缓存都会被删除，且无法恢复。"
     )
     if (!confirmed) return
 
+    onReplacementBusyChange?.(true)
     setIsResetting(true)
     setResetError(null)
     try {
@@ -403,7 +430,9 @@ export const DataSettings: React.FC = () => {
       setResetError(
         error instanceof Error ? error.message : "清除失败，请重新加载扩展后再试"
       )
+    } finally {
       setIsResetting(false)
+      onReplacementBusyChange?.(false)
     }
   }
 
@@ -411,25 +440,64 @@ export const DataSettings: React.FC = () => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    setIsImporting(true)
     setImportResult(null)
+    setBackupPreview(null)
 
     try {
-      const result = await importFromFile(file)
-      setImportResult(result)
-
-      if (result.success) {
-        // 延迟刷新以显示结果
-        setTimeout(() => {
-          emitSettingsApplied()
-        }, 2000)
-      }
+      setBackupPreview(await inspectBackupFile(file))
+    } catch (error) {
+      setImportResult({
+        success: false,
+        importedKeys: [],
+        skippedKeys: [],
+        errors: [error instanceof Error ? error.message : "无法读取备份文件"],
+      })
     } finally {
-      setIsImporting(false)
       // 清空文件输入
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
       }
+    }
+  }
+
+  const handleConfirmImport = async (): Promise<void> => {
+    if (!backupPreview) return
+    if (hasUnsavedChanges) {
+      setImportResult({
+        success: false,
+        importedKeys: [],
+        skippedKeys: [],
+        errors: [UNSAVED_DRAFT_MESSAGE],
+      })
+      return
+    }
+    onReplacementBusyChange?.(true)
+    setIsImporting(true)
+    setImportResult(null)
+    try {
+      const result = await importDataAsync(backupPreview.backup, {
+        overwrite: true,
+        skipApiKey: true,
+      })
+      setImportResult(result)
+      if (result.success) {
+        setBackupPreview(null)
+        emitSettingsApplied()
+      }
+    } catch (error) {
+      setImportResult({
+        success: false,
+        importedKeys: [],
+        skippedKeys: [],
+        errors: [
+          error instanceof Error
+            ? `导入失败，数据恢复状态未知：${error.message}`
+            : "导入失败，数据恢复状态未知；请使用导出备份恢复。",
+        ],
+      })
+    } finally {
+      setIsImporting(false)
+      onReplacementBusyChange?.(false)
     }
   }
 
@@ -454,6 +522,11 @@ export const DataSettings: React.FC = () => {
   }
 
   const handleConnect = async () => {
+    if (hasUnsavedChanges) {
+      setSyncError(UNSAVED_DRAFT_MESSAGE)
+      return
+    }
+    onReplacementBusyChange?.(true)
     setIsSyncBusy(true)
     setSyncError(null)
     setSyncSuccess(null)
@@ -494,6 +567,7 @@ export const DataSettings: React.FC = () => {
       setSyncError(formatSyncError(error, "连接失败"))
     } finally {
       setIsSyncBusy(false)
+      onReplacementBusyChange?.(false)
     }
   }
 
@@ -514,6 +588,11 @@ export const DataSettings: React.FC = () => {
   }
 
   const handlePullNow = async () => {
+    if (hasUnsavedChanges) {
+      setSyncError(UNSAVED_DRAFT_MESSAGE)
+      return
+    }
+    onReplacementBusyChange?.(true)
     setIsSyncBusy(true)
     setSyncError(null)
     setSyncSuccess(null)
@@ -528,6 +607,7 @@ export const DataSettings: React.FC = () => {
       setSyncError(formatSyncError(error, "拉取失败"))
     } finally {
       setIsSyncBusy(false)
+      onReplacementBusyChange?.(false)
     }
   }
 
@@ -551,10 +631,15 @@ export const DataSettings: React.FC = () => {
   }
 
   const handleRestoreConflict = async (filename: string) => {
+    if (hasUnsavedChanges) {
+      setSyncError(UNSAVED_DRAFT_MESSAGE)
+      return
+    }
     const confirmed = window.confirm(
       "用该冲突副本覆盖本地数据？当前本地数据将被替换，且无法撤销。"
     )
     if (!confirmed) return
+    onReplacementBusyChange?.(true)
     setIsSyncBusy(true)
     setSyncError(null)
     try {
@@ -572,10 +657,16 @@ export const DataSettings: React.FC = () => {
       )
     } finally {
       setIsSyncBusy(false)
+      onReplacementBusyChange?.(false)
     }
   }
 
   const handleUnlockAndPull = async () => {
+    if (hasUnsavedChanges) {
+      setSyncError(UNSAVED_DRAFT_MESSAGE)
+      return
+    }
+    onReplacementBusyChange?.(true)
     setIsSyncBusy(true)
     setSyncError(null)
     setSyncSuccess(null)
@@ -598,6 +689,7 @@ export const DataSettings: React.FC = () => {
       setSyncError(formatSyncError(error, "拉取失败"))
     } finally {
       setIsSyncBusy(false)
+      onReplacementBusyChange?.(false)
     }
   }
 
@@ -789,6 +881,49 @@ export const DataSettings: React.FC = () => {
               {isImporting ? "导入中..." : "选择备份文件"}
             </Button>
 
+            {backupPreview && (
+              <StatsCard role="status" aria-label="备份导入预览">
+                <StatsRow>
+                  <StatsLabel>备份版本</StatsLabel>
+                  <StatsValue>{backupPreview.version}</StatsValue>
+                </StatsRow>
+                <StatsRow>
+                  <StatsLabel>导出时间</StatsLabel>
+                  <StatsValue>
+                    {new Date(backupPreview.exportedAt).toLocaleString()}
+                  </StatsValue>
+                </StatsRow>
+                <StatsRow>
+                  <StatsLabel>将覆盖的数据</StatsLabel>
+                  <StatsValue>{backupPreview.importableKeys.length} 项</StatsValue>
+                </StatsRow>
+                {backupPreview.skippedKeys.length > 0 && (
+                  <Description>
+                    {backupPreview.skippedKeys.length} 个未知字段将被安全跳过。
+                  </Description>
+                )}
+                <Description>
+                  API Key 和本机壁纸图片会保留；导入失败时会尝试自动恢复当前数据，并明确报告未能恢复的项目。
+                </Description>
+                <Button
+                  variant="primary"
+                  type="button"
+                  disabled={isImporting}
+                  onClick={() => void handleConfirmImport()}
+                >
+                  确认覆盖并导入
+                </Button>
+                <Button
+                  variant="secondary"
+                  type="button"
+                  disabled={isImporting}
+                  onClick={() => setBackupPreview(null)}
+                >
+                  取消
+                </Button>
+              </StatsCard>
+            )}
+
             {importResult && (
               <ResultMessage success={importResult.success}>
                 <ResultIcon success={importResult.success}>
@@ -808,11 +943,19 @@ export const DataSettings: React.FC = () => {
                       {importResult.skippedKeys.length > 0 && (
                         <span>跳过 {importResult.skippedKeys.length} 项</span>
                       )}
-                      <span>页面将在 2 秒后刷新...</span>
                     </>
                   ) : (
                     <>
                       <strong>导入失败</strong>
+                      {importResult.rollbackComplete === false && (
+                        <span>
+                          原数据未完整恢复，请使用导出备份恢复
+                          {importResult.failedKeys?.length
+                            ? `（${importResult.failedKeys.join("、")}）`
+                            : ""}
+                          。
+                        </span>
+                      )}
                       {importResult.errors.map(error => (
                         <span key={error}>{error}</span>
                       ))}
@@ -840,6 +983,25 @@ export const DataSettings: React.FC = () => {
                 <StatusDetail>{syncStatusCopy.detail}</StatusDetail>
               </StatusValue>
             </StatusRow>
+            {syncEnabled && (
+              <StatusRow>
+                <StatusLabel>最近成功同步</StatusLabel>
+                <StatusValue>
+                  <StatusHeadline>
+                    {runtimeStatus.lastSuccessAt
+                      ? new Date(runtimeStatus.lastSuccessAt).toLocaleString()
+                      : "尚无成功记录"}
+                  </StatusHeadline>
+                  <StatusDetail>
+                    {runtimeStatus.pending
+                      ? "本地改动正在处理或等待推送"
+                      : runtimeStatus.state === "error"
+                        ? "上次操作失败，请处理上方提示"
+                        : "当前没有待推送改动"}
+                  </StatusDetail>
+                </StatusValue>
+              </StatusRow>
+            )}
 
             {syncStage === "setup" && (
               <>

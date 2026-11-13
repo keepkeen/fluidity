@@ -1,5 +1,6 @@
 import {
   createUsageEventSequencer,
+  replaceUsageRuntime,
   resetUsageRuntime,
   shouldMutateUsageState,
 } from "./backgroundUsage"
@@ -13,6 +14,8 @@ const HTTP_MATCHES = ["http://*/*", "https://*/*"]
 const HEARTBEAT_INTERVAL_MS = 5000
 const MAX_GAP_MS = 15000
 const RETENTION_DAYS = 30
+const USAGE_WRITE_DEBOUNCE_MS = 15_000
+const USAGE_WRITE_RETRY_MS = 5_000
 
 interface UsageSettings {
   enabled: boolean
@@ -25,6 +28,8 @@ interface UsageMessage {
   ts?: unknown
   url?: unknown
   title?: unknown
+  replacement?: unknown
+  remove?: unknown
 }
 
 interface RuntimeLastError {
@@ -85,15 +90,24 @@ const runtimeError = (): RuntimeLastError | undefined =>
   chrome.runtime.lastError
 
 const storageGet = (keys: string[]) =>
-  new Promise<Record<string, unknown>>(resolve => {
-    chrome.storage.local.get(keys, result =>
+  new Promise<Record<string, unknown>>((resolve, reject) => {
+    chrome.storage.local.get(keys, result => {
+      const error = runtimeError()
+      if (error?.message) {
+        reject(new Error(error.message))
+        return
+      }
       resolve(result as Record<string, unknown>)
-    )
+    })
   })
 
 const storageSet = (obj: Record<string, unknown>) =>
-  new Promise<void>(resolve => {
-    chrome.storage.local.set(obj, () => resolve())
+  new Promise<void>((resolve, reject) => {
+    chrome.storage.local.set(obj, () => {
+      const error = runtimeError()
+      if (error?.message) reject(new Error(error.message))
+      else resolve()
+    })
   })
 
 const storageRemove = (key: string) =>
@@ -158,13 +172,46 @@ let idleState: "active" | "idle" | "locked" = "active"
 let state: UsageState | null = null
 let stateLoading: Promise<UsageState> | null = null
 let writeChain = Promise.resolve()
+let pendingWriteState: UsageState | null = null
+let writeTimer: ReturnType<typeof setTimeout> | null = null
 const usageEvents = createUsageEventSequencer()
 
-const enqueueWrite = (nextState: UsageState) => {
-  writeChain = writeChain
-    .then(() => storageSet({ [STORAGE_KEY]: nextState }))
+const schedulePendingWrite = (delay = USAGE_WRITE_DEBOUNCE_MS) => {
+  if (writeTimer) return
+  writeTimer = setTimeout(() => {
+    writeTimer = null
+    void flushPendingWrite().catch(() => undefined)
+  }, delay)
+}
+
+const flushPendingWrite = (): Promise<void> => {
+  if (writeTimer) clearTimeout(writeTimer)
+  writeTimer = null
+  const pending = pendingWriteState
+  if (!pending) return writeChain
+  pendingWriteState = null
+  // Detach the checkpoint from the hot in-memory object before queuing I/O.
+  const snapshot = JSON.parse(JSON.stringify(pending)) as UsageState
+  const write = writeChain
     .catch(() => undefined)
-  return writeChain
+    .then(() => storageSet({ [STORAGE_KEY]: snapshot }))
+    .catch(error => {
+      pendingWriteState = pendingWriteState ?? pending
+      schedulePendingWrite(USAGE_WRITE_RETRY_MS)
+      throw error
+    })
+  writeChain = write
+  return write
+}
+
+const enqueueWrite = (
+  nextState: UsageState,
+  options: { immediate?: boolean } = {}
+) => {
+  pendingWriteState = nextState
+  if (options.immediate) return flushPendingWrite()
+  schedulePendingWrite()
+  return Promise.resolve()
 }
 
 const pruneOldDays = (st: UsageState) => {
@@ -238,16 +285,31 @@ const usageMessageTimestamp = (value: unknown): number =>
 const ensureLoaded = async () => {
   if (state) return state
   if (stateLoading) return await stateLoading
-  stateLoading = (async () => {
+  const loading = (async () => {
     const result = await storageGet([STORAGE_KEY])
     state = normalizeUsageState(result[STORAGE_KEY])
     usageEvents.primeTimestamp(latestUsageEventTimestamp(state))
     state.updatedAt = nowMs()
     pruneOldDays(state)
-    await enqueueWrite(state)
+    await enqueueWrite(state, { immediate: true })
     return state
   })()
-  return await stateLoading
+  stateLoading = loading
+  try {
+    return await loading
+  } catch (error) {
+    // A transient storage read failure must not initialize an empty state or
+    // poison all later reads with the same rejected promise.
+    if (stateLoading === loading) stateLoading = null
+    throw error
+  }
+}
+
+const reloadUsageStateFromStorage = async (): Promise<number> => {
+  const result = await storageGet([STORAGE_KEY])
+  state = normalizeUsageState(result[STORAGE_KEY])
+  stateLoading = null
+  return latestUsageEventTimestamp(state)
 }
 
 const getOrCreateDay = (st: UsageState, dayStr: string) => {
@@ -390,7 +452,7 @@ const handleHeartbeat = async (hb: UsageMessage) => {
 
   if (idleState !== "active") {
     closeCurrentIfAny(st, t)
-    await enqueueWrite(st)
+    await enqueueWrite(st, { immediate: true })
     return
   }
 
@@ -401,7 +463,7 @@ const handleHeartbeat = async (hb: UsageMessage) => {
 
   if (!st.current) {
     openNewCurrent(st, { ts: t, page, domain, title })
-    await enqueueWrite(st)
+    await enqueueWrite(st, { immediate: true })
     return
   }
 
@@ -431,7 +493,7 @@ const handleHeartbeat = async (hb: UsageMessage) => {
   closeCurrentIfAny(st, t)
   openNewCurrent(st, { ts: t, page, domain, title })
   pruneOldDays(st)
-  await enqueueWrite(st)
+  await enqueueWrite(st, { immediate: true })
 }
 
 const handleStop = async (msg: UsageMessage) => {
@@ -447,7 +509,7 @@ const handleStop = async (msg: UsageMessage) => {
 
   closeCurrentIfAny(st, t)
   pruneOldDays(st)
-  await enqueueWrite(st)
+  await enqueueWrite(st, { immediate: true })
 }
 
 const getScriptingApi = (): ScriptingApi | null => {
@@ -609,7 +671,7 @@ chrome.idle.onStateChanged.addListener(next => {
       const t = nowMs()
       if (!usageEvents.acceptTimestamp(t)) return
       closeCurrentIfAny(st, t)
-      await enqueueWrite(st)
+      await enqueueWrite(st, { immediate: true })
     })
     .catch(() => undefined)
 })
@@ -638,7 +700,7 @@ chrome.runtime.onMessage.addListener((msg: UsageMessage, _sender, sendResponse) 
     void usageEvents
       .enqueue(() =>
         resetUsageRuntime({
-          waitForWrites: () => writeChain,
+          waitForWrites: () => flushPendingWrite(),
           clearMemory: () => {
             state = null
             stateLoading = null
@@ -649,6 +711,43 @@ chrome.runtime.onMessage.addListener((msg: UsageMessage, _sender, sendResponse) 
       )
       .then(() => sendResponse({ ok: true }))
       .catch(() => sendResponse({ ok: false, error: "浏览统计后台重置失败" }))
+    return true
+  }
+
+  if (msg?.type === "fluidity:usageReplacePersisted") {
+    const replacement = normalizeUsageState(msg.replacement)
+    void usageEvents
+      .enqueue(() =>
+        replaceUsageRuntime({
+          discardPendingWrite: () => {
+            if (writeTimer) clearTimeout(writeTimer)
+            writeTimer = null
+            pendingWriteState = null
+          },
+          waitForWrites: () => writeChain.catch(() => undefined),
+          capturePersisted: async () =>
+            (await storageGet([STORAGE_KEY]))[STORAGE_KEY],
+          persistReplacement: () =>
+            msg.remove === true
+              ? storageRemove(STORAGE_KEY)
+              : storageSet({ [STORAGE_KEY]: replacement }),
+          restorePersisted: previous =>
+            previous === undefined
+              ? storageRemove(STORAGE_KEY)
+              : storageSet({ [STORAGE_KEY]: previous }),
+          clearMemory: () => {
+            state = null
+            stateLoading = null
+          },
+          resetTimestamp: () => usageEvents.resetTimestamp(),
+          reloadPersisted: reloadUsageStateFromStorage,
+          primeTimestamp: timestamp => usageEvents.primeTimestamp(timestamp),
+        })
+      )
+      .then(() => sendResponse({ ok: true }))
+      .catch(() =>
+        sendResponse({ ok: false, error: "浏览统计后台重载失败" })
+      )
     return true
   }
 

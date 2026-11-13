@@ -57,6 +57,14 @@ const STORAGE_KEYS = {
   AI_SETTINGS: "ai-settings",
 }
 
+export const ANALYTICS_CHANGED_EVENT = "fluidity:analytics-changed"
+
+const emitAnalyticsChanged = (): void => {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(ANALYTICS_CHANGED_EVENT))
+  }
+}
+
 interface CollectionSettings {
   collectLinkClicks: boolean
   collectSearchHistory: boolean
@@ -79,7 +87,10 @@ const getCollectionSettings = (): CollectionSettings => {
     // ignore
   }
   return {
-    collectLinkClicks: true,
+    // 点击分析默认关闭；搜索历史是只存在本机、直接支撑搜索建议的
+    // 产品数据，因此新用户默认记录。是否向 AI 发送它由
+    // getShareHabits() 的独立授权控制，不会因本地记录而开启。
+    collectLinkClicks: false,
     collectSearchHistory: true,
   }
 }
@@ -87,8 +98,64 @@ const getCollectionSettings = (): CollectionSettings => {
 export const isLinkAnalyticsEnabled = (): boolean =>
   getCollectionSettings().collectLinkClicks
 
+/**
+ * 本地搜索历史开关。为兼容已有用户，ai-settings 中显式保存的
+ * collectSearchHistory=false 仍会生效；它不等于 shareHabits，也不
+ * 授权任何联网或 AI 数据发送。
+ */
+export const isSearchHistoryEnabled = (): boolean =>
+  getCollectionSettings().collectSearchHistory
+
 const MAX_SEARCH_HISTORY = 100 // 最多保存100条搜索记录
 const MAX_CLICK_HISTORY_DAYS = 30 // 保留30天的点击历史
+const MAX_LINK_ANALYTICS_RECORDS = 500
+const MAX_CLICK_TIMESTAMPS_PER_LINK = 500
+
+const getKnownLinkUrls = (): Set<string> | null => {
+  try {
+    const raw = localStorage.getItem("link-groups")
+    if (!raw) return null
+    const groups = JSON.parse(raw) as unknown
+    if (!Array.isArray(groups)) return null
+    const urls = new Set<string>()
+    groups.forEach(group => {
+      if (!group || typeof group !== "object") return
+      const links = (group as { links?: unknown }).links
+      if (!Array.isArray(links)) return
+      links.forEach(link => {
+        const value =
+          link && typeof link === "object"
+            ? (link as { value?: unknown }).value
+            : null
+        if (typeof value === "string") urls.add(value)
+      })
+    })
+    return urls
+  } catch {
+    return null
+  }
+}
+
+const compactLinkAnalytics = (
+  data: Record<string, LinkClickRecord>,
+  currentUrl?: string
+): Record<string, LinkClickRecord> => {
+  const knownUrls = getKnownLinkUrls()
+  const entries = Object.entries(data)
+    .filter(([url]) => !knownUrls || url === currentUrl || knownUrls.has(url))
+    .map(([url, record]) => [
+      url,
+      {
+        ...record,
+        clickHistory: Array.isArray(record.clickHistory)
+          ? record.clickHistory.slice(-MAX_CLICK_TIMESTAMPS_PER_LINK)
+          : [],
+      },
+    ] as const)
+    .sort(([, a], [, b]) => b.lastClicked - a.lastClicked)
+    .slice(0, MAX_LINK_ANALYTICS_RECORDS)
+  return Object.fromEntries(entries)
+}
 
 /**
  * 链接分析服务
@@ -104,7 +171,11 @@ export const LinkAnalytics = {
   },
 
   set(data: Record<string, LinkClickRecord>): void {
-    localStorage.setItem(STORAGE_KEYS.LINK_ANALYTICS, JSON.stringify(data))
+    localStorage.setItem(
+      STORAGE_KEYS.LINK_ANALYTICS,
+      JSON.stringify(compactLinkAnalytics(data))
+    )
+    emitAnalyticsChanged()
   },
 
   /**
@@ -127,7 +198,7 @@ export const LinkAnalytics = {
       existing.clickHistory = [
         ...existing.clickHistory.filter(t => t > thirtyDaysAgo),
         now,
-      ]
+      ].slice(-MAX_CLICK_TIMESTAMPS_PER_LINK)
     } else {
       // 创建新记录
       analytics[url] = {
@@ -140,17 +211,29 @@ export const LinkAnalytics = {
       }
     }
 
-    this.set(analytics)
+    localStorage.setItem(
+      STORAGE_KEYS.LINK_ANALYTICS,
+      JSON.stringify(compactLinkAnalytics(analytics, url))
+    )
+    emitAnalyticsChanged()
   },
 
   /**
    * 获取最常访问的链接
    */
-  getTopLinks(limit = 5): { label: string; group: string; clicks: number }[] {
-    const analytics = this.get()
+  getTopLinkRecords(limit = 5): LinkClickRecord[] {
+    // Filtering at read time prevents a deleted bookmark from remaining in
+    // search suggestions forever when collection has been disabled and no
+    // later analytics write occurs to trigger compaction.
+    const analytics = compactLinkAnalytics(this.get())
     return Object.values(analytics)
       .sort((a, b) => b.clicks - a.clicks)
       .slice(0, limit)
+  },
+
+  /** Privacy-safe aggregate used by AI summaries and statistics. */
+  getTopLinks(limit = 5): { label: string; group: string; clicks: number }[] {
+    return this.getTopLinkRecords(limit)
       .map(({ label, group, clicks }) => ({ label, group, clicks }))
   },
 
@@ -194,6 +277,7 @@ export const LinkAnalytics = {
    */
   clear(): void {
     localStorage.removeItem(STORAGE_KEYS.LINK_ANALYTICS)
+    emitAnalyticsChanged()
   },
 }
 
@@ -212,6 +296,7 @@ export const SearchHistory = {
 
   set(data: SearchRecord[]): void {
     localStorage.setItem(STORAGE_KEYS.SEARCH_HISTORY, JSON.stringify(data))
+    emitAnalyticsChanged()
   },
 
   /**
@@ -221,8 +306,7 @@ export const SearchHistory = {
     if (!query.trim()) return
 
     // 检查是否允许收集搜索历史
-    const settings = getCollectionSettings()
-    if (!settings.collectSearchHistory) return
+    if (!isSearchHistoryEnabled()) return
 
     const history = this.get()
     const newRecord: SearchRecord = {
@@ -270,6 +354,7 @@ export const SearchHistory = {
    */
   clear(): void {
     localStorage.removeItem(STORAGE_KEYS.SEARCH_HISTORY)
+    emitAnalyticsChanged()
   },
 }
 
@@ -316,7 +401,8 @@ const getShareHabits = (): boolean => {
   } catch {
     // ignore
   }
-  return true
+  // 没有已保存设置时不向第三方模型发送行为数据。
+  return false
 }
 
 /**

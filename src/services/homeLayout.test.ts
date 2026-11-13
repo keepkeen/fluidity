@@ -6,6 +6,7 @@ import {
   LEGACY_HOME_LAYOUT_KEY,
   readHomeLayout,
   removeWidgetInstance,
+  updateWidgetInstanceIfUnchanged,
   WIDGET_REDISCOVERY,
   WIDGET_SCREEN_TIME,
 } from "./homeLayout"
@@ -58,5 +59,36 @@ describe("home layout v2", () => {
       current = added!.state
     }
     expect(addWidgetInstance(current, "rss")).toBeNull()
+  })
+
+  it("does not revive a widget deleted while its settings were open", () => {
+    const initial = readHomeLayout()
+    const expected = initial.widgets[WIDGET_REDISCOVERY]
+    const deleted = removeWidgetInstance(initial, WIDGET_REDISCOVERY)
+
+    expect(
+      updateWidgetInstanceIfUnchanged(deleted, expected, {
+        ...expected,
+        size: "large",
+      })
+    ).toBeNull()
+    expect(deleted.widgets[WIDGET_REDISCOVERY]).toBeUndefined()
+  })
+
+  it("preserves unrelated layout changes when the widget baseline still matches", () => {
+    const initial = readHomeLayout()
+    const expected = initial.widgets[WIDGET_REDISCOVERY]
+    const concurrentlyReordered = {
+      ...initial,
+      order: [...initial.order].reverse(),
+    }
+    const updated = updateWidgetInstanceIfUnchanged(
+      concurrentlyReordered,
+      expected,
+      { ...expected, size: "large" }
+    )
+
+    expect(updated?.order).toEqual(concurrentlyReordered.order)
+    expect(updated?.widgets[WIDGET_REDISCOVERY].size).toBe("large")
   })
 })

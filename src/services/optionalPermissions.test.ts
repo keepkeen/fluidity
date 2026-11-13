@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   ensureAIPermissionsFor,
   ensureOriginPermissions,
+  ensureOriginPermissionsWithStatus,
   resolveRssPermissionOrigins,
 } from "./optionalPermissions"
 
@@ -41,6 +42,31 @@ describe("custom AI origin permissions", () => {
 })
 
 describe("permission API availability", () => {
+  it("starts the permission request before waiting for the contains result", async () => {
+    let resolveContains: ((value: boolean) => void) | undefined
+    const contains = vi.fn(
+      () => new Promise<boolean>(resolve => {
+        resolveContains = resolve
+      })
+    )
+    const request = vi.fn().mockResolvedValue(true)
+    vi.stubGlobal("chrome", {
+      runtime: { id: "extension-id" },
+      permissions: { contains, request },
+    })
+
+    const permission = ensureOriginPermissionsWithStatus([
+      "https://feeds.example.com/*",
+    ])
+    expect(request).toHaveBeenCalledOnce()
+
+    resolveContains?.(false)
+    await expect(permission).resolves.toEqual({
+      granted: true,
+      newlyGranted: true,
+    })
+  })
+
   it("fails closed in a real extension runtime when the API is missing", async () => {
     vi.stubGlobal("chrome", { runtime: { id: "extension-id" } })
 

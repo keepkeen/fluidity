@@ -18,6 +18,7 @@ import { linkGroup } from "../data/data"
 
 export const LEGACY_HOME_LAYOUT_KEY = "fluidity.homeLayout.v1"
 export const HOME_LAYOUT_KEY = "fluidity.homeLayout.v2"
+export const HOME_LAYOUT_LOCK_NAME = "fluidity.homeLayout.v2"
 
 export const WIDGET_SCREEN_TIME = "widget:screen-time"
 export const WIDGET_REDISCOVERY = "widget:rediscovery"
@@ -36,6 +37,37 @@ export interface HomeLayoutState {
   order: string[]
   widgets: Record<string, WidgetInstance>
   pageShortcutModifier: HomePageShortcutModifier
+}
+
+export const getHomeLayoutFingerprint = (state: HomeLayoutState): string =>
+  JSON.stringify({
+    order: state.order,
+    widgets: Object.keys(state.widgets)
+      .sort()
+      .map(instanceId => {
+        const widget = state.widgets[instanceId]
+        return [
+          instanceId,
+          widget.type,
+          widget.size,
+          widget.config,
+        ]
+      }),
+    pageShortcutModifier: state.pageShortcutModifier,
+  })
+
+/** Serializes layout mutations across start-page and settings tabs. */
+export const withHomeLayoutLock = async <T,>(
+  operation: () => T | Promise<T>
+): Promise<T> => {
+  if (typeof navigator !== "undefined" && navigator.locks?.request) {
+    return navigator.locks.request(
+      HOME_LAYOUT_LOCK_NAME,
+      { mode: "exclusive" },
+      operation
+    )
+  }
+  return operation()
 }
 
 interface LegacyHomeLayoutState {
@@ -231,6 +263,22 @@ export const updateWidgetInstance = (
   ...state,
   widgets: { ...state.widgets, [instance.instanceId]: instance },
 })
+
+export const updateWidgetInstanceIfUnchanged = (
+  state: HomeLayoutState,
+  expected: WidgetInstance,
+  instance: WidgetInstance
+): HomeLayoutState | null => {
+  const current = state.widgets[expected.instanceId]
+  if (
+    !current ||
+    instance.instanceId !== expected.instanceId ||
+    JSON.stringify(current) !== JSON.stringify(expected)
+  ) {
+    return null
+  }
+  return updateWidgetInstance(state, instance)
+}
 
 export const removeWidgetInstance = (
   state: HomeLayoutState,

@@ -7,6 +7,7 @@ const { callAIMock } = vi.hoisted(() => ({
 vi.mock("./ai", () => ({
   AISettingsManager: {
     get: () => ({
+      enabled: true,
       apiKey: "sk-test",
       apiBaseUrl: "https://provider.example/v1",
       model: "model-test",
@@ -15,7 +16,11 @@ vi.mock("./ai", () => ({
   callDeepSeekAPI: callAIMock,
 }))
 
-import { organizeLinksWithAI, resetOrganizeStatus } from "./linkOrganizer"
+import {
+  getOrganizeStatus,
+  organizeLinksWithAI,
+  resetOrganizeStatus,
+} from "./linkOrganizer"
 
 beforeEach(() => {
   callAIMock.mockReset()
@@ -24,11 +29,12 @@ beforeEach(() => {
 
 describe("link organizer request options", () => {
   it("keeps the longer timeout required for large link sets", async () => {
+    const controller = new AbortController()
     callAIMock.mockResolvedValue(
       JSON.stringify([
         {
           title: "开发工具",
-          links: [{ label: "GitHub", value: "https://github.com" }],
+          links: [{ token: "item-001", label: "GitHub" }],
         },
       ])
     )
@@ -40,7 +46,8 @@ describe("link organizer request options", () => {
           links: [{ label: "GitHub", value: "https://github.com" }],
         },
       ],
-      ""
+      "",
+      { signal: controller.signal }
     )
 
     expect(callAIMock).toHaveBeenCalledWith(
@@ -50,7 +57,26 @@ describe("link organizer request options", () => {
       expect.objectContaining({
         apiBaseUrl: "https://provider.example/v1",
         timeoutMs: 60_000,
+        signal: controller.signal,
       })
     )
+  })
+
+  it("returns to idle and preserves AbortError when cancelled", async () => {
+    const abortError = new DOMException("cancelled", "AbortError")
+    callAIMock.mockRejectedValue(abortError)
+
+    await expect(
+      organizeLinksWithAI(
+        [
+          {
+            title: "原分组",
+            links: [{ label: "GitHub", value: "https://github.com" }],
+          },
+        ],
+        ""
+      )
+    ).rejects.toBe(abortError)
+    expect(getOrganizeStatus()).toBe("idle")
   })
 })

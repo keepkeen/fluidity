@@ -558,7 +558,13 @@ export const CommandPalette = memo(
       )
 
       if (selectedElement) {
-        selectedElement.scrollIntoView({ block: "nearest", behavior: "smooth" })
+        const reducedMotion =
+          window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ??
+          false
+        selectedElement.scrollIntoView({
+          block: "nearest",
+          behavior: reducedMotion ? "auto" : "smooth",
+        })
       }
     }, [selectedIndex, scrolledByMouse])
 

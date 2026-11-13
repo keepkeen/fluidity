@@ -32,7 +32,10 @@ interface SmartEntryWidgetProps {
   instance: WidgetInstance
   linkGroups: linkGroup[]
   visibleAppUrls: string[]
-  onUpdate: (instance: WidgetInstance) => void
+  onUpdate: (
+    instance: WidgetInstance,
+    expected?: WidgetInstance
+  ) => Promise<string | null>
   onUndoableAction: (message: string, undo: () => void) => void
 }
 
@@ -81,21 +84,26 @@ export const SmartEntryWidget = ({
         : Math.min(3, Math.max(1, Number(instance.config.itemLimit ?? 4)))
   const visible = entries.slice(0, limit)
 
-  const suppress = (url: string) => {
+  const suppress = async (url: string) => {
     const previous = excludedUrls
-    onUpdate({
+    const next = {
       ...instance,
       config: {
         ...instance.config,
         excludedUrls: [...new Set([...excludedUrls, url])],
       },
+    }
+    const error = await onUpdate(next, instance)
+    if (error) return
+    onUndoableAction("已减少这个入口的推荐", () => {
+      void onUpdate(
+        {
+          ...instance,
+          config: { ...instance.config, excludedUrls: previous },
+        },
+        next
+      )
     })
-    onUndoableAction("已减少这个入口的推荐", () =>
-      onUpdate({
-        ...instance,
-        config: { ...instance.config, excludedUrls: previous },
-      })
-    )
   }
 
   const open = (entry: (typeof entries)[number]) =>
@@ -163,7 +171,7 @@ export const SmartEntryWidget = ({
                       type="button"
                       aria-label={`减少推荐 ${entry.label}`}
                       title="减少推荐"
-                      onClick={() => suppress(entry.url)}
+                      onClick={() => void suppress(entry.url)}
                     >
                       <FontAwesomeIcon icon={faBan} />
                     </WidgetIconButton>

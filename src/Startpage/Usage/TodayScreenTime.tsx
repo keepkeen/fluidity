@@ -8,11 +8,11 @@ import { resolveAppNameForDomain } from "../../services/ai"
 import {
   BROWSER_USAGE_STORAGE_KEY,
   getBrowserUsageStore,
-  getBrowserUsageSummaryForDay,
   getDomainApps,
-  getTodayBrowserUsageSummary,
   guessAppNameFromDomain,
   normalizeDomainKey,
+  summarizeBrowserUsageDay,
+  summarizeBrowserUsageToday,
   upsertDomainAppName,
 } from "../../services/browserUsage"
 import {
@@ -242,14 +242,14 @@ const getTodayScreenTimeViewModel = async (): Promise<{
   trackingState: TrackingState
 } | null> => {
   try {
-    const [summary, domainApps, store, settings, hasPermissions] =
+    const [store, domainApps, settings, hasPermissions] =
       await Promise.all([
-        getTodayBrowserUsageSummary(),
-        getDomainApps(),
         getBrowserUsageStore(),
+        getDomainApps(),
         getBrowserUsageSettings(),
         hasBrowserUsagePermissions(),
       ])
+    const summary = summarizeBrowserUsageToday(store)
     const lastUpdatedAt =
       typeof store?.updatedAt === "number" ? store.updatedAt : null
 
@@ -344,11 +344,12 @@ export const TodayScreenTime = ({
     if (!uiActive) return
     let mounted = true
     const loadHistory = async () => {
+      const store = await getBrowserUsageStore()
       const days: { day: string; minutes: number }[] = []
       for (let i = 7; i >= 1; i--) {
         const day = dayStringDaysAgo(i)
         try {
-          const summary = await getBrowserUsageSummaryForDay(day, {
+          const summary = summarizeBrowserUsageDay(store, day, {
             domains: 0,
             pages: 0,
           })

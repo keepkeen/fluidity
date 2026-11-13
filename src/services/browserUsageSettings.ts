@@ -51,8 +51,8 @@ const notifyBackground = async (): Promise<void> => {
             reject(new Error("浏览统计后台未响应，请重新加载扩展后再试"))
             return
           }
-          if (response?.ok === false) {
-            reject(new Error(response.error || "浏览统计脚本启用失败"))
+          if (response?.ok !== true) {
+            reject(new Error(response?.error || "浏览统计后台未确认设置结果"))
             return
           }
           resolve()

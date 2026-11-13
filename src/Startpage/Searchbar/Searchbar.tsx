@@ -15,9 +15,18 @@ import duckduckgo from "../../data/pictures/duckduckgo.svg"
 import ecosia from "../../data/pictures/ecosia.svg"
 import google from "../../data/pictures/google.svg"
 import qwant from "../../data/pictures/qwant.svg"
-import { SearchHistory, LinkAnalytics } from "../../services/analytics"
+import {
+  ANALYTICS_CHANGED_EVENT,
+  SearchHistory,
+  LinkAnalytics,
+} from "../../services/analytics"
 import { readHomeLayout } from "../../services/homeLayout"
-import { searchLinksOnly, navigateToLink } from "../../services/linkSearch"
+import {
+  clearSearchCache,
+  searchLinksOnly,
+  navigateToLink,
+} from "../../services/linkSearch"
+import { onSettingsApplied } from "../../services/settingsEvents"
 import {
   matchSearchText,
   rankSearchHistory,
@@ -45,6 +54,42 @@ interface Suggestion {
   detail?: string
   groupTitle?: string // 用于 quicklink 类型
   engine?: SearchEngine // 用于 engine 类型
+}
+
+const suggestionHostname = (url: string): string => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "")
+  } catch {
+    return url
+  }
+}
+
+/**
+ * The destination is the identity of a link suggestion. Labels are not unique:
+ * imported bookmark collections commonly contain several links named "首页" or
+ * "文档". Non-link actions keep their type in the key because selecting a search
+ * history item and selecting a fast-forward command have different semantics.
+ */
+export const getSuggestionIdentity = (suggestion: Suggestion): string => {
+  if (suggestion.url) {
+    try {
+      const url = new URL(suggestion.url)
+      url.hash = ""
+      if (
+        (url.protocol === "https:" && url.port === "443") ||
+        (url.protocol === "http:" && url.port === "80")
+      ) {
+        url.port = ""
+      }
+      return `url:${url.toString()}`
+    } catch {
+      return `url:${suggestion.url.trim()}`
+    }
+  }
+  if (suggestion.type === "engine" && suggestion.engine) {
+    return `engine:${suggestion.engine.value}`
+  }
+  return `${suggestion.type}:${suggestion.text.trim().toLocaleLowerCase()}`
 }
 
 const StyledSearchbarContainer = styled.div`
@@ -302,13 +347,23 @@ const getLinkSuggestions = (
   limit = 8
 ): Suggestion[] => {
   const results = searchLinksOnly(linkGroups, query)
-  return results.slice(0, limit).map(link => ({
-    text: link.label,
-    type: "quicklink" as const,
-    url: link.value,
-    groupTitle: link.groupTitle,
-    detail: link.groupTitle,
-  }))
+  const suggestions: Suggestion[] = []
+  const seenDestinations = new Set<string>()
+  for (const link of results) {
+    const suggestion: Suggestion = {
+      text: link.label,
+      type: "quicklink",
+      url: link.value,
+      groupTitle: link.groupTitle,
+      detail: `${link.groupTitle} · ${suggestionHostname(link.value)}`,
+    }
+    const identity = getSuggestionIdentity(suggestion)
+    if (seenDestinations.has(identity)) continue
+    seenDestinations.add(identity)
+    suggestions.push(suggestion)
+    if (suggestions.length >= limit) break
+  }
+  return suggestions
 }
 
 /**
@@ -343,18 +398,19 @@ const getSuggestions = (
   })
 
   // 分析数据可能包含已被用户删除的旧标签，作为末位常用链接保留。
-  const topLinks = LinkAnalytics.getTopLinks(10)
+  const topLinks = LinkAnalytics.getTopLinkRecords(10)
   topLinks.forEach(link => {
-    if (matchSearchText(link.label, lowerQuery).score > 0) {
-      const analytics = LinkAnalytics.get()
-      const linkData = Object.values(analytics).find(
-        l => l.label === link.label
-      )
+    if (
+      Math.max(
+        matchSearchText(link.label, lowerQuery).score,
+        matchSearchText(link.url, lowerQuery).score * 0.5
+      ) > 0
+    ) {
       collector.add({
         text: link.label,
         type: "link",
-        url: linkData?.url,
-        detail: link.group || "常用链接",
+        url: link.url,
+        detail: `${link.group || "常用链接"} · ${suggestionHostname(link.url)}`,
       })
     }
   })
@@ -365,7 +421,7 @@ const getSuggestions = (
 // 去重建议收集器
 class SuggestionCollector {
   private suggestions: Suggestion[] = []
-  private seenTexts = new Set<string>()
+  private seenIdentities = new Set<string>()
   private maxCount: number
 
   constructor(maxCount: number) {
@@ -374,9 +430,9 @@ class SuggestionCollector {
 
   add(suggestion: Suggestion): boolean {
     if (this.suggestions.length >= this.maxCount) return false
-    const lowerText = suggestion.text.toLowerCase()
-    if (this.seenTexts.has(lowerText)) return false
-    this.seenTexts.add(lowerText)
+    const identity = getSuggestionIdentity(suggestion)
+    if (this.seenIdentities.has(identity)) return false
+    this.seenIdentities.add(identity)
     this.suggestions.push(suggestion)
     return true
   }
@@ -407,14 +463,12 @@ const getDefaultSuggestions = (searchSettings: SearchType): Suggestion[] => {
   })
 
   // 2. 最常访问的链接
-  const analytics = LinkAnalytics.get()
-  LinkAnalytics.getTopLinks(5).forEach(link => {
-    const linkData = Object.values(analytics).find(l => l.label === link.label)
+  LinkAnalytics.getTopLinkRecords(5).forEach(link => {
     collector.add({
       text: link.label,
       type: "link",
-      url: linkData?.url,
-      detail: link.group || "常用链接",
+      url: link.url,
+      detail: `${link.group || "常用链接"} · ${suggestionHostname(link.url)}`,
     })
   })
 
@@ -444,12 +498,17 @@ export const isSpaceActivationTarget = (target: EventTarget | null): boolean =>
   target instanceof Element && Boolean(target.closest(SPACE_ACTIVATION_SELECTOR))
 
 export const Searchbar = () => {
-  // 使用 useMemo 稳定 searchSettings，避免每次渲染都创建新对象
-  const searchSettings = useMemo(() => Settings.Search.getWithFallback(), [])
-  const linkGroups = useMemo(() => Settings.Links.getWithFallback(), [])
-  const linkDisplaySettings = useMemo(
-    () => Settings.LinkDisplay.getWithFallback(),
-    []
+  const [searchSettings, setSearchSettings] = useState(() =>
+    Settings.Search.getWithFallback()
+  )
+  const [linkGroups, setLinkGroups] = useState(() =>
+    Settings.Links.getWithFallback()
+  )
+  // 历史和点击统计由服务在计算建议时按需读取。修订号只负责让已展开
+  // 的建议在跨标签页数据变化后立即重新计算，不在 React 状态中复制隐私数据。
+  const [suggestionDataRevision, setSuggestionDataRevision] = useState(0)
+  const [linkDisplaySettings, setLinkDisplaySettings] = useState(() =>
+    Settings.LinkDisplay.getWithFallback()
   )
   const defaultEngine: string = searchSettings.engine
   const legacyPlaceholder = "按 Enter 搜索，@ 切换引擎，/ 搜索链接"
@@ -466,6 +525,60 @@ export const Searchbar = () => {
   const [tempEngine, setTempEngine] = useState<SearchEngine | null>(null) // 临时选择的引擎
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const refreshLinkGroups = (): void => {
+      clearSearchCache()
+      setLinkGroups(Settings.Links.getWithFallback())
+    }
+    const refreshSearchSettings = (): void => {
+      setSearchSettings(Settings.Search.getWithFallback())
+    }
+    const refreshLinkDisplaySettings = (): void => {
+      setLinkDisplaySettings(Settings.LinkDisplay.getWithFallback())
+    }
+    const refreshSuggestionData = (): void => {
+      setSuggestionDataRevision(revision => revision + 1)
+    }
+    const refreshAll = (): void => {
+      refreshLinkGroups()
+      refreshSearchSettings()
+      refreshLinkDisplaySettings()
+      refreshSuggestionData()
+    }
+    const handleStorage = (event: StorageEvent): void => {
+      switch (event.key) {
+        case null:
+          refreshAll()
+          break
+        case "link-groups":
+          refreshLinkGroups()
+          break
+        case "search-settings":
+          refreshSearchSettings()
+          break
+        case "link-display-settings":
+          refreshLinkDisplaySettings()
+          break
+        case "search-history":
+        case "link-analytics":
+          refreshSuggestionData()
+          break
+      }
+    }
+
+    window.addEventListener("storage", handleStorage)
+    window.addEventListener(ANALYTICS_CHANGED_EVENT, refreshSuggestionData)
+    const unsubscribeSettings = onSettingsApplied(refreshAll)
+    return () => {
+      window.removeEventListener("storage", handleStorage)
+      window.removeEventListener(
+        ANALYTICS_CHANGED_EVENT,
+        refreshSuggestionData
+      )
+      unsubscribeSettings()
+    }
+  }, [])
 
   // 当前使用的引擎
   const currentEngine = tempEngine?.value ?? defaultEngine
@@ -568,6 +681,7 @@ export const Searchbar = () => {
     searchSettings,
     linkGroups,
     handleEngineModeInput,
+    suggestionDataRevision,
   ])
 
   useEffect(() => {
@@ -820,7 +934,7 @@ export const Searchbar = () => {
           {suggestions.map((suggestion, index) => (
             <SuggestionItem
               id={`search-suggestion-${index}`}
-              key={`${suggestion.type}-${suggestion.text}`}
+              key={getSuggestionIdentity(suggestion)}
               role="option"
               aria-selected={index === selectedIndex}
               selected={index === selectedIndex}

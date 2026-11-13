@@ -10,7 +10,29 @@ import {
   getDefaultGreeting,
   refreshAIGreeting,
 } from "../../services/ai"
-import { getDailyReview } from "../../services/dailyReview"
+import type { AISettings } from "../../services/ai"
+import {
+  DAILY_REVIEW_KEY,
+  getDailyReview,
+} from "../../services/dailyReview"
+import { SETTINGS_APPLIED_EVENT } from "../../services/settingsEvents"
+
+const AI_SETTINGS_KEY = "ai-settings"
+const AI_CACHE_KEY = "ai-cache"
+
+const canUseAIGreeting = (settings: AISettings): boolean =>
+  settings.enabled && settings.greetingEnabled && settings.apiKey.length > 0
+
+const getGreetingSettingsSignature = (settings: AISettings): string =>
+  JSON.stringify({
+    enabled: settings.enabled,
+    greetingEnabled: settings.greetingEnabled,
+    apiKey: settings.apiKey,
+    apiBaseUrl: settings.apiBaseUrl,
+    model: settings.model,
+    shareHabits: settings.shareHabits,
+    shareBrowserUsage: settings.shareBrowserUsage,
+  })
 
 const GreetingContainer = styled.div`
   display: flex;
@@ -137,50 +159,124 @@ const AIBadge = styled.span`
 export const AIGreeting = () => {
   const [greeting, setGreeting] = useState("")
   const [loading, setLoading] = useState(true)
-  const [isAI, setIsAI] = useState(false)
+  const [greetingSource, setGreetingSource] = useState<"default" | "ai">(
+    "default"
+  )
+  const [canRefresh, setCanRefresh] = useState(false)
   const [dailyReview, setDailyReview] = useState("")
 
-  const fetchGreeting = async (refresh = false) => {
-    setLoading(true)
-    const settings = AISettingsManager.get()
+  const mountedRef = useRef(false)
+  const greetingRequestRef = useRef(0)
+  const dailyReviewRequestRef = useRef(0)
+  const scheduledRefreshRef = useRef<{
+    greeting: boolean
+    dailyReview: boolean
+  } | null>(null)
+  const scheduleQueuedRef = useRef(false)
 
-    if (!settings.enabled || !settings.apiKey) {
-      // 未启用 AI，使用默认问候
+  const fetchGreeting = async (refresh = false) => {
+    const request = ++greetingRequestRef.current
+    const settings = AISettingsManager.get()
+    const settingsSignature = getGreetingSettingsSignature(settings)
+    const useAI = canUseAIGreeting(settings)
+
+    if (!mountedRef.current) return
+    setCanRefresh(useAI)
+
+    if (!useAI) {
       setGreeting(getDefaultGreeting())
-      setIsAI(false)
+      setGreetingSource("default")
       setLoading(false)
       return
     }
 
+    setLoading(true)
     try {
       const result = refresh ? await refreshAIGreeting() : await getAIGreeting()
+      if (!mountedRef.current || request !== greetingRequestRef.current) return
+
+      const latestSettings = AISettingsManager.get()
+      if (
+        getGreetingSettingsSignature(latestSettings) !== settingsSignature ||
+        !canUseAIGreeting(latestSettings)
+      ) {
+        void fetchGreeting()
+        return
+      }
+
       setGreeting(result.message)
-      setIsAI(!result.error)
+      setGreetingSource(result.error ? "default" : "ai")
     } catch {
+      if (!mountedRef.current || request !== greetingRequestRef.current) return
       setGreeting(getDefaultGreeting())
-      setIsAI(false)
+      setGreetingSource("default")
     } finally {
-      setLoading(false)
+      if (mountedRef.current && request === greetingRequestRef.current) {
+        setLoading(false)
+      }
     }
   }
 
-  // StrictMode 下挂载 effect 会执行两次，不加守卫会重复发起付费 AI 请求
-  const didFetchRef = useRef(false)
-  useEffect(() => {
-    if (didFetchRef.current) return
-    didFetchRef.current = true
-    void fetchGreeting()
-  }, [])
+  const fetchDailyReview = async () => {
+    const request = ++dailyReviewRequestRef.current
+    try {
+      const result = await getDailyReview()
+      if (!mountedRef.current || request !== dailyReviewRequestRef.current) return
+      setDailyReview(result?.summary ?? "")
+    } catch {
+      if (!mountedRef.current || request !== dailyReviewRequestRef.current) return
+      setDailyReview("")
+    }
+  }
+
+  const scheduleRefresh = (greeting: boolean, dailyReview: boolean) => {
+    const scheduled = scheduledRefreshRef.current ?? {
+      greeting: false,
+      dailyReview: false,
+    }
+    scheduled.greeting ||= greeting
+    scheduled.dailyReview ||= dailyReview
+    scheduledRefreshRef.current = scheduled
+    if (scheduleQueuedRef.current) return
+
+    scheduleQueuedRef.current = true
+    queueMicrotask(() => {
+      scheduleQueuedRef.current = false
+      const next = scheduledRefreshRef.current
+      scheduledRefreshRef.current = null
+      if (!mountedRef.current || !next) return
+      if (next.greeting) void fetchGreeting()
+      if (next.dailyReview) void fetchDailyReview()
+    })
+  }
 
   useEffect(() => {
-    let mounted = true
-    void getDailyReview().then(result => {
-      if (!mounted || !result?.summary) return
-      setDailyReview(result.summary)
-    })
-    return () => {
-      mounted = false
+    mountedRef.current = true
+    // 延迟到微任务执行可避开 StrictMode 首轮 effect 清理，避免重复付费请求。
+    scheduleRefresh(true, true)
+
+    const handleSettingsApplied = () => scheduleRefresh(true, true)
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === null || event.key === AI_SETTINGS_KEY) {
+        scheduleRefresh(true, true)
+        return
+      }
+      if (event.key === AI_CACHE_KEY) scheduleRefresh(true, false)
+      if (event.key === DAILY_REVIEW_KEY) scheduleRefresh(false, true)
     }
+
+    window.addEventListener(SETTINGS_APPLIED_EVENT, handleSettingsApplied)
+    window.addEventListener("storage", handleStorage)
+    return () => {
+      mountedRef.current = false
+      greetingRequestRef.current += 1
+      dailyReviewRequestRef.current += 1
+      window.removeEventListener(SETTINGS_APPLIED_EVENT, handleSettingsApplied)
+      window.removeEventListener("storage", handleStorage)
+    }
+    // The subscription is intentionally installed once. Its handlers read
+    // current settings from the managers and mutable request refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleRefresh = () => {
@@ -194,13 +290,13 @@ export const AIGreeting = () => {
       <GreetingContent>
         <GreetingText $loading={loading}>
           {loading ? "正在思考..." : greeting}
-          {isAI && !loading && <AIBadge>AI</AIBadge>}
+          {greetingSource === "ai" && !loading && <AIBadge>AI</AIBadge>}
         </GreetingText>
         {dailyReview && (
           <DailyReviewText>昨日回顾：{dailyReview}</DailyReviewText>
         )}
       </GreetingContent>
-      {AISettingsManager.isConfigured() && (
+      {canRefresh && (
         <RefreshButton
           onClick={handleRefresh}
           disabled={loading}

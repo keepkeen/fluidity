@@ -4,6 +4,7 @@ import {
   BROWSER_USAGE_STORAGE_KEY,
   BrowserUsageStoreV1,
   getTodayBrowserUsageSummary,
+  replaceBrowserUsageRuntime,
 } from "./browserUsage"
 
 const NOW = new Date(2026, 7, 18, 15, 0, 0).getTime()
@@ -79,5 +80,81 @@ describe("getTodayBrowserUsageSummary", () => {
 
     expect(summary.totalSec).toBeCloseTo(5)
     expect(summary.topDomains[0]?.sec).toBeCloseTo(5)
+  })
+})
+
+describe("replaceBrowserUsageRuntime", () => {
+  it("sends the imported snapshot through the background replacement protocol", async () => {
+    const store = createStore()
+    const sendMessage = vi.fn(
+      (
+        _message: unknown,
+        callback: (response: { ok: boolean }) => void
+      ) => callback({ ok: true })
+    )
+    vi.stubGlobal("chrome", {
+      runtime: { lastError: undefined, sendMessage },
+    })
+
+    await replaceBrowserUsageRuntime(store)
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      { type: "fluidity:usageReplacePersisted", replacement: store },
+      expect.any(Function)
+    )
+  })
+
+  it("rejects when the service worker is unavailable", async () => {
+    vi.stubGlobal("chrome", {
+      runtime: {
+        lastError: { message: "Receiving end does not exist" },
+        sendMessage(
+          _message: unknown,
+          callback: (response?: { ok: boolean }) => void
+        ) {
+          callback(undefined)
+        },
+      },
+    })
+
+    await expect(replaceBrowserUsageRuntime(createStore())).rejects.toThrow(
+      "后台未响应"
+    )
+  })
+
+  it("rejects an explicit replacement failure", async () => {
+    vi.stubGlobal("chrome", {
+      runtime: {
+        lastError: undefined,
+        sendMessage(
+          _message: unknown,
+          callback: (response: { ok: boolean; error: string }) => void
+        ) {
+          callback({ ok: false, error: "replacement rolled back" })
+        },
+      },
+    })
+
+    await expect(replaceBrowserUsageRuntime(createStore())).rejects.toThrow(
+      "replacement rolled back"
+    )
+  })
+
+  it("rejects when the message channel closes without an acknowledgement", async () => {
+    vi.stubGlobal("chrome", {
+      runtime: {
+        lastError: undefined,
+        sendMessage(
+          _message: unknown,
+          callback: (response?: { ok: boolean }) => void
+        ) {
+          callback(undefined)
+        },
+      },
+    })
+
+    await expect(replaceBrowserUsageRuntime(createStore())).rejects.toThrow(
+      "未确认重载结果"
+    )
   })
 })

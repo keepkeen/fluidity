@@ -1,19 +1,25 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("./http", () => ({
   fetchWithTimeout: vi.fn(),
 }))
 
 import {
+  addRssSubscription,
   fetchRssSubscription,
   getRssItems,
+  listRssSubscriptions,
   normalizeRssUrl,
   parseRssXml,
   readRssCache,
+  readRssSubscriptions,
+  refreshRssSubscriptions,
   removeRssSubscription,
+  restoreRssSubscription,
   RSS_READ_STATE_KEY,
   setRssItemsRead,
   type RssSubscription,
+  updateRssSubscription,
   writeRssCache,
   writeRssSubscriptions,
 } from "./rss"
@@ -22,6 +28,11 @@ import { fetchWithTimeout } from "./http"
 beforeEach(() => {
   localStorage.clear()
   vi.mocked(fetchWithTimeout).mockReset()
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 const subscription = (id: string, url: string): RssSubscription => ({
@@ -90,8 +101,8 @@ describe("RSS parsing and local state", () => {
     )
   })
 
-  it("writes bulk read markers in one state update", () => {
-    setRssItemsRead(
+  it("writes bulk read markers in one state update", async () => {
+    await setRssItemsRead(
       [
         { id: "one", feedId: "feed" },
         { id: "two", feedId: "feed" },
@@ -124,6 +135,342 @@ describe("RSS parsing and local state", () => {
     expect(cache.feeds["feed-two"].title).toBe("订阅二")
   })
 
+  it("serializes interleaved read-state and cache read-modify-writes with Web Locks", async () => {
+    const lockTails = new Map<string, Promise<unknown>>()
+    const request = vi.fn(
+      <T,>(name: string, operation: () => T | Promise<T>): Promise<T> => {
+        const previous = lockTails.get(name) ?? Promise.resolve()
+        const current = previous.then(operation, operation)
+        lockTails.set(name, current.catch(() => undefined))
+        return current
+      }
+    )
+    vi.stubGlobal("navigator", { locks: { request } })
+    vi.mocked(fetchWithTimeout)
+      .mockResolvedValueOnce(rssResponse("订阅一", "https://one.example/article"))
+      .mockResolvedValueOnce(rssResponse("订阅二", "https://two.example/article"))
+
+    await Promise.all([
+      setRssItemsRead([{ id: "item-one", feedId: "feed-one" }], true, 10),
+      setRssItemsRead([{ id: "item-two", feedId: "feed-two" }], true, 11),
+      fetchRssSubscription(subscription("feed-one", "https://one.example/rss"), {
+        force: true,
+        now: 10,
+      }),
+      fetchRssSubscription(subscription("feed-two", "https://two.example/rss"), {
+        force: true,
+        now: 11,
+      }),
+    ])
+
+    expect(Object.keys(JSON.parse(
+      localStorage.getItem(RSS_READ_STATE_KEY) ?? "{}"
+    )).sort()).toEqual(["item-one", "item-two"])
+    expect(Object.keys((await readRssCache()).feeds).sort()).toEqual([
+      "feed-one",
+      "feed-two",
+    ])
+    expect(request.mock.calls.filter(([name]) => name === "fluidity:rss-read-state"))
+      .toHaveLength(2)
+    expect(request.mock.calls.filter(([name]) => name === "fluidity:rss-cache"))
+      .toHaveLength(2)
+  })
+
+  it("re-reads the latest subscription store when two feeds are added concurrently", async () => {
+    vi.mocked(fetchWithTimeout)
+      .mockResolvedValueOnce(rssResponse("订阅一", "https://one.example/article"))
+      .mockResolvedValueOnce(rssResponse("订阅二", "https://two.example/article"))
+
+    const [first, second] = await Promise.all([
+      addRssSubscription("https://one.example/rss", 100),
+      addRssSubscription("https://two.example/rss", 101),
+    ])
+
+    const subscriptions = readRssSubscriptions().subscriptions
+    expect(Object.keys(subscriptions).sort()).toEqual(
+      [first.id, second.id].sort()
+    )
+    expect(subscriptions[first.id].title).toBe("订阅一")
+    expect(subscriptions[second.id].title).toBe("订阅二")
+  })
+
+  it("uses the same Web Lock for every subscription read-modify-write", async () => {
+    const request = vi.fn(
+      async <T,>(_name: string, operation: () => T | Promise<T>): Promise<T> =>
+        operation()
+    )
+    vi.stubGlobal("navigator", { locks: { request } })
+    vi.mocked(fetchWithTimeout).mockResolvedValue(
+      rssResponse("订阅", "https://lock.example/article")
+    )
+
+    const added = await addRssSubscription("https://lock.example/rss", 100)
+    await updateRssSubscription(added.id, { refreshMinutes: 60 }, 101)
+    await removeRssSubscription(added.id, 102)
+    await restoreRssSubscription(added.id, 103)
+
+    expect(request.mock.calls.map(([name]) => name).filter(
+      name => name === "fluidity:rss-subscriptions"
+    )).toEqual(
+      Array(4).fill("fluidity:rss-subscriptions")
+    )
+    expect(request).toHaveBeenCalledWith(
+      "fluidity:rss-read-state",
+      expect.any(Function)
+    )
+    expect(request).toHaveBeenCalledWith(
+      "fluidity:rss-cache",
+      expect.any(Function)
+    )
+  })
+
+  it("rolls back a newly granted host permission when feed validation fails", async () => {
+    const contains = vi.fn().mockResolvedValue(false)
+    const request = vi.fn().mockResolvedValue(true)
+    const remove = vi.fn().mockResolvedValue(true)
+    vi.stubGlobal("chrome", {
+      runtime: { id: "extension-id" },
+      permissions: { contains, request, remove },
+    })
+    vi.mocked(fetchWithTimeout).mockResolvedValue(
+      new Response("not an rss feed", { status: 200 })
+    )
+
+    await expect(
+      addRssSubscription("https://broken.example/rss", 100)
+    ).rejects.toThrow("无法解析")
+
+    expect(remove).toHaveBeenCalledOnce()
+    expect(remove).toHaveBeenCalledWith({
+      origins: ["https://broken.example/*"],
+    })
+    expect(listRssSubscriptions()).toEqual([])
+  })
+
+  it("reports when a newly granted permission cannot be rolled back", async () => {
+    vi.stubGlobal("chrome", {
+      runtime: { id: "extension-id" },
+      permissions: {
+        contains: vi.fn().mockResolvedValue(false),
+        request: vi.fn().mockResolvedValue(true),
+        remove: vi.fn().mockResolvedValue(false),
+      },
+    })
+    vi.mocked(fetchWithTimeout).mockResolvedValue(
+      new Response("not an rss feed", { status: 200 })
+    )
+
+    await expect(
+      addRssSubscription("https://rollback-fails.example/rss", 100)
+    ).rejects.toThrow("域名权限未能撤回")
+  })
+
+  it("never removes a pre-existing host permission after validation fails", async () => {
+    const contains = vi.fn().mockResolvedValue(true)
+    const request = vi.fn().mockResolvedValue(true)
+    const remove = vi.fn().mockResolvedValue(true)
+    vi.stubGlobal("chrome", {
+      runtime: { id: "extension-id" },
+      permissions: { contains, request, remove },
+    })
+    vi.mocked(fetchWithTimeout).mockResolvedValue(
+      new Response("not an rss feed", { status: 200 })
+    )
+
+    await expect(
+      addRssSubscription("https://existing.example/rss", 100)
+    ).rejects.toThrow("无法解析")
+
+    expect(request).toHaveBeenCalledOnce()
+    expect(remove).not.toHaveBeenCalled()
+  })
+
+  it("keeps a newly granted host permission needed by another subscription", async () => {
+    const contains = vi.fn().mockResolvedValue(false)
+    const request = vi.fn().mockResolvedValue(true)
+    const remove = vi.fn().mockResolvedValue(true)
+    vi.stubGlobal("chrome", {
+      runtime: { id: "extension-id" },
+      permissions: { contains, request, remove },
+    })
+    const existing = subscription(
+      "existing-same-origin",
+      "https://shared.example/working.xml"
+    )
+    writeRssSubscriptions({
+      version: 1,
+      subscriptions: { [existing.id]: existing },
+    })
+    vi.mocked(fetchWithTimeout).mockResolvedValue(
+      new Response("not an rss feed", { status: 200 })
+    )
+
+    await expect(
+      addRssSubscription("https://shared.example/broken.xml", 100)
+    ).rejects.toThrow("无法解析")
+
+    expect(remove).not.toHaveBeenCalled()
+    expect(listRssSubscriptions().map(item => item.id)).toEqual([existing.id])
+  })
+
+  it("keeps a host permission while another active feed still uses its origin", async () => {
+    const remove = vi.fn().mockResolvedValue(true)
+    vi.stubGlobal("chrome", {
+      runtime: { id: "extension-id" },
+      permissions: { remove },
+    })
+    const first = subscription("same-origin-one", "https://same.example/one.xml")
+    const second = subscription("same-origin-two", "https://same.example/two.xml")
+    writeRssSubscriptions({
+      version: 1,
+      subscriptions: { [first.id]: first, [second.id]: second },
+    })
+
+    await removeRssSubscription(first.id, 100)
+    expect(remove).not.toHaveBeenCalled()
+    expect(listRssSubscriptions().map(item => item.id)).toEqual([second.id])
+
+    await removeRssSubscription(second.id, 101)
+    expect(remove).toHaveBeenCalledOnce()
+    expect(remove).toHaveBeenCalledWith({
+      origins: ["https://same.example/*"],
+    })
+  })
+
+  it("reports a failed permission removal after completing subscription cleanup", async () => {
+    const remove = vi.fn().mockResolvedValue(false)
+    vi.stubGlobal("chrome", {
+      runtime: { id: "extension-id" },
+      permissions: { remove },
+    })
+    const feed = subscription("remove-fails", "https://remove-fails.example/rss")
+    writeRssSubscriptions({ version: 1, subscriptions: { [feed.id]: feed } })
+
+    await expect(removeRssSubscription(feed.id, 100)).rejects.toThrow(
+      "订阅已移除，但域名访问权限未能撤回"
+    )
+    expect(listRssSubscriptions()).toEqual([])
+  })
+
+  it("rolls back a restore grant only when no same-origin subscription uses it", async () => {
+    const contains = vi.fn().mockResolvedValue(false)
+    const requestPermission = vi.fn().mockResolvedValue(true)
+    const remove = vi.fn().mockResolvedValue(true)
+    vi.stubGlobal("chrome", {
+      runtime: { id: "extension-id" },
+      permissions: { contains, request: requestPermission, remove },
+    })
+    const deleted = {
+      ...subscription("restore-race", "https://restore.example/deleted.xml"),
+      enabled: false,
+      deletedAt: 10,
+    }
+    const originalSetItem = Storage.prototype.setItem
+    let failNextSubscriptionWrite = false
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+      this: Storage,
+      key,
+      value
+    ) {
+      if (failNextSubscriptionWrite && key === "fluidity.rss.subscriptions.v1") {
+        failNextSubscriptionWrite = false
+        throw new Error("subscription write failed")
+      }
+      return originalSetItem.call(this, key, value)
+    })
+    writeRssSubscriptions(
+      { version: 1, subscriptions: { [deleted.id]: deleted } },
+      50
+    )
+
+    failNextSubscriptionWrite = true
+    await expect(restoreRssSubscription(deleted.id, 100)).rejects.toThrow(
+      "subscription write failed"
+    )
+    expect(remove).toHaveBeenCalledWith({
+      origins: ["https://restore.example/*"],
+    })
+
+    const active = subscription("same-origin-active", "https://restore.example/active.xml")
+    writeRssSubscriptions({
+      version: 1,
+      subscriptions: { [deleted.id]: deleted, [active.id]: active },
+    }, 51)
+    failNextSubscriptionWrite = true
+    await expect(restoreRssSubscription(deleted.id, 101)).rejects.toThrow(
+      "subscription write failed"
+    )
+    expect(remove).toHaveBeenCalledTimes(1)
+  })
+
+  it("limits bulk refresh concurrency and persists the cache once", async () => {
+    const feeds = Object.fromEntries(
+      Array.from({ length: 9 }, (_, index) => {
+        const feed = subscription(
+          `feed-${index}`,
+          `https://feed-${index}.example/rss`
+        )
+        return [feed.id, feed]
+      })
+    )
+    writeRssSubscriptions({ version: 1, subscriptions: feeds })
+    let active = 0
+    let maximum = 0
+    vi.mocked(fetchWithTimeout).mockImplementation(async input => {
+      active += 1
+      maximum = Math.max(maximum, active)
+      await new Promise(resolve => setTimeout(resolve, 5))
+      active -= 1
+      return rssResponse("订阅", String(input).replace("/rss", "/item"))
+    })
+    const setItem = vi.spyOn(Storage.prototype, "setItem")
+
+    await refreshRssSubscriptions(Object.keys(feeds), { force: true })
+
+    expect(maximum).toBeLessThanOrEqual(4)
+    const cacheWrites = setItem.mock.calls.filter(
+      ([key]) => key === "fluidity.rss.cache.v1.web"
+    )
+    expect(cacheWrites).toHaveLength(1)
+  })
+
+  it("never lets retained tombstones displace live subscriptions", () => {
+    const live = Object.fromEntries(
+      Array.from({ length: 20 }, (_, index) => {
+        const feed = subscription(
+          `live-${index}`,
+          `https://live-${index}.example/rss`
+        )
+        return [feed.id, feed]
+      })
+    )
+    const tombstones = Object.fromEntries(
+      Array.from({ length: 80 }, (_, index) => {
+        const deletedAt = 10_000 + index
+        const feed = {
+          ...subscription(
+            `deleted-${index}`,
+            `https://deleted-${index}.example/rss`
+          ),
+          enabled: false,
+          deletedAt,
+          updatedAt: deletedAt,
+        }
+        return [feed.id, feed]
+      })
+    )
+
+    writeRssSubscriptions(
+      { version: 1, subscriptions: { ...live, ...tombstones } },
+      20_000
+    )
+
+    const persisted = readRssSubscriptions().subscriptions
+    expect(Object.keys(persisted)).toHaveLength(80)
+    expect(Object.keys(live).every(id => persisted[id] && !persisted[id].deletedAt))
+      .toBe(true)
+  })
+
   it("removes device cache and read markers when a subscription is deleted", async () => {
     const feed = subscription("feed-delete", "https://delete.example/rss")
     writeRssSubscriptions({ version: 1, subscriptions: { [feed.id]: feed } })
@@ -140,9 +487,9 @@ describe("RSS parsing and local state", () => {
         },
       },
     })
-    setRssItemsRead([{ id: "article", feedId: feed.id }], true, 3)
+    await setRssItemsRead([{ id: "article", feedId: feed.id }], true, 3)
 
-    removeRssSubscription(feed.id, 4)
+    await removeRssSubscription(feed.id, 4)
 
     await vi.waitFor(async () => {
       expect((await readRssCache()).feeds[feed.id]).toBeUndefined()

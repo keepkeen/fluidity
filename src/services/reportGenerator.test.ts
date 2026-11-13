@@ -68,6 +68,29 @@ beforeEach(() => {
 })
 
 describe("report AI privacy", () => {
+  it("does not call AI or expose an AI cache while the master switch is disabled", async () => {
+    mocks.getSettings.mockReturnValue({
+      ...settings(true, true),
+      enabled: false,
+    })
+    localStorage.setItem(
+      "report-cache",
+      JSON.stringify({
+        weeklyReport: {
+          weekId: "2026-W35",
+          summary: "PRIVATE_CACHED_AI_SUMMARY",
+          timestamp: Date.now(),
+        },
+      })
+    )
+
+    const result = await generateWeeklyReport()
+
+    expect(result.fromAI).toBe(false)
+    expect(result.summary).not.toContain("PRIVATE_CACHED_AI_SUMMARY")
+    expect(mocks.callAI).not.toHaveBeenCalled()
+  })
+
   it("weekly report hides habits while retaining allowed browser usage", async () => {
     mocks.getSettings.mockReturnValue(settings(false, true))
 

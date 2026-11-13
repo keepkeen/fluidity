@@ -17,7 +17,7 @@ import {
   resolveChatCompletionsUrl,
 } from "../../../services/ai"
 import { ensureAIPermissionsFor } from "../../../services/optionalPermissions"
-import { emitSettingsApplied } from "../../../services/settingsEvents"
+import { sanitizeAIPromptText } from "../../../services/aiPromptPrivacy"
 import {
   getAnalyticsSummary,
   LinkAnalytics,
@@ -152,6 +152,39 @@ const TestResult = styled.div<{ error?: boolean }>`
   word-break: break-word;
 `
 
+const EndpointPreview = styled.code`
+  display: block;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px dashed var(--surface-border);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+`
+
+const OPENCODE_GO_URL = "https://opencode.ai/zen/go/v1/chat/completions"
+
+const getProviderProfile = (settings: AISettingsType): string => {
+  const endpoint = (() => {
+    try {
+      return resolveChatCompletionsUrl(settings.apiBaseUrl)
+    } catch {
+      return ""
+    }
+  })()
+  if (
+    endpoint === resolveChatCompletionsUrl(DEFAULT_AI_BASE_URL) &&
+    ["deepseek-chat", "deepseek-reasoner"].includes(settings.model)
+  ) {
+    return "deepseek"
+  }
+  if (endpoint === OPENCODE_GO_URL && settings.model === "deepseek-v4-flash") {
+    return "opencode-go"
+  }
+  return "custom"
+}
+
 interface Props {
   aiSettings: AISettingsType
   setAISettings: React.Dispatch<React.SetStateAction<AISettingsType>>
@@ -174,9 +207,9 @@ const extractProviderError = (message: string): string => {
       }
       return ""
     }
-    return findMessage(parsed).slice(0, 240)
+    return sanitizeAIPromptText(findMessage(parsed), { maxLength: 240 })
   } catch {
-    return raw.slice(0, 240)
+    return sanitizeAIPromptText(raw, { maxLength: 240 })
   }
 }
 
@@ -217,12 +250,22 @@ export const formatAIError = (error: unknown): string => {
 export const AISettings = ({ aiSettings, setAISettings }: Props) => {
   const [showApiKey, setShowApiKey] = useState(false)
   const [testing, setTesting] = useState(false)
+  const [, refreshAnalyticsSummary] = useState(0)
   const [testResult, setTestResult] = useState<{
     message: string
     error?: boolean
   } | null>(null)
 
   const summary = getAnalyticsSummary()
+  const resolvedEndpoint = (() => {
+    try {
+      return resolveChatCompletionsUrl(
+        aiSettings.apiBaseUrl.trim() || DEFAULT_AI_BASE_URL
+      )
+    } catch {
+      return "地址尚未通过校验"
+    }
+  })()
 
   const handleEnabledChange = async (enabling: boolean) => {
     if (!enabling) {
@@ -273,7 +316,9 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
         aiSettings.model,
         { apiBaseUrl: baseUrl }
       )
-      setTestResult({ message: `✅ 连接成功！AI 回复: "${result}"` })
+      setTestResult({
+        message: `✅ 连接成功（尚未保存）。AI 回复: "${result}"；点击设置窗口底部“应用更改”后，AI 整理才会使用此配置。`,
+      })
     } catch (error) {
       setTestResult({
         message: `❌ ${formatAIError(error)}`,
@@ -294,13 +339,59 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
 
             <SettingElement>
               <Toggle
-                label="启用 AI 提示"
+                label="启用 AI 服务"
                 checked={aiSettings.enabled}
                 onChange={enabling => void handleEnabledChange(enabling)}
               />
               <HelpText>
-                开启后，页面顶部会显示 AI 生成的个性化问候和提醒
+                AI 整理、主题和主页问候共用此服务开关；数据发送仍由下方授权单独控制
               </HelpText>
+            </SettingElement>
+
+            <SettingElement>
+              <Toggle
+                label="生成主页 AI 问候"
+                checked={aiSettings.greetingEnabled}
+                disabled={!aiSettings.enabled}
+                onChange={checked =>
+                  setAISettings(prev => ({
+                    ...prev,
+                    greetingEnabled: checked,
+                  }))
+                }
+              />
+              <HelpText>
+                关闭后仍可使用 AI 整理等能力，主页改用本地问候语
+              </HelpText>
+            </SettingElement>
+
+            <SettingElement>
+              <SettingsLabel>服务商方案</SettingsLabel>
+              <Input
+                as="select"
+                aria-label="AI 服务商方案"
+                value={getProviderProfile(aiSettings)}
+                onChange={event => {
+                  if (event.target.value === "deepseek") {
+                    setAISettings(prev => ({
+                      ...prev,
+                      apiBaseUrl: DEFAULT_AI_BASE_URL,
+                      model: "deepseek-chat",
+                    }))
+                  } else if (event.target.value === "opencode-go") {
+                    setAISettings(prev => ({
+                      ...prev,
+                      apiBaseUrl: OPENCODE_GO_URL,
+                      model: "deepseek-v4-flash",
+                    }))
+                  }
+                }}
+              >
+                <option value="deepseek">DeepSeek 官方</option>
+                <option value="opencode-go">OpenCode Go · V4 Flash</option>
+                <option value="custom">自定义 OpenAI 兼容服务</option>
+              </Input>
+              <HelpText>选择预设会同时填写正确的 API 地址与模型名称</HelpText>
             </SettingElement>
 
             <SettingElement>
@@ -346,6 +437,9 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
                 可填写 Base URL 或完整 /chat/completions 端点，例如
                 https://opencode.ai/zen/go/v1。留空使用 DeepSeek
               </HelpText>
+              <EndpointPreview>
+                最终请求地址：{resolvedEndpoint}
+              </EndpointPreview>
             </SettingElement>
 
             <SettingElement>
@@ -459,7 +553,7 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
                   size="sm"
                   onClick={() => {
                     SearchHistory.clear()
-                    emitSettingsApplied()
+                    refreshAnalyticsSummary(revision => revision + 1)
                   }}
                 >
                   <FontAwesomeIcon icon={faTrash} />
@@ -471,7 +565,7 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
                   size="sm"
                   onClick={() => {
                     LinkAnalytics.clear()
-                    emitSettingsApplied()
+                    refreshAnalyticsSummary(revision => revision + 1)
                   }}
                 >
                   <FontAwesomeIcon icon={faTrash} />
@@ -488,7 +582,7 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
                   SearchHistory.clear()
                   LinkAnalytics.clear()
                   localStorage.removeItem("ai-cache")
-                  emitSettingsApplied()
+                  refreshAnalyticsSummary(revision => revision + 1)
                 }}
               >
                 <FontAwesomeIcon icon={faTrash} />
@@ -554,7 +648,8 @@ export const AISettings = ({ aiSettings, setAISettings }: Props) => {
                 }
               />
               <HelpText>
-                包含常用链接、最近搜索与点击/搜索统计
+                包含常用链接、最近搜索与点击/搜索统计；开启后可在 AI
+                整理中发送聚合点击次数辅助图标排序
               </HelpText>
             </SettingElement>
 

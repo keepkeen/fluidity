@@ -6,6 +6,8 @@ import {
   clearSyncPasswordForSession,
   prepareGistSyncForApplicationReset,
 } from "./gistSync"
+import { FaviconService } from "./favicon"
+import { withHomeLayoutLock } from "./homeLayout"
 
 type ClearableStorageArea = {
   clear(callback: () => void): void
@@ -149,10 +151,15 @@ export const resetApplicationData = async (): Promise<void> => {
   await resetBrowserUsageRuntime(extensionRuntime)
   clearSyncPasswordForSession()
 
-  const storage = extensionRuntime ? chrome.storage : undefined
-  await clearChromeArea(storage?.session as ClearableStorageArea | undefined)
-  await clearChromeArea(storage?.local as ClearableStorageArea | undefined)
+  await withHomeLayoutLock(async () => {
+    const storage = extensionRuntime ? chrome.storage : undefined
+    await clearChromeArea(storage?.session as ClearableStorageArea | undefined)
+    await clearChromeArea(storage?.local as ClearableStorageArea | undefined)
 
-  localStorage.clear()
-  sessionStorage.clear()
+    // Cancel delayed optional-cache writes before clearing, otherwise a favicon
+    // completion timer could recreate data after the reset has returned.
+    FaviconService.clearCache()
+    localStorage.clear()
+    sessionStorage.clear()
+  })
 }

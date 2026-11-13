@@ -114,7 +114,7 @@ export const AILoadingIndicator: React.FC = () => {
   return (
     <IndicatorContainer role="status" aria-live="polite">
       <SpinnerIcon icon={faSpinner} />
-      <LoadingText>AI 正在整理链接...</LoadingText>
+      <LoadingText>AI 正在整理链接与主页...</LoadingText>
     </IndicatorContainer>
   )
 }

@@ -1,6 +1,7 @@
 import {
   getChromeLocal,
   hasChromeStorage,
+  removeChromeLocal,
   setChromeLocal,
 } from "./extensionStore"
 
@@ -63,6 +64,53 @@ export interface DomainAppName {
   name: string
   updatedAt: number
   source: "ai" | "manual"
+}
+
+interface UsageRuntimeReplaceResponse {
+  ok?: boolean
+  error?: string
+}
+
+/**
+ * Makes an externally written usage snapshot authoritative over the service
+ * worker's cached/debounced state. The background handles this message in the
+ * same serial queue as heartbeats and stop events.
+ */
+export const replaceBrowserUsageRuntime = async (
+  replacement: unknown
+): Promise<void> => {
+  if (typeof chrome === "undefined" || !chrome.runtime?.sendMessage) {
+    if (replacement === undefined) {
+      await removeChromeLocal(BROWSER_USAGE_STORAGE_KEY)
+    } else {
+      await setChromeLocal(BROWSER_USAGE_STORAGE_KEY, replacement)
+    }
+    return
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    try {
+      chrome.runtime.sendMessage(
+        replacement === undefined
+          ? { type: "fluidity:usageReplacePersisted", remove: true }
+          : { type: "fluidity:usageReplacePersisted", replacement },
+        (response?: UsageRuntimeReplaceResponse) => {
+          const runtimeError = chrome.runtime.lastError
+          if (runtimeError?.message) {
+            reject(new Error("浏览统计后台未响应，请重新加载扩展后再试"))
+            return
+          }
+          if (response?.ok !== true) {
+            reject(new Error(response?.error || "浏览统计后台未确认重载结果"))
+            return
+          }
+          resolve()
+        }
+      )
+    } catch {
+      reject(new Error("浏览统计后台未响应，请重新加载扩展后再试"))
+    }
+  })
 }
 
 const pad2 = (n: number): string => String(n).padStart(2, "0")
@@ -412,18 +460,28 @@ const summarizeTodayWithCurrent = (
 export const getTodayBrowserUsageSummary =
   async (): Promise<BrowserUsageSummary> => {
     const st = await getBrowserUsageStore()
-    if (!st) return emptySummary()
-    return summarizeTodayWithCurrent(st, Date.now())
+    return summarizeBrowserUsageToday(st, Date.now())
   }
+
+export const summarizeBrowserUsageToday = (
+  store: BrowserUsageStoreV1 | null,
+  now = Date.now()
+): BrowserUsageSummary =>
+  store ? summarizeTodayWithCurrent(store, now) : emptySummary()
+
+export const summarizeBrowserUsageDay = (
+  store: BrowserUsageStoreV1 | null,
+  dayString: string,
+  limits?: { domains?: number; pages?: number }
+): BrowserUsageSummary =>
+  store && dayString ? summarizeDay(store.days[dayString], limits) : emptySummary()
 
 export const getBrowserUsageSummaryForDay = async (
   dayString: string,
   limits?: { domains?: number; pages?: number }
 ): Promise<BrowserUsageSummary> => {
   const st = await getBrowserUsageStore()
-  if (!st) return emptySummary()
-  if (!dayString) return emptySummary()
-  return summarizeDay(st.days[dayString], limits)
+  return summarizeBrowserUsageDay(st, dayString, limits)
 }
 
 export const getYesterdayBrowserUsageSummary =

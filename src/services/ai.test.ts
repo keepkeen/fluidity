@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   AISettingsManager,
   callDeepSeekAPI,
+  getAIGreeting,
   resolveAppNameForDomain,
   resolveChatCompletionsUrl,
 } from "./ai"
@@ -82,6 +83,34 @@ describe("OpenAI-compatible endpoint handling", () => {
     })
   })
 
+  it("redacts credentials echoed by a provider before exposing an error", async () => {
+    const apiKey = "sk-secret-provider-key-bGXF"
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            message: `Authentication failed for ${apiKey}; key ****bGXF is invalid`,
+          },
+        }),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    let message = ""
+    try {
+      await callDeepSeekAPI(apiKey, "test", "deepseek-v4-flash", {
+        apiBaseUrl: "https://opencode.ai/zen/go/v1",
+      })
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error)
+    }
+
+    expect(message).toContain("API 请求失败: 401")
+    expect(message).toContain("[已脱敏]")
+    expect(message).not.toContain(apiKey)
+    expect(message).not.toContain("bGXF")
+  })
+
   it("clears provider-derived caches when endpoint or model changes", () => {
     AISettingsManager.set({
       apiKey: "sk-one",
@@ -122,7 +151,45 @@ describe("OpenAI-compatible endpoint handling", () => {
   })
 })
 
+describe("AI settings privacy migration", () => {
+  it("keeps AI sharing off while enabling local search history for a new user", () => {
+    const settings = AISettingsManager.get()
+    expect(settings.enabled).toBe(false)
+    expect(settings.greetingEnabled).toBe(false)
+    expect(settings.collectLinkClicks).toBe(false)
+    expect(settings.collectSearchHistory).toBe(true)
+    expect(settings.shareHabits).toBe(false)
+    expect(settings.shareBrowserUsage).toBe(false)
+  })
+
+  it("preserves the implicit choices of an existing legacy installation", () => {
+    localStorage.setItem(
+      "ai-settings",
+      JSON.stringify({ enabled: true, apiKey: "legacy-key" })
+    )
+    const settings = AISettingsManager.get()
+    expect(settings.greetingEnabled).toBe(true)
+    expect(settings.collectLinkClicks).toBe(true)
+    expect(settings.collectSearchHistory).toBe(true)
+    expect(settings.shareHabits).toBe(true)
+  })
+})
+
 describe("browser usage privacy", () => {
+  it("does not call AI when the master switch is disabled even with a saved key", async () => {
+    AISettingsManager.set({
+      enabled: false,
+      greetingEnabled: true,
+      apiKey: "sk-still-saved",
+      shareBrowserUsage: true,
+    })
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+
+    await expect(resolveAppNameForDomain("private.example")).resolves.toBeNull()
+    await expect(getAIGreeting()).resolves.toMatchObject({ fromCache: false })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it("does not send a domain when browser usage sharing is disabled", async () => {
     AISettingsManager.set({
       enabled: true,

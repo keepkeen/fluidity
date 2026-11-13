@@ -75,6 +75,35 @@ const searchCache = new SearchCache<LinkSearchResult[]>()
 const linksOnlyCache = new SearchCache<(dataElem & { groupTitle: string })[]>()
 
 /**
+ * A compact content revision for the fields used by link search. The query by
+ * itself is not a valid cache identity: another tab can replace link-groups
+ * while the same query remains in the search box.
+ */
+export const getLinkGroupsSearchFingerprint = (
+  linkGroups: linkGroup[]
+): string => {
+  let hash = 2166136261
+  const append = (value: string): void => {
+    for (let index = 0; index < value.length; index++) {
+      hash ^= value.charCodeAt(index)
+      hash = Math.imul(hash, 16777619)
+    }
+    hash ^= 0
+    hash = Math.imul(hash, 16777619)
+  }
+
+  linkGroups.forEach(group => {
+    append(group.title)
+    group.links.forEach(link => {
+      append(link.label)
+      append(link.value)
+    })
+  })
+
+  return `${linkGroups.length}:${hash >>> 0}`
+}
+
+/**
  * 清除搜索缓存（当链接数据变化时调用）
  */
 export const clearSearchCache = (): void => {
@@ -194,7 +223,9 @@ export const searchLinksOnly = (
   const { fuzzy = true, minScore = 10 } = options
 
   // 检查缓存
-  const cacheKey = `${q}-${String(fuzzy)}-${minScore}`
+  const cacheKey = `${getLinkGroupsSearchFingerprint(
+    linkGroups
+  )}-${q}-${String(fuzzy)}-${minScore}`
   const cached = linksOnlyCache.get(cacheKey)
   if (cached) return cached
 

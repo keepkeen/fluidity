@@ -7,6 +7,7 @@ const PAGE = "https://example.com/path"
 beforeEach(() => {
   vi.restoreAllMocks()
   localStorage.clear()
+  FaviconService.clearCache()
 })
 
 describe("FaviconService resolution cache", () => {
@@ -62,11 +63,74 @@ describe("FaviconService resolution cache", () => {
 
     const first = FaviconService.getFavicon("https://example.com/one", 128)
     const second = FaviconService.getFavicon("https://example.com/two", 128)
-    expect(check).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => expect(check).toHaveBeenCalledTimes(1))
 
     resolveAvailability?.(true)
     await expect(Promise.all([first, second])).resolves.toHaveLength(2)
     expect(check).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not repopulate cleared caches when an older lookup completes", async () => {
+    vi.useFakeTimers()
+    try {
+      localStorage.setItem(
+        "link-groups",
+        JSON.stringify([
+          {
+            title: "测试",
+            links: [{ label: "Example", value: PAGE }],
+          },
+        ])
+      )
+      let resolveAvailability: ((available: boolean) => void) | undefined
+      const check = vi
+        .spyOn(FaviconService, "checkFaviconAvailable")
+        .mockImplementation(
+          () =>
+            new Promise<boolean>(resolve => {
+              resolveAvailability = resolve
+            })
+        )
+
+      const pending = FaviconService.getFavicon(PAGE, 128)
+      expect(check).toHaveBeenCalledTimes(1)
+
+      FaviconService.clearCache()
+      resolveAvailability?.(true)
+      await expect(pending).resolves.toBeNull()
+      await vi.runAllTimersAsync()
+
+      expect(localStorage.getItem("favicon-cache")).toBeNull()
+      const groups = JSON.parse(localStorage.getItem("link-groups") ?? "[]") as {
+        links: { icon?: string }[]
+      }[]
+      expect(groups[0].links[0].icon).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("caps cold favicon lookup concurrency", async () => {
+    let active = 0
+    let maximum = 0
+    vi.spyOn(FaviconService, "checkFaviconAvailable").mockImplementation(
+      async () => {
+        active += 1
+        maximum = Math.max(maximum, active)
+        await new Promise(resolve => setTimeout(resolve, 5))
+        active -= 1
+        return true
+      }
+    )
+
+    await Promise.all(
+      Array.from({ length: 12 }, (_, index) =>
+        FaviconService.getFavicon(`https://site-${index}.example/page`, 128)
+      )
+    )
+
+    expect(maximum).toBeLessThanOrEqual(6)
+    expect(maximum).toBeGreaterThan(1)
   })
 
   it("does not let a late low-resolution lookup replace a high-resolution result", async () => {
@@ -101,10 +165,12 @@ describe("FaviconService resolution cache", () => {
 
     expect(low).toBe(high)
     expect(FaviconService.getFromCache(PAGE, 128)).toBe(high)
-    const groups = JSON.parse(localStorage.getItem("link-groups") ?? "[]") as {
-      links: { icon?: string }[]
-    }[]
-    expect(groups[0].links[0].icon).toBe(high)
+    await vi.waitFor(() => {
+      const groups = JSON.parse(localStorage.getItem("link-groups") ?? "[]") as {
+        links: { icon?: string }[]
+      }[]
+      expect(groups[0].links[0].icon).toBe(high)
+    })
   })
 
   it("does not replace a successful cached icon with a failed lookup", () => {

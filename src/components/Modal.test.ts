@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest"
 
-import { isVisibleModalFocusTarget } from "./Modal"
+import {
+  isTopmostModal,
+  isVisibleModalFocusTarget,
+  syncModalAccessibility,
+} from "./Modal"
 
 describe("modal focus target visibility", () => {
   it("keeps visible controls in the focus loop", () => {
@@ -34,5 +38,59 @@ describe("modal focus target visibility", () => {
     getClientRects.mockReturnValue({ length: 0 } as DOMRectList)
     expect(isVisibleModalFocusTarget(button)).toBe(false)
     hiddenRegion.remove()
+  })
+})
+
+describe("nested modal focus ownership", () => {
+  it("only lets the most recently mounted dialog trap focus", () => {
+    const parent = document.createElement("div")
+    const child = document.createElement("div")
+    parent.dataset.fluidityModalDialog = "true"
+    child.dataset.fluidityModalDialog = "true"
+    document.body.append(parent, child)
+
+    expect(isTopmostModal(parent)).toBe(false)
+    expect(isTopmostModal(child)).toBe(true)
+
+    child.remove()
+    expect(isTopmostModal(parent)).toBe(true)
+    parent.remove()
+  })
+
+  it("makes every background dialog inert and restores it on child removal", () => {
+    const parent = document.createElement("div")
+    const child = document.createElement("div")
+    parent.dataset.fluidityModalDialog = "true"
+    child.dataset.fluidityModalDialog = "true"
+    document.body.append(parent, child)
+
+    syncModalAccessibility()
+    expect(parent.getAttribute("aria-hidden")).toBe("true")
+    expect(parent.hasAttribute("inert")).toBe(true)
+    expect(child.hasAttribute("aria-hidden")).toBe(false)
+    expect(child.hasAttribute("inert")).toBe(false)
+
+    syncModalAccessibility(child)
+    child.remove()
+    expect(parent.hasAttribute("aria-hidden")).toBe(false)
+    expect(parent.hasAttribute("inert")).toBe(false)
+    parent.remove()
+  })
+
+  it("restores pre-existing accessibility attributes exactly", () => {
+    const parent = document.createElement("div")
+    const child = document.createElement("div")
+    parent.dataset.fluidityModalDialog = "true"
+    child.dataset.fluidityModalDialog = "true"
+    parent.setAttribute("aria-hidden", "false")
+    parent.setAttribute("inert", "")
+    document.body.append(parent, child)
+
+    syncModalAccessibility()
+    syncModalAccessibility(child)
+    child.remove()
+    expect(parent.getAttribute("aria-hidden")).toBe("false")
+    expect(parent.hasAttribute("inert")).toBe(true)
+    parent.remove()
   })
 })

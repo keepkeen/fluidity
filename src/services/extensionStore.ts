@@ -50,6 +50,17 @@ export const setChromeLocal = async (
   })
 }
 
+export const removeChromeLocal = async (key: string): Promise<void> => {
+  if (!hasChromeStorage()) return
+  await new Promise<void>((resolve, reject) => {
+    chrome.storage.local.remove(key, () => {
+      const error = getRuntimeStorageError()
+      if (error) reject(error)
+      else resolve()
+    })
+  })
+}
+
 export const hasChromeSessionStorage = (): boolean => {
   try {
     return (

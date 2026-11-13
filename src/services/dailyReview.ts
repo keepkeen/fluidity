@@ -90,8 +90,13 @@ export const getDailyReview = async (): Promise<{
 } | null> => {
   const day = getYesterdayStringLocal()
   const settings = AISettingsManager.get()
+  // Do not surface a provider-derived result while the global AI switch is off.
+  // A local fallback cache remains safe to reuse.
   const cached = getCache(day)
-  if (cached) {
+  if (
+    cached &&
+    (!cached.fromAI || (settings.enabled && settings.apiKey.trim()))
+  ) {
     return { summary: cached.summary, fromAI: cached.fromAI, day }
   }
 
@@ -114,10 +119,11 @@ export const getDailyReview = async (): Promise<{
 
   // 未开启"发送浏览时长统计"时，浏览域名/页面绝不能进入 AI prompt，
   // 此时只用本地模板生成回顾
+  const requestSettings = AISettingsManager.get()
   if (
-    !settings.enabled ||
-    !settings.apiKey ||
-    !settings.shareBrowserUsage ||
+    !requestSettings.enabled ||
+    !requestSettings.apiKey.trim() ||
+    !requestSettings.shareBrowserUsage ||
     totalMinutes <= 0
   ) {
     const fallback = buildFallbackSummary(
@@ -138,9 +144,9 @@ export const getDailyReview = async (): Promise<{
   try {
     const prompt = buildPrompt(totalMinutes, topDomains, topPages)
     const result = await callDeepSeekAPI(
-      settings.apiKey,
+      requestSettings.apiKey,
       prompt,
-      settings.model,
+      requestSettings.model,
       {
         maxTokens: 120,
         temperature: 0.6,

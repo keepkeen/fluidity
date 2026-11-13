@@ -3,8 +3,8 @@
  */
 
 import { AISettingsManager, callDeepSeekAPI } from "./ai"
+import { sanitizeAIPromptText } from "./aiPromptPrivacy"
 import { dataElem, linkGroup } from "../data/data"
-import { isSafeLinkUrl } from "../utils/urlSafety"
 
 // 整理状态
 export type OrganizeStatus = "idle" | "loading" | "success" | "error"
@@ -14,6 +14,10 @@ export interface OrganizeResult {
   status: OrganizeStatus
   data?: linkGroup[]
   error?: string
+}
+
+export interface OrganizeLinksOptions {
+  signal?: AbortSignal
 }
 
 // 事件监听器类型
@@ -43,6 +47,9 @@ const notifyListeners = (result: OrganizeResult) => {
   listeners.forEach(listener => listener(result))
 }
 
+const isAbortError = (error: unknown): boolean =>
+  error instanceof DOMException && error.name === "AbortError"
+
 /**
  * 获取当前状态
  */
@@ -53,12 +60,25 @@ export const getOrganizeStatus = (): OrganizeStatus => currentStatus
  */
 const generateOrganizePrompt = (
   linkGroups: linkGroup[],
-  customInstruction: string
+  customInstruction: string,
+  secrets: readonly string[]
 ): string => {
-  // Keep prompt small + stable: only send label/value (exclude cached favicon/icon).
-  const minimalLinks = linkGroups.map(g => ({
-    title: g.title,
-    links: g.links.map(l => ({ label: l.label, value: l.value })),
+  let nextToken = 1
+  const minimalLinks = linkGroups.map(group => ({
+    title: sanitizeAIPromptText(group.title, { secrets }),
+    links: group.links.map(link => ({
+      token: `item-${String(nextToken++).padStart(3, "0")}`,
+      label: sanitizeAIPromptText(link.label, { secrets }),
+      hostname: (() => {
+        try {
+          return sanitizeAIPromptText(new URL(link.value).hostname, {
+            secrets,
+          })
+        } catch {
+          return ""
+        }
+      })(),
+    })),
   }))
   const linksJson = JSON.stringify(minimalLinks, null, 2)
 
@@ -67,15 +87,15 @@ const generateOrganizePrompt = (
       {
         title: "社交媒体",
         links: [
-          { label: "Twitter", value: "https://twitter.com" },
-          { label: "Reddit", value: "https://reddit.com" },
+          { token: "item-001", label: "Twitter" },
+          { token: "item-002", label: "Reddit" },
         ],
       },
       {
         title: "开发工具",
         links: [
-          { label: "GitHub", value: "https://github.com" },
-          { label: "VS Code", value: "https://code.visualstudio.com" },
+          { token: "item-003", label: "GitHub" },
+          { token: "item-004", label: "VS Code" },
         ],
       },
     ],
@@ -95,7 +115,10 @@ ${linksJson}
 4. 为每个群组取一个简洁明了的中文名称
 
 ## 用户自定义要求：
-${customInstruction || "无特殊要求"}
+${sanitizeAIPromptText(customInstruction || "无特殊要求", {
+  maxLength: 500,
+  secrets,
+})}
 
 ## 输出格式要求：
 必须严格按照以下 JSON 格式输出，不允许输出任何其他内容：
@@ -105,8 +128,8 @@ ${exampleOutput}
 ## 注意事项：
 - 只输出 JSON 数组，不要有任何解释或说明
 - 确保 JSON 格式正确，可以被直接解析
-- 保留所有原始链接，不要遗漏
-- 不要新增、删除、重复或修改任何链接地址
+- 每个链接只使用给定的一次性 token 标识；不要猜测或返回 URL
+- 所有 token 必须恰好出现一次，不得遗漏、新增、重复或修改
 - 群组名称使用中文`
 }
 
@@ -118,21 +141,29 @@ const restoreOriginalLinks = (
     throw new Error("AI 返回格式错误：不是数组")
   }
 
-  const originalsByUrl = new Map<string, dataElem[]>()
+  const originalsByToken = new Map<string, dataElem>()
+  let nextToken = 1
   for (const group of sourceGroups) {
     for (const link of group.links) {
-      const matches = originalsByUrl.get(link.value) ?? []
-      matches.push(link)
-      originalsByUrl.set(link.value, matches)
+      originalsByToken.set(
+        `item-${String(nextToken++).padStart(3, "0")}`,
+        link
+      )
     }
   }
+  const seenTokens = new Set<string>()
 
   const restored = organizedGroups.map(groupValue => {
     if (!groupValue || typeof groupValue !== "object") {
       throw new Error("AI 返回格式错误：群组结构不正确")
     }
-    const group = groupValue as { title?: unknown; links?: unknown }
-    if (typeof group.title !== "string" || !group.title.trim()) {
+    const group = groupValue as Record<string, unknown>
+    if (
+      Object.keys(group).some(key => key !== "title" && key !== "links") ||
+      typeof group.title !== "string" ||
+      !group.title.trim() ||
+      group.title.trim().length > 80
+    ) {
       throw new Error("AI 返回格式错误：群组名称不正确")
     }
     if (!Array.isArray(group.links)) {
@@ -143,21 +174,22 @@ const restoreOriginalLinks = (
       if (!linkValue || typeof linkValue !== "object") {
         throw new Error("AI 返回格式错误：链接结构不正确")
       }
-      const link = linkValue as { label?: unknown; value?: unknown }
+      const link = linkValue as Record<string, unknown>
       if (
+        Object.keys(link).some(key => key !== "token" && key !== "label") ||
+        typeof link.token !== "string" ||
         typeof link.label !== "string" ||
         !link.label.trim() ||
-        typeof link.value !== "string" ||
-        !isSafeLinkUrl(link.value)
+        link.label.trim().length > 160
       ) {
         throw new Error("AI 返回格式错误：链接不合法")
       }
 
-      const originals = originalsByUrl.get(link.value)
-      const original = originals?.shift()
-      if (!original) {
-        throw new Error("AI 返回的链接与原始数据不一致，已取消整理")
+      const original = originalsByToken.get(link.token)
+      if (!original || seenTokens.has(link.token)) {
+        throw new Error("AI 返回的 token 不是原始链接的完整全排列")
       }
+      seenTokens.add(link.token)
       return {
         ...original,
         label: link.label.trim(),
@@ -167,8 +199,8 @@ const restoreOriginalLinks = (
     return { title: group.title.trim(), links }
   })
 
-  if ([...originalsByUrl.values()].some(matches => matches.length > 0)) {
-    throw new Error("AI 返回的链接与原始数据不一致，已取消整理")
+  if (seenTokens.size !== originalsByToken.size) {
+    throw new Error("AI 返回的 token 不是原始链接的完整全排列")
   }
 
   return restored
@@ -179,11 +211,15 @@ const restoreOriginalLinks = (
  */
 export const organizeLinksWithAI = async (
   linkGroups: linkGroup[],
-  customInstruction: string
+  customInstruction: string,
+  options: OrganizeLinksOptions = {}
 ): Promise<linkGroup[]> => {
   const settings = AISettingsManager.get()
 
-  if (!settings.apiKey) {
+  if (!settings.enabled) {
+    throw new Error("AI 助手已关闭，请先在 AI 设置中开启")
+  }
+  if (!settings.apiKey.trim()) {
     throw new Error("请先在 AI 设置中配置 API Key")
   }
 
@@ -191,7 +227,9 @@ export const organizeLinksWithAI = async (
   notifyListeners({ status: "loading" })
 
   try {
-    const prompt = generateOrganizePrompt(linkGroups, customInstruction)
+    const prompt = generateOrganizePrompt(linkGroups, customInstruction, [
+      settings.apiKey,
+    ])
 
     const content = await callDeepSeekAPI(
       settings.apiKey,
@@ -202,8 +240,12 @@ export const organizeLinksWithAI = async (
         maxTokens: 4000,
         temperature: 0.3,
         timeoutMs: 60_000,
+        signal: options.signal,
       }
     )
+    if (options.signal?.aborted) {
+      throw new DOMException("请求已取消", "AbortError")
+    }
 
     // 尝试解析 JSON
     // 可能返回的内容包含 markdown 代码块，需要提取
@@ -214,12 +256,19 @@ export const organizeLinksWithAI = async (
     }
 
     const result = restoreOriginalLinks(linkGroups, JSON.parse(jsonStr))
+    if (options.signal?.aborted) {
+      throw new DOMException("请求已取消", "AbortError")
+    }
 
     // 通知成功
     notifyListeners({ status: "success", data: result })
 
     return result
   } catch (error) {
+    if (isAbortError(error)) {
+      notifyListeners({ status: "idle" })
+      throw error
+    }
     const errorMessage = error instanceof Error ? error.message : "未知错误"
     notifyListeners({ status: "error", error: errorMessage })
     throw error

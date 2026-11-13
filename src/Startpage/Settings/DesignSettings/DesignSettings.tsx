@@ -10,6 +10,10 @@ import {
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 
 import { AIThemeGenerator } from "./AIThemeGenerator"
+import {
+  changeHomePageShortcutDraft,
+  createHomeLayoutResetDraft,
+} from "./homeLayoutDraft"
 import { ColorPicker } from "../../../components/ColorPicker"
 import { Button } from "../../../components/Button"
 import { Toggle } from "../../../components/Toggle"
@@ -23,11 +27,8 @@ import {
   LinkDisplaySettings,
 } from "../../../data/data"
 import {
-  DEFAULT_HOME_PAGE_SHORTCUT_MODIFIER,
+  HomeLayoutState,
   HomePageShortcutModifier,
-  readHomeLayout,
-  resetHomeLayout,
-  saveHomeLayout,
 } from "../../../services/homeLayout"
 import {
   StyledSettingsContent,
@@ -267,6 +268,8 @@ interface props {
   setThemes: (Themes: Theme[]) => void
   linkDisplaySettings: LinkDisplaySettings
   setLinkDisplaySettings: (settings: LinkDisplaySettings) => void
+  homeLayout: HomeLayoutState
+  setHomeLayout: (layout: HomeLayoutState) => void
 }
 
 const themeEquals = (theme1: Theme, theme2: Theme) => {
@@ -286,12 +289,10 @@ export const DesignSettings = ({
   setThemes,
   linkDisplaySettings,
   setLinkDisplaySettings,
+  homeLayout,
+  setHomeLayout,
 }: props) => {
   const [isNewDesign, setIsNewDesign] = useState(false)
-  const [pageShortcutModifier, setPageShortcutModifier] =
-    useState<HomePageShortcutModifier>(
-      () => readHomeLayout().pageShortcutModifier
-    )
 
   const setName = (name: string) => setDesign({ ...design, name: name })
   const setColors = (colors: colorsType) =>
@@ -336,15 +337,13 @@ export const DesignSettings = ({
               type="button"
               variant="secondary"
               onClick={() => {
-                resetHomeLayout()
-                setPageShortcutModifier(DEFAULT_HOME_PAGE_SHORTCUT_MODIFIER)
-                window.dispatchEvent(new Event("fluidity-home-layout-changed"))
+                setHomeLayout(createHomeLayoutResetDraft())
                 window.dispatchEvent(
                   new CustomEvent("show-notification", {
                     detail: {
                       type: "success",
-                      title: "主屏布局已重置",
-                      message: "小组件已恢复，应用将按使用频率重新排列",
+                      title: "主屏布局重置草稿已生成",
+                      message: "点击“应用更改”后，小组件和应用顺序才会重置",
                     },
                   })
                 )
@@ -369,7 +368,7 @@ export const DesignSettings = ({
 
           <SettingElement>
             <Dropdown
-              value={pageShortcutModifier}
+              value={homeLayout.pageShortcutModifier}
               items={[
                 { label: "Option / Alt + 1–9", value: "alt" },
                 { label: "Control + 1–9", value: "control" },
@@ -378,13 +377,7 @@ export const DesignSettings = ({
               ]}
               onChange={value => {
                 const modifier = value as HomePageShortcutModifier
-                const next = {
-                  ...readHomeLayout(),
-                  pageShortcutModifier: modifier,
-                }
-                setPageShortcutModifier(modifier)
-                saveHomeLayout(next)
-                window.dispatchEvent(new Event("fluidity-home-layout-changed"))
+                setHomeLayout(changeHomePageShortcutDraft(homeLayout, modifier))
               }}
             />
             <SettingHint>

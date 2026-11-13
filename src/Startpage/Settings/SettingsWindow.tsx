@@ -23,7 +23,84 @@ import {
   DEFAULT_AI_BASE_URL,
   resolveChatCompletionsUrl,
 } from "../../services/ai"
+import {
+  HOME_LAYOUT_KEY,
+  readHomeLayout,
+  saveHomeLayout,
+  withHomeLayoutLock,
+} from "../../services/homeLayout"
+import {
+  getValidHomeAppIds,
+  mergeAppOrderPreservingWidgets,
+} from "../../services/homeOrderOrganizer"
+import {
+  LocalStorageTransactionError,
+  runLocalStorageTransaction,
+} from "../../services/localStorageTransaction"
 import { ensureAIPermissionsFor } from "../../services/optionalPermissions"
+import {
+  getConflictingSettingsDomains,
+  getDirtySettingsDomains,
+  mergeLatestLinkIcons,
+  PersistedSettingsSnapshot,
+  SettingsDomain,
+} from "../../services/settingsDraftConflict"
+
+const SETTINGS_TRANSACTION_KEYS: Record<SettingsDomain, readonly string[]> = {
+  design: ["design"],
+  themes: ["themes"],
+  search: ["search-settings"],
+  links: ["link-groups"],
+  homeLayout: [HOME_LAYOUT_KEY],
+  linkDisplay: ["link-display-settings"],
+  wallpaper: ["wallpaper-settings"],
+  ai: [
+    "ai-settings",
+    "ai-cache",
+    "ai-theme-cache",
+    "report-cache",
+    "fluidity.ai.dailyReview.v1",
+    "ai-response-cache-scope.v1",
+  ],
+}
+
+const SETTINGS_DOMAIN_LABELS: Record<SettingsDomain, string> = {
+  design: "当前主题",
+  themes: "主题列表",
+  links: "链接",
+  homeLayout: "主页布局",
+  search: "搜索设置",
+  ai: "AI 设置",
+  linkDisplay: "链接展示",
+  wallpaper: "壁纸",
+}
+
+const readPersistedSettings = (): PersistedSettingsSnapshot => ({
+  design: Settings.Design.getWithFallback(),
+  themes: Settings.Themes.getWithFallback(),
+  linkGroups: Settings.Links.getWithFallback(),
+  homeLayout: readHomeLayout(),
+  searchSettings: Settings.Search.getWithFallback(),
+  aiSettings: AISettingsManager.get(),
+  linkDisplaySettings: Settings.LinkDisplay.getWithFallback(),
+  wallpaperSettings: Settings.Wallpaper.getWithFallback(),
+})
+
+const serializeSettingsDraft = (
+  settings: PersistedSettingsSnapshot,
+  homeAppOrder: string[] | null
+): string =>
+  JSON.stringify({
+    design: settings.design,
+    themes: settings.themes,
+    linkGroups: settings.linkGroups,
+    homeAppOrder,
+    homeLayout: settings.homeLayout,
+    searchSettings: settings.searchSettings,
+    aiSettings: settings.aiSettings,
+    linkDisplaySettings: settings.linkDisplaySettings,
+    wallpaperSettings: settings.wallpaperSettings,
+  })
 
 const AISettings = React.lazy(() =>
   import("./AISettings/AISettings").then(module => ({
@@ -121,7 +198,7 @@ const WindowContent = styled.div`
   }
 
   @media screen and (max-width: 600px) {
-    height: calc(100% - 128px);
+    height: calc(100% - 150px);
   }
 `
 
@@ -228,6 +305,11 @@ const CloseButton = styled(IconButton)`
   height: 30px;
   opacity: 1;
   padding: 0;
+
+  @media (pointer: coarse) {
+    width: 40px;
+    height: 40px;
+  }
 `
 
 export const SettingsButton = styled(IconButton)`
@@ -238,6 +320,10 @@ export const SettingsButton = styled(IconButton)`
   font-size: 0.92rem;
   padding: 9px 20px;
   opacity: 1;
+
+  @media (pointer: coarse) {
+    min-height: 40px;
+  }
 
   :enabled:hover {
     border-color: var(--accent);
@@ -305,9 +391,18 @@ const TabOption = styled.button<{ active: boolean }>`
     outline-offset: 2px;
   }
 
+  :disabled {
+    cursor: wait;
+    opacity: 0.55;
+  }
+
   @media screen and (max-width: 1200px) {
     flex: 0 0 auto;
     padding: 0 14px;
+  }
+
+  @media (pointer: coarse) {
+    min-height: 40px;
   }
 `
 
@@ -318,7 +413,7 @@ const MobileTabSelect = styled.select`
     display: block;
     flex: 1;
     min-width: 0;
-    height: 30px;
+    height: 40px;
     border: 1px solid var(--surface-border-strong);
     border-radius: var(--radius-sm);
     background: transparent;
@@ -331,6 +426,13 @@ const PanelFallback = styled.div`
   width: 100%;
   padding: 20px 0;
   opacity: 0.75;
+`
+
+const PersistentPanel = styled.div<{ $active: boolean }>`
+  display: ${({ $active }) => ($active ? "block" : "none")};
+  width: 100%;
+  height: 100%;
+  min-width: 0;
 `
 
 const UnsavedHint = styled.span<{ visible: boolean }>`
@@ -350,6 +452,13 @@ const ApplyError = styled.span`
   color: var(--accent-hover);
   font-size: 0.85rem;
   text-align: center;
+
+  @media screen and (max-width: 600px) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    max-height: 58px;
+    overflow-y: auto;
+  }
 `
 
 // tab 用稳定 id 做路由标识，label 仅用于显示——文案改动不能破坏跳转逻辑
@@ -443,9 +552,14 @@ export const SettingsWindow = ({
   const [currentTab, setCurrentTab] = useState<SettingsTabId>(
     isTabId(initialTab) ? initialTab : TAB_OPTIONS[0].id
   )
+  const [hasOpenedLinks, setHasOpenedLinks] = useState(
+    currentTab === "links"
+  )
   const [design, setDesign] = useState(Settings.Design.getWithFallback())
   const [themes, setThemes] = useState(Settings.Themes.getWithFallback())
   const [linkGroups, setLinkGroups] = useState(Settings.Links.getWithFallback())
+  const [homeLayout, setHomeLayout] = useState(readHomeLayout)
+  const [homeAppOrder, setHomeAppOrder] = useState<string[] | null>(null)
   const [searchSettings, setSearchSettings] = useState(
     Settings.Search.getWithFallback()
   )
@@ -457,7 +571,12 @@ export const SettingsWindow = ({
   const [wallpaperSettings, setWallpaperSettings] =
     useState<WallpaperSettingsType>(Settings.Wallpaper.getWithFallback())
   const [isApplying, setIsApplying] = useState(false)
+  const [isOrganizing, setIsOrganizing] = useState(false)
+  const [isDataReplacing, setIsDataReplacing] = useState(false)
+  const [appliedRevision, setAppliedRevision] = useState(0)
   const [applyError, setApplyError] = useState<string | null>(null)
+  const settingsInteractionLocked =
+    isApplying || isOrganizing || isDataReplacing
 
   useEffect(() => {
     if (isTabId(initialTab)) {
@@ -465,25 +584,40 @@ export const SettingsWindow = ({
     }
   }, [initialTab])
 
-  const snapshot = () =>
-    JSON.stringify({
-      design,
-      themes,
-      linkGroups,
-      searchSettings,
-      aiSettings,
-      linkDisplaySettings,
-      wallpaperSettings,
-    })
+  useEffect(() => {
+    if (currentTab === "links") setHasOpenedLinks(true)
+  }, [currentTab])
+
+  const currentPersistedDraft: PersistedSettingsSnapshot = {
+    design,
+    themes,
+    linkGroups,
+    homeLayout,
+    searchSettings,
+    aiSettings,
+    linkDisplaySettings,
+    wallpaperSettings,
+  }
+
+  const persistedBaselineRef = useRef<PersistedSettingsSnapshot | null>(null)
+  if (persistedBaselineRef.current === null) {
+    persistedBaselineRef.current = currentPersistedDraft
+  }
 
   // 挂载时的快照，用于关闭时检测未应用的更改
   const initialSnapshotRef = useRef<string | null>(null)
   if (initialSnapshotRef.current === null) {
-    initialSnapshotRef.current = snapshot()
+    initialSnapshotRef.current = serializeSettingsDraft(
+      currentPersistedDraft,
+      homeAppOrder
+    )
   }
 
   const snapshotRef = useRef("")
-  snapshotRef.current = snapshot()
+  snapshotRef.current = serializeSettingsDraft(
+    currentPersistedDraft,
+    homeAppOrder
+  )
   const isDirty = snapshotRef.current !== initialSnapshotRef.current
 
   // 未应用更改时的关闭确认：用设计系统 Modal 代替原生 confirm（原生对话框阻塞且突兀）
@@ -506,7 +640,6 @@ export const SettingsWindow = ({
   }
 
   // 颜色/主题模式即时预览；未应用就关闭时回滚到已保存的设计
-  const appliedRef = useRef(false)
   useEffect(() => {
     applyColors(design.colors)
     applyThemeMode()
@@ -514,7 +647,6 @@ export const SettingsWindow = ({
 
   useEffect(
     () => () => {
-      if (appliedRef.current) return
       const persisted = Settings.Design.getWithFallback()
       applyColors(persisted.colors)
       applyThemeMode()
@@ -522,48 +654,209 @@ export const SettingsWindow = ({
     []
   )
 
-  const applyValues = async () => {
+  const discardChanges = () => {
+    const persisted = readPersistedSettings()
+
+    setDesign(persisted.design)
+    setThemes(persisted.themes)
+    setLinkGroups(persisted.linkGroups)
+    setHomeLayout(persisted.homeLayout)
+    setHomeAppOrder(null)
+    setSearchSettings(persisted.searchSettings)
+    setAISettings(persisted.aiSettings)
+    setLinkDisplaySettings(persisted.linkDisplaySettings)
+    setWallpaperSettings(persisted.wallpaperSettings)
     setApplyError(null)
+    setAppliedRevision(revision => revision + 1)
+    persistedBaselineRef.current = persisted
+    initialSnapshotRef.current = serializeSettingsDraft(persisted, null)
+    applyColors(persisted.design.colors)
+    applyThemeMode()
+  }
+
+  const applyValues = async () => {
+    if (isOrganizing) return
+    setApplyError(null)
+    const baseline = persistedBaselineRef.current ?? currentPersistedDraft
     const normalizedAISettings = {
       ...aiSettings,
       apiKey: aiSettings.apiKey.trim(),
       apiBaseUrl: aiSettings.apiBaseUrl.trim() || DEFAULT_AI_BASE_URL,
       model: aiSettings.model.trim() || "deepseek-chat",
     }
-
-    try {
-      resolveChatCompletionsUrl(normalizedAISettings.apiBaseUrl)
-    } catch (error) {
-      setCurrentTab("ai")
-      setApplyError(
-        error instanceof Error ? error.message : "AI 接口地址格式无效"
-      )
-      return
+    const preliminaryHomeLayout = homeAppOrder
+      ? {
+          ...homeLayout,
+          order: mergeAppOrderPreservingWidgets(
+            homeLayout.order,
+            homeAppOrder,
+            getValidHomeAppIds(linkGroups)
+          ),
+        }
+      : homeLayout
+    const draft: PersistedSettingsSnapshot = {
+      ...currentPersistedDraft,
+      homeLayout: preliminaryHomeLayout,
+      aiSettings: normalizedAISettings,
     }
+    const dirtyDomains = getDirtySettingsDomains(baseline, draft)
+    const dirty = new Set(dirtyDomains)
 
-    if (normalizedAISettings.enabled) {
-      setIsApplying(true)
-      const granted = await ensureAIPermissionsFor(
-        normalizedAISettings.apiBaseUrl
-      )
-      setIsApplying(false)
-      if (!granted) {
+    if (dirty.has("ai")) {
+      try {
+        resolveChatCompletionsUrl(normalizedAISettings.apiBaseUrl)
+      } catch (error) {
         setCurrentTab("ai")
-        setApplyError("未授予新 AI 接口的访问权限，设置尚未保存")
+        setApplyError(
+          error instanceof Error ? error.message : "AI 接口地址格式无效"
+        )
         return
       }
     }
 
-    appliedRef.current = true
-    Settings.Design.set(design)
-    Settings.Themes.set(themes)
-    Settings.Search.set(searchSettings)
-    Settings.Links.set(linkGroups)
-    Settings.LinkDisplay.set(linkDisplaySettings)
-    Settings.Wallpaper.set(wallpaperSettings)
-    AISettingsManager.set(normalizedAISettings)
-    initialSnapshotRef.current = snapshotRef.current
-    emitSettingsApplied()
+    if (dirtyDomains.length === 0) {
+      setHomeLayout(preliminaryHomeLayout)
+      setHomeAppOrder(null)
+      setAISettings(normalizedAISettings)
+      persistedBaselineRef.current = draft
+      initialSnapshotRef.current = serializeSettingsDraft(draft, null)
+      return
+    }
+
+    setIsApplying(true)
+    try {
+      if (dirty.has("ai") && normalizedAISettings.enabled) {
+        const granted = await ensureAIPermissionsFor(
+          normalizedAISettings.apiBaseUrl
+        )
+        if (!granted) {
+          setCurrentTab("ai")
+          setApplyError("未授予新 AI 接口的访问权限，设置尚未保存")
+          return
+        }
+      }
+
+      const commitSettings = (): boolean => {
+        // 权限请求可能让出事件循环；在真正写入前重新读取并检查冲突。
+        // HomeLayout 的读取、校验与事务写入必须处于同一把跨标签页锁内。
+        const latest = readPersistedSettings()
+        const conflicts = getConflictingSettingsDomains(
+          baseline,
+          latest,
+          dirtyDomains
+        )
+        if (conflicts.length > 0) {
+          setApplyError(
+            `其他标签页已修改${conflicts
+              .map(domain => SETTINGS_DOMAIN_LABELS[domain])
+              .join("、")}。为避免覆盖，已停止保存；请放弃更改并重新编辑。`
+          )
+          return false
+        }
+
+      const committedLinks = dirty.has("links")
+        ? mergeLatestLinkIcons(
+            linkGroups,
+            baseline.linkGroups,
+            latest.linkGroups
+          )
+        : latest.linkGroups
+      const committedHomeLayout = homeAppOrder
+        ? {
+            ...homeLayout,
+            order: mergeAppOrderPreservingWidgets(
+              homeLayout.order,
+              homeAppOrder,
+              getValidHomeAppIds(committedLinks)
+            ),
+          }
+        : homeLayout
+      const committedDraft: PersistedSettingsSnapshot = {
+        ...draft,
+        linkGroups: committedLinks,
+        homeLayout: committedHomeLayout,
+      }
+      const nextPersisted: PersistedSettingsSnapshot = {
+        design: dirty.has("design") ? committedDraft.design : latest.design,
+        themes: dirty.has("themes") ? committedDraft.themes : latest.themes,
+        linkGroups: dirty.has("links")
+          ? committedDraft.linkGroups
+          : latest.linkGroups,
+        homeLayout: dirty.has("homeLayout")
+          ? committedDraft.homeLayout
+          : latest.homeLayout,
+        searchSettings: dirty.has("search")
+          ? committedDraft.searchSettings
+          : latest.searchSettings,
+        aiSettings: dirty.has("ai")
+          ? committedDraft.aiSettings
+          : latest.aiSettings,
+        linkDisplaySettings: dirty.has("linkDisplay")
+          ? committedDraft.linkDisplaySettings
+          : latest.linkDisplaySettings,
+        wallpaperSettings: dirty.has("wallpaper")
+          ? committedDraft.wallpaperSettings
+          : latest.wallpaperSettings,
+      }
+      const transactionKeys = dirtyDomains.flatMap(
+        domain => SETTINGS_TRANSACTION_KEYS[domain]
+      )
+
+      runLocalStorageTransaction(transactionKeys, () => {
+        if (dirty.has("design")) Settings.Design.set(nextPersisted.design)
+        if (dirty.has("themes")) Settings.Themes.set(nextPersisted.themes)
+        if (dirty.has("search")) Settings.Search.set(nextPersisted.searchSettings)
+        if (dirty.has("links")) Settings.Links.set(nextPersisted.linkGroups)
+        if (dirty.has("homeLayout")) saveHomeLayout(nextPersisted.homeLayout)
+        if (dirty.has("linkDisplay")) {
+          Settings.LinkDisplay.set(nextPersisted.linkDisplaySettings)
+        }
+        if (dirty.has("wallpaper")) {
+          Settings.Wallpaper.set(nextPersisted.wallpaperSettings)
+        }
+        if (dirty.has("ai")) AISettingsManager.set(nextPersisted.aiSettings)
+      })
+
+      setDesign(nextPersisted.design)
+      setThemes(nextPersisted.themes)
+      setLinkGroups(nextPersisted.linkGroups)
+      setHomeLayout(nextPersisted.homeLayout)
+      setHomeAppOrder(null)
+      setSearchSettings(nextPersisted.searchSettings)
+      setAISettings(nextPersisted.aiSettings)
+      setLinkDisplaySettings(nextPersisted.linkDisplaySettings)
+      setWallpaperSettings(nextPersisted.wallpaperSettings)
+      setAppliedRevision(revision => revision + 1)
+      persistedBaselineRef.current = nextPersisted
+      initialSnapshotRef.current = serializeSettingsDraft(nextPersisted, null)
+        emitSettingsApplied()
+        return true
+      }
+
+      const committed = dirty.has("homeLayout") || dirty.has("links")
+        ? await withHomeLayoutLock(commitSettings)
+        : commitSettings()
+      if (!committed) return
+    } catch (error) {
+      if (
+        error instanceof LocalStorageTransactionError &&
+        !error.rollbackComplete
+      ) {
+        setApplyError(
+          `保存失败且原设置未完整恢复（${error.failedKeys.join(
+            "、"
+          )}），请先导出数据并重新加载扩展。`
+        )
+      } else {
+        setApplyError(
+          error instanceof Error
+            ? `保存失败，原设置已恢复：${error.message}`
+            : "保存失败，未写入更改"
+        )
+      }
+    } finally {
+      setIsApplying(false)
+    }
   }
 
   return (
@@ -576,6 +869,7 @@ export const SettingsWindow = ({
               key={option.id}
               type="button"
               active={option.id === currentTab}
+              disabled={settingsInteractionLocked}
               aria-pressed={option.id === currentTab}
               onClick={() => setCurrentTab(option.id)}
             >
@@ -586,6 +880,7 @@ export const SettingsWindow = ({
         <MobileTabSelect
           value={currentTab}
           aria-label="设置分类"
+          disabled={settingsInteractionLocked}
           onChange={e => {
             if (isTabId(e.target.value)) setCurrentTab(e.target.value)
           }}
@@ -601,16 +896,28 @@ export const SettingsWindow = ({
           title="关闭设置"
           onClick={() => hidePopup()}
           icon={faTimes}
+          disabled={settingsInteractionLocked}
         />
       </WindowHeader>
 
-      <WindowContent>
+      <WindowContent
+        aria-busy={settingsInteractionLocked || undefined}
+        {...(settingsInteractionLocked ? { inert: "" } : {})}
+      >
         <Suspense fallback={<PanelFallback>正在加载设置...</PanelFallback>}>
-          {currentTab === "links" && (
-            <LinkSettings
-              linkGroups={linkGroups}
-              setLinkGroups={setLinkGroups}
-            />
+          {hasOpenedLinks && (
+            <PersistentPanel $active={currentTab === "links"}>
+              <LinkSettings
+                linkGroups={linkGroups}
+                setLinkGroups={setLinkGroups}
+                homeAppOrder={homeAppOrder}
+                setHomeAppOrder={setHomeAppOrder}
+                homeLayoutOrder={homeLayout.order}
+                aiSettings={aiSettings}
+                appliedRevision={appliedRevision}
+                onOrganizeBusyChange={setIsOrganizing}
+              />
+            </PersistentPanel>
           )}
 
           {currentTab === "design" && (
@@ -621,6 +928,8 @@ export const SettingsWindow = ({
               setThemes={setThemes}
               linkDisplaySettings={linkDisplaySettings}
               setLinkDisplaySettings={setLinkDisplaySettings}
+              homeLayout={homeLayout}
+              setHomeLayout={setHomeLayout}
             />
           )}
 
@@ -643,7 +952,12 @@ export const SettingsWindow = ({
             <AISettings aiSettings={aiSettings} setAISettings={setAISettings} />
           )}
 
-          {currentTab === "data" && <DataSettings />}
+          {currentTab === "data" && (
+            <DataSettings
+              hasUnsavedChanges={isDirty}
+              onReplacementBusyChange={setIsDataReplacing}
+            />
+          )}
         </Suspense>
       </WindowContent>
 
@@ -651,8 +965,18 @@ export const SettingsWindow = ({
         <SettingsButton
           type="button"
           onClick={() => void applyValues()}
-          disabled={!isDirty || isApplying}
-          text={isApplying ? "正在授权..." : "应用更改"}
+          disabled={
+            !isDirty || isApplying || isOrganizing || isDataReplacing
+          }
+          text={
+            isDataReplacing
+              ? "数据处理中..."
+              : isOrganizing
+              ? "AI 整理中..."
+              : isApplying
+                ? "正在保存..."
+                : "应用更改"
+          }
           icon={faSave}
         />
         {applyError ? (
@@ -664,10 +988,8 @@ export const SettingsWindow = ({
         )}
         <SettingsButton
           type="button"
-          onClick={() => {
-            emitSettingsApplied()
-          }}
-          disabled={!isDirty}
+          onClick={discardChanges}
+          disabled={!isDirty || settingsInteractionLocked}
           text={"放弃更改"}
           icon={faFire}
         />

@@ -72,7 +72,10 @@ interface HomeOverviewProps {
   currentPage: number
   onClose: () => void
   onNavigate: (page: number) => void
-  onMoveItem: (itemId: string, targetPage: number) => boolean
+  onMoveItem: (
+    itemId: string,
+    targetPage: number
+  ) => boolean | Promise<boolean>
 }
 
 const itemLabel = (item: HomeItem): string =>
@@ -89,8 +92,8 @@ export const HomeOverview = ({
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dropPage, setDropPage] = useState<number | null>(null)
 
-  const move = (itemId: string, page: number) => {
-    if (onMoveItem(itemId, page)) {
+  const move = async (itemId: string, page: number) => {
+    if (await onMoveItem(itemId, page)) {
       setSelectedId(null)
       setDraggedId(null)
       setDropPage(null)
@@ -122,7 +125,7 @@ export const HomeOverview = ({
                 onDrop={event => {
                   event.preventDefault()
                   const itemId = draggedId || event.dataTransfer.getData("text/plain")
-                  if (itemId) move(itemId, pageIndex)
+                  if (itemId) void move(itemId, pageIndex)
                 }}
               >
                 <PageHeader>
@@ -134,7 +137,7 @@ export const HomeOverview = ({
                     第 {pageIndex + 1} 页
                   </button>
                   {selectedId && (
-                    <WidgetActionButton type="button" onClick={() => move(selectedId, pageIndex)}>
+                    <WidgetActionButton type="button" onClick={() => void move(selectedId, pageIndex)}>
                       移到这里
                     </WidgetActionButton>
                   )}

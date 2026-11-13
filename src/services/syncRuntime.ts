@@ -5,6 +5,10 @@ export interface SyncRuntimeStatus {
   state: SyncDotState
   updatedAt: number
   message?: string
+  /** 最近一次成功完成拉取、合并或推送的时间。 */
+  lastSuccessAt?: number
+  /** 本地仍有正在处理或等待推送的改动。 */
+  pending?: boolean
 }
 
 const RUNTIME_STATUS_KEY = "fluidity-sync.runtimeStatus.v1"
@@ -29,10 +33,21 @@ export const getSyncRuntimeStatus = (): SyncRuntimeStatus => {
 
 export const setSyncRuntimeStatus = (status: SyncRuntimeStatus): void => {
   try {
-    localStorage.setItem(RUNTIME_STATUS_KEY, JSON.stringify(status))
+    const previous = getSyncRuntimeStatus()
+    const next: SyncRuntimeStatus = {
+      ...status,
+      lastSuccessAt:
+        status.state === "ok"
+          ? status.updatedAt
+          : status.lastSuccessAt ?? previous.lastSuccessAt,
+      pending:
+        status.pending ??
+        (status.state === "syncing" || Boolean(status.message?.includes("正在回推"))),
+    }
+    localStorage.setItem(RUNTIME_STATUS_KEY, JSON.stringify(next))
     window.dispatchEvent(
       new CustomEvent<SyncRuntimeStatus>(RUNTIME_STATUS_EVENT, {
-        detail: status,
+        detail: next,
       })
     )
   } catch {

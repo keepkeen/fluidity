@@ -278,10 +278,13 @@ export const generateWeeklyReport = async (): Promise<{
   const weekId = getWeekString(new Date())
   const settings = AISettingsManager.get()
 
-  // 检查缓存
-  const cached = ReportCache.getWeekly(weekId)
-  if (cached) {
-    return { summary: cached, fromAI: true }
+  // 关闭 AI 后不得继续暴露此前的 AI 结果；只有当前连接仍启用时
+  // 才允许读取 provider-derived cache。
+  if (settings.enabled && settings.apiKey.trim()) {
+    const cached = ReportCache.getWeekly(weekId)
+    if (cached) {
+      return { summary: cached, fromAI: true }
+    }
   }
 
   const stats = getWeeklyStats()
@@ -303,18 +306,19 @@ export const generateWeeklyReport = async (): Promise<{
     // ignore
   }
   // 如果 AI 未配置，返回默认总结
-  if (!settings.enabled || !settings.apiKey) {
+  const requestSettings = AISettingsManager.get()
+  if (!requestSettings.enabled || !requestSettings.apiKey.trim()) {
     return { summary: getDefaultWeeklySummary(stats), fromAI: false }
   }
 
   // 两类共享开关分别约束使用习惯与浏览时长，未授权字段不得进入 prompt。
   try {
-    const promptStats = applyWeeklyPrivacy(stats, settings)
+    const promptStats = applyWeeklyPrivacy(stats, requestSettings)
     const prompt = generateWeeklyPrompt(promptStats)
     const summary = await callDeepSeekAPI(
-      settings.apiKey,
+      requestSettings.apiKey,
       prompt,
-      settings.model
+      requestSettings.model
     )
 
     // 缓存结果
@@ -337,10 +341,11 @@ export const generateMonthlyReport = async (): Promise<{
   const monthId = getMonthString(new Date())
   const settings = AISettingsManager.get()
 
-  // 检查缓存
-  const cached = ReportCache.getMonthly(monthId)
-  if (cached) {
-    return { summary: cached, fromAI: true }
+  if (settings.enabled && settings.apiKey.trim()) {
+    const cached = ReportCache.getMonthly(monthId)
+    if (cached) {
+      return { summary: cached, fromAI: true }
+    }
   }
 
   const stats = getMonthlyStats()
@@ -366,18 +371,19 @@ export const generateMonthlyReport = async (): Promise<{
     // ignore
   }
   // 如果 AI 未配置，返回默认总结
-  if (!settings.enabled || !settings.apiKey) {
+  const requestSettings = AISettingsManager.get()
+  if (!requestSettings.enabled || !requestSettings.apiKey.trim()) {
     return { summary: getDefaultMonthlySummary(stats), fromAI: false }
   }
 
   // 两类共享开关分别约束使用习惯与浏览时长，未授权字段不得进入 prompt。
   try {
-    const promptStats = applyMonthlyPrivacy(stats, settings)
+    const promptStats = applyMonthlyPrivacy(stats, requestSettings)
     const prompt = generateMonthlyPrompt(promptStats)
     const summary = await callDeepSeekAPI(
-      settings.apiKey,
+      requestSettings.apiKey,
       prompt,
-      settings.model
+      requestSettings.model
     )
 
     // 缓存结果
